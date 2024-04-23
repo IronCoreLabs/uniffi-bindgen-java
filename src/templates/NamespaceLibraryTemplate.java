@@ -37,10 +37,10 @@ final class NamespaceLibrary {
 
 // Define FFI callback types
 {%- for def in ci.ffi_definitions() %}
-package {{ config.package_name() }};
-
 {%- match def %}
 {%- when FfiDefinition::CallbackFunction(callback) %}
+package {{ config.package_name() }};
+
 import com.sun.jna.Callback;
 
 interface {{ callback.name()|ffi_callback_name }} extends Callback {
@@ -54,6 +54,8 @@ interface {{ callback.name()|ffi_callback_name }} extends Callback {
     )
 }
 {%- when FfiDefinition::Struct(ffi_struct) %}
+package {{ config.package_name() }};
+
 import com.sun.jna.Structure;
 
 @Structure.FieldOrder({% for field in ffi_struct.fields() %}"{{ field.name()|var_name }}"{% if !loop.last %}, {% endif %}{% endfor %})

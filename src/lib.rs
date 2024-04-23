@@ -61,6 +61,7 @@ where
     I: IntoIterator<Item = T>,
     T: Into<std::ffi::OsString> + Clone,
 {
+    // TODO(murph): --help/-h isn't working
     let matches = Command::new("uniffi-bindgen-java")
         .about("Scaffolding and bindings generator for Rust")
         .version(clap::crate_version!())
