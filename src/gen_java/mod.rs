@@ -14,6 +14,7 @@ use uniffi_bindgen::{
     BindingsConfig,
 };
 
+mod enum_;
 mod primitives;
 
 trait CodeType: Debug {
@@ -442,18 +443,18 @@ impl<T: AsType> AsCodeType for T {
             Type::Int16 => unimplemented!(), //Box::new(primitives::Int16CodeType),
             Type::UInt32 => unimplemented!(), //Box::new(primitives::UInt32CodeType),
             Type::Int32 => unimplemented!(), //Box::new(primitives::Int32CodeType),
-            Type::UInt64 => unimplemented!(), //Box::new(primitives::UInt64CodeType),
+            Type::UInt64 => Box::new(primitives::UInt64CodeType),
             Type::Int64 => unimplemented!(), //Box::new(primitives::Int64CodeType),
             Type::Float32 => unimplemented!(), //Box::new(primitives::Float32CodeType),
             Type::Float64 => unimplemented!(), //Box::new(primitives::Float64CodeType),
             Type::Boolean => Box::new(primitives::BooleanCodeType),
-            Type::String => unimplemented!(), //Box::new(primitives::StringCodeType),
-            Type::Bytes => unimplemented!(),  //Box::new(primitives::BytesCodeType),
+            Type::String => Box::new(primitives::StringCodeType),
+            Type::Bytes => unimplemented!(), //Box::new(primitives::BytesCodeType),
 
             Type::Timestamp => unimplemented!(), //Box::new(miscellany::TimestampCodeType),
             Type::Duration => unimplemented!(),  //Box::new(miscellany::DurationCodeType),
 
-            Type::Enum { name, .. } => unimplemented!(), //Box::new(enum_::EnumCodeType::new(name)),
+            Type::Enum { name, .. } => Box::new(enum_::EnumCodeType::new(name)),
             Type::Object { name, imp, .. } => unimplemented!(), //Box::new(object::ObjectCodeType::new(name, imp)),
             Type::Record { name, .. } => unimplemented!(), //Box::new(record::RecordCodeType::new(name)),
             Type::CallbackInterface { name, .. } => {

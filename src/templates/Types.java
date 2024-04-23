@@ -55,6 +55,9 @@ public class DisposableHelper {
 {%- when Type::Boolean %}
 {%- include "BooleanHelper.java" %}
 
+{%- when Type::String %}
+{%- include "StringHelper.java" %}
+
 {# TODO(murph): implement the rest of the types
 {%- when Type::Int8 %}
 {%- include "Int8Helper.kt" %}
@@ -85,9 +88,6 @@ public class DisposableHelper {
 
 {%- when Type::Float64 %}
 {%- include "Float64Helper.kt" %}
-
-{%- when Type::String %}
-{%- include "StringHelper.kt" %}
 
 {%- when Type::Bytes %}
 {%- include "ByteArrayHelper.kt" %}

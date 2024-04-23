@@ -1,6 +1,6 @@
 use anyhow::{bail, Context, Result};
 use camino::Utf8Path;
-use clap::{command, ArgAction, Command};
+use clap::{ArgAction, Command};
 use std::fs::File;
 use std::io::Write;
 use uniffi_bindgen::{generate_external_bindings, BindingGenerator, ComponentInterface};
@@ -84,7 +84,7 @@ where
             .num_args(1)
             .help("Path to the optional uniffi config file. If not provided, uniffi-bindgen will try to guess it from the UDL's file location.")
         )
-        .arg(clap::Arg::new("library_file_)")
+        .arg(clap::Arg::new("library_file")
             .long("library-file")
             .num_args(1)
             .help("The path to a dynamic library to attempt to extract the definitions from and extend the component interface with. No extensions to component interface occur if it's [`None`]"))
@@ -103,10 +103,10 @@ where
     let binding_generator = JavaBindingGenerator::new(matches.get_flag("stdout"));
     generate_external_bindings(
         &binding_generator,
-        matches.get_one::<&str>("udl_file").unwrap(), // Required
-        matches.get_one::<&str>("config"),
-        matches.get_one::<&str>("out_dir"),
-        matches.get_one::<&str>("library_file"),
+        matches.get_one::<String>("udl_file").unwrap(), // Required
+        matches.get_one::<String>("config"),
+        matches.get_one::<String>("out_dir"),
+        matches.get_one::<String>("library_file"),
         crate_name.map(|x| x.as_str()),
         matches.get_flag("try_format_bool"),
     )

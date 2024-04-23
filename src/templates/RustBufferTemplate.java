@@ -17,11 +17,11 @@ public class RustBuffer extends Structure {
     public static class ByValue extends RustBuffer implements Structure.ByValue {}
     public static class ByReference extends RustBuffer implements Structure.ByReference {}
 
-    public static RustBuffer alloc(int size) {
+    public static RustBuffer alloc(long size) {
         RustBuffer.ByValue buffer;
 
         UniffiHelpers.uniffiRustCall((status) -> {
-            buffer = (RustBuffer.ByValue) UniffiLib.INSTANCE.{{ ci.ffi_rustbuffer_alloc().name() }}((long) size, status);
+            buffer = (RustBuffer.ByValue) UniffiLib.INSTANCE.{{ ci.ffi_rustbuffer_alloc().name() }}(size, status);
         });
         if (buffer.data == null) {
             throw new RuntimeException("RustBuffer.alloc() returned null data pointer (size=" + size + ")");
