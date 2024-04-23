@@ -1,0 +1,31 @@
+[package]
+name = "uniffi-bindgen-java"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "uniffi_bindgen_java"
+path = "src/lib.rs"
+
+[[bin]]
+name = "uniffi-bindgen-java"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+askama = { version = "0.12", default-features = false, features = ["config"]}
+clap = { version = "4", default-features = false, features = ["derive", "std", "cargo"]}
+heck = "0.5"
+uniffi_bindgen = { version = "0.27" }
+paste = "1"
+serde = "1"
+toml = "0.8"
+uniffi_meta = "0.27.1"
+textwrap = "0.16.1"
+camino = "1.1.6"
+
+[dev-dependencies]
+glob = "0.3"
+uniffi_testing = "0.27"
+
+
