@@ -2,7 +2,20 @@ package {{ config.package_name() }};
 
 import java.nio.ByteBuffer;
 
-public static class FfiConverterBoolean implements FfiConverter<Boolean, Byte> {
+public final class FfiConverterBoolean implements FfiConverter<Boolean, Byte> {
+  // private static FfiConverterBoolean INSTANCE;
+
+  // // private constructor for this singleton
+  // private FfiConverterBoolean() {}
+
+  // public static FfiConverterBoolean getInstance() {
+  //   if (INSTANCE == null) {
+  //     INSTANCE = new FfiConverterBoolean();
+  //   }
+
+  //   return INSTANCE;
+  // }
+
   @Override
   public Boolean lift(Byte value) {
     return (int) value != 0;

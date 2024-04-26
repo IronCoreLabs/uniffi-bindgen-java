@@ -1,7 +1,7 @@
 use anyhow::{bail, Context, Result};
 use camino::Utf8Path;
 use clap::{ArgAction, Command};
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::Write;
 use uniffi_bindgen::{generate_external_bindings, BindingGenerator, ComponentInterface};
 
@@ -43,8 +43,23 @@ impl BindingGenerator for JavaBindingGenerator {
         out_dir: &Utf8Path,
         try_format_code: bool, // TODO(murph): see what other langs are doing for this
     ) -> anyhow::Result<()> {
-        let mut writer = self.create_writer(&ci, out_dir)?;
-        write!(writer, "{}", gen_java::generate_bindings(&config, &ci)?)?;
+        let filename_capture =
+            regex::Regex::new(r"^(?:public\s)?(?:class|interface|enum)\s(\w+)").unwrap();
+        let bindings_str = gen_java::generate_bindings(&config, &ci)?;
+        let package_line = format!("package {};", config.package_name());
+        let split_classes = bindings_str.split(&package_line);
+        let writable = split_classes
+            .map(|file| (filename_capture.captures(file), file))
+            .filter(|(x, _)| x.is_some())
+            // TODO(murph): this capture get isn't working I think. The regex looks good in regexer.
+            .map(|(captures, file)| (captures.unwrap().get(1).unwrap().as_str(), file))
+            .collect::<Vec<_>>();
+        for (filename, file) in writable {
+            fs::write(
+                format!("{}/{}.java", out_dir, filename),
+                format!("{}\n{}", package_line, file),
+            )?;
+        }
         Ok(())
     }
 

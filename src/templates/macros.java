@@ -117,9 +117,9 @@
 -#}
 {%- macro arg_list_ffi_decl(func) %}
     {%- for arg in func.arguments() %}
-        {{- arg.name()|var_name }}: {{ arg.type_().borrow()|ffi_type_name_by_value -}},
+        {{- arg.type_().borrow()|ffi_type_name_by_value }} {{arg.name()|var_name -}}{%- if !loop.last %}, {% endif -%}
     {%- endfor %}
-    {%- if func.has_rust_call_status_arg() %}uniffi_out_err: UniffiRustCallStatus, {% endif %}
+    {%- if func.has_rust_call_status_arg() %}, UniffiRustCallStatus uniffi_out_errmk{% endif %}
 {%- endmacro -%}
 
 {% macro field_name(field, field_num) %}

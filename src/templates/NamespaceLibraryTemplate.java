@@ -46,12 +46,12 @@ import com.sun.jna.Callback;
 interface {{ callback.name()|ffi_callback_name }} extends Callback {
     {%- match callback.return_type() %}{%- when Some(return_type) %}{{ return_type|ffi_type_name_by_value }}{%- when None %}void{%- endmatch %} callback(
         {%- for arg in callback.arguments() -%}
-        {{ arg.type_().borrow()|ffi_type_name_by_value }} {{ arg.name().borrow()|var_name }},
+        {{ arg.type_().borrow()|ffi_type_name_by_value }} {{ arg.name().borrow()|var_name }}{% if !loop.last %},{% endif %}
         {%- endfor -%}
         {%- if callback.has_rust_call_status_arg() -%}
-        uniffiCallStatus: UniffiRustCallStatus,
+        UniffiRustCallStatus uniffiCallStatus
         {%- endif -%}
-    )
+    );
 }
 {%- when FfiDefinition::Struct(ffi_struct) %}
 package {{ config.package_name() }};
@@ -59,18 +59,14 @@ package {{ config.package_name() }};
 import com.sun.jna.Structure;
 
 @Structure.FieldOrder({% for field in ffi_struct.fields() %}"{{ field.name()|var_name }}"{% if !loop.last %}, {% endif %}{% endfor %})
-class {{ ffi_struct.name()|ffi_struct_name }}(
+class {{ ffi_struct.name()|ffi_struct_name }} extends Structure {
     {%- for field in ffi_struct.fields() %}
-    {{ field.type_().borrow()|ffi_type_name_for_ffi_struct }} {{ field.name()|var_name }} = {{ field.type_()|ffi_default_value }},
+    public {{ field.type_().borrow()|ffi_type_name_for_ffi_struct }} {{ field.name()|var_name }} = {{ field.type_()|ffi_default_value }};
     {%- endfor %}
-) extends Structure {
-    class UniffiByValue(
-        {%- for field in ffi_struct.fields() %}
-        {{ field.type_().borrow()|ffi_type_name_for_ffi_struct }} {{ field.name()|var_name }} = {{ field.type_()|ffi_default_value }},
-        {%- endfor %}
-    ) extends {{ ffi_struct.name()|ffi_struct_name }}({%- for field in ffi_struct.fields() %}{{ field.name()|var_name }}, {%- endfor %}) implements Structure.ByValue {}
 
-   void uniffiSetValue(other: {{ ffi_struct.name()|ffi_struct_name }}) {
+    public static class UniffiByValue extends {{ ffi_struct.name()|ffi_struct_name }} implements Structure.ByValue {}
+
+    void uniffiSetValue({{ ffi_struct.name()|ffi_struct_name }} other) {
         {%- for field in ffi_struct.fields() %}
         {{ field.name()|var_name }} = other.{{ field.name()|var_name }};
         {%- endfor %}
@@ -89,15 +85,8 @@ import com.sun.jna.Library;
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 interface UniffiLib extends Library {
-    UniffiLib INSTANCE = NamespaceLibrary.loadIndirect("{{ ci.namespace() }}");
+    UniffiLib INSTANCE = UniffiLibInitializer.load();
 
-    static {
-        NamespaceLibrary.uniffiCheckContractApiVersion(INSTANCE);
-        NamespaceLibrary.uniffiCheckApiChecksums(INSTANCE);
-        {% for fn in self.initialization_fns() -%}
-        {{ fn }}(INSTANCE)
-        {% endfor -%}
-    }
     {% if ci.contains_object_types() %}
     // The Cleaner for the whole library
     static UniffiCleaner CLEANER = UniffiCleaner.create();
@@ -106,4 +95,23 @@ interface UniffiLib extends Library {
     {% for func in ci.iter_ffi_function_definitions() -%}
     {% match func.return_type() %}{% when Some with (return_type) %}{{ return_type.borrow()|ffi_type_name_by_value }}{% when None %}void{% endmatch %} {{ func.name() }}({%- call java::arg_list_ffi_decl(func) %});
     {% endfor %}
+}
+
+package {{ config.package_name() }};
+
+// Java doesn't allow for static init blocks in an interface outside of a static property with a default.
+// To get around that and make sure that when the UniffiLib interface loads it has an initialized library
+// we call this class. The init code won't be called until a function on this interface is called unfortunately.
+final class UniffiLibInitializer {
+    static {
+        NamespaceLibrary.uniffiCheckContractApiVersion(INSTANCE);
+        NamespaceLibrary.uniffiCheckApiChecksums(INSTANCE);
+        {% for fn in self.initialization_fns() -%}
+        {{ fn }}(INSTANCE)
+        {% endfor -%}
+    }
+
+    static UniffiLib load() {
+        return NamespaceLibrary.loadIndirect("{{ ci.namespace() }}");
+    }
 }

@@ -334,7 +334,8 @@ impl JavaCodeOracle {
         match ffi_type {
             // Make callbacks function pointers nullable. This matches the semantics of a C
             // function pointer better and allows for `null` as a default value.
-            FfiType::Callback(name) => format!("{}?", self.ffi_callback_name(name)),
+            // Everything is nullable in Java by default.
+            FfiType::Callback(name) => format!("{}", self.ffi_callback_name(name)),
             _ => self.ffi_type_label_by_value(ffi_type),
         }
     }
@@ -346,10 +347,10 @@ impl JavaCodeOracle {
     ///   - Set a default for structs, which JNA sometimes requires
     fn ffi_default_value(&self, ffi_type: &FfiType) -> String {
         match ffi_type {
-            FfiType::UInt8 | FfiType::Int8 => "0.toByte()".to_owned(),
-            FfiType::UInt16 | FfiType::Int16 => "0.toShort()".to_owned(),
+            FfiType::UInt8 | FfiType::Int8 => "(byte)0".to_owned(),
+            FfiType::UInt16 | FfiType::Int16 => "(short)0".to_owned(),
             FfiType::UInt32 | FfiType::Int32 => "0".to_owned(),
-            FfiType::UInt64 | FfiType::Int64 => "0.toLong()".to_owned(),
+            FfiType::UInt64 | FfiType::Int64 => "0L".to_owned(),
             FfiType::Float32 => "0.0f".to_owned(),
             FfiType::Float64 => "0.0".to_owned(),
             FfiType::RustArcPtr(_) => "Pointer.NULL".to_owned(),
