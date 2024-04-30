@@ -78,7 +78,7 @@ import java.util.function.Supplier;
 // synchronize itself
 public final class UniffiHelpers {
   // Call a rust function that returns a Result<>.  Pass in the Error class companion that corresponds to the Err
-  private static <U, E extends Exception> U uniffiRustCallWithError(UniffiRustCallStatusErrorHandler<E> errorHandler, Function<UniffiRustCallStatus, U> callback) {
+  static <U, E extends Exception> U uniffiRustCallWithError(UniffiRustCallStatusErrorHandler<E> errorHandler, Function<UniffiRustCallStatus, U> callback) {
       UniffiRustCallStatus status = new UniffiRustCallStatus();
       U returnValue = callback.call(status);
       uniffiCheckCallStatus(errorHandler, status);
@@ -86,7 +86,7 @@ public final class UniffiHelpers {
   }
 
   // Check UniffiRustCallStatus and throw an error if the call wasn't successful
-  private static <E extends Exception> void uniffiCheckCallStatus(UniffiRustCallStatusErrorHandler<E> errorHandler, UniffiRustCallStatus status) {
+  static <E extends Exception> void uniffiCheckCallStatus(UniffiRustCallStatusErrorHandler<E> errorHandler, UniffiRustCallStatus status) {
       if (status.isSuccess()) {
           return;
       } else if (status.isError()) {
@@ -106,11 +106,11 @@ public final class UniffiHelpers {
   }
 
   // Call a rust function that returns a plain value
-  private <U> U uniffiRustCall(Function<UniffiRustCallStatus, U> callback) {
+  static <U> U uniffiRustCall(Function<UniffiRustCallStatus, U> callback) {
       return uniffiRustCallWithError(new UniffiNullRustCallStatusErrorHandler(), callback);
   }
 
-  private <T> void uniffiTraitInterfaceCall(
+  static <T> void uniffiTraitInterfaceCall(
       UniffiRustCallStatus callStatus,
       Supplier<T> makeCall,
       Consumer<T> writeReturn
@@ -123,7 +123,7 @@ public final class UniffiHelpers {
       }
   }
 
-  private <T, E extends Throwable> void uniffiTraitInterfaceCallWithError(
+  static <T, E extends Throwable> void uniffiTraitInterfaceCallWithError(
       UniffiRustCallStatus callStatus,
       Supplier<T> makeCall,
       Consumer<T> writeReturn,

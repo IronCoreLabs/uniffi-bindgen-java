@@ -17,11 +17,9 @@ public class RustBuffer extends Structure {
     public static class ByValue extends RustBuffer implements Structure.ByValue {}
     public static class ByReference extends RustBuffer implements Structure.ByReference {}
 
-    public static RustBuffer alloc(long size) {
-        RustBuffer.ByValue buffer;
-
-        UniffiHelpers.uniffiRustCall((status) -> {
-            buffer = (RustBuffer.ByValue) UniffiLib.INSTANCE.{{ ci.ffi_rustbuffer_alloc().name() }}(size, status);
+    public static RustBuffer.ByValue alloc(long size) {
+        RustBuffer.ByValue buffer = UniffiHelpers.uniffiRustCall((UniffiRustCallStatus status) -> {
+            return (RustBuffer.ByValue) UniffiLib.INSTANCE.{{ ci.ffi_rustbuffer_alloc().name() }}(size, status);
         });
         if (buffer.data == null) {
             throw new RuntimeException("RustBuffer.alloc() returned null data pointer (size=" + size + ")");
@@ -32,6 +30,7 @@ public class RustBuffer extends Structure {
     public static void free(RustBuffer.ByValue buffer) {
         UniffiHelpers.uniffiRustCall((status) -> {
             UniffiLib.INSTANCE.{{ ci.ffi_rustbuffer_free().name() }}(buffer, status);
+            return null;
         });
     }
 
