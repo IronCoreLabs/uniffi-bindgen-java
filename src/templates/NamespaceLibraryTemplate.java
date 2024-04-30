@@ -58,7 +58,7 @@ package {{ config.package_name() }};
 
 import com.sun.jna.Structure;
 
-@Structure.FieldOrder({% for field in ffi_struct.fields() %}"{{ field.name()|var_name }}"{% if !loop.last %}, {% endif %}{% endfor %})
+@Structure.FieldOrder({ {% for field in ffi_struct.fields() %}"{{ field.name()|var_name }}"{% if !loop.last %}, {% endif %}{% endfor %} })
 class {{ ffi_struct.name()|ffi_struct_name }} extends Structure {
     {%- for field in ffi_struct.fields() %}
     public {{ field.type_().borrow()|ffi_type_name_for_ffi_struct }} {{ field.name()|var_name }} = {{ field.type_()|ffi_default_value }};

@@ -3,18 +3,18 @@ package {{ config.package_name() }};
 import java.nio.ByteBuffer;
 
 public final class FfiConverterBoolean implements FfiConverter<Boolean, Byte> {
-  // private static FfiConverterBoolean INSTANCE;
+  private static FfiConverterBoolean INSTANCE;
 
-  // // private constructor for this singleton
-  // private FfiConverterBoolean() {}
+  // private constructor for this singleton
+  private FfiConverterBoolean() {}
 
-  // public static FfiConverterBoolean getInstance() {
-  //   if (INSTANCE == null) {
-  //     INSTANCE = new FfiConverterBoolean();
-  //   }
+  public static FfiConverterBoolean getInstance() {
+    if (INSTANCE == null) {
+      INSTANCE = new FfiConverterBoolean();
+    }
 
-  //   return INSTANCE;
-  // }
+    return INSTANCE;
+  }
 
   @Override
   public Boolean lift(Byte value) {

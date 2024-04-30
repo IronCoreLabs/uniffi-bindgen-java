@@ -387,7 +387,7 @@ impl JavaCodeOracle {
             // types from the component API.
             FfiType::Int8 | FfiType::UInt8 => "Byte".to_string(),
             FfiType::Int16 | FfiType::UInt16 => "Short".to_string(),
-            FfiType::Int32 | FfiType::UInt32 => "Int".to_string(),
+            FfiType::Int32 | FfiType::UInt32 => "Integer".to_string(),
             FfiType::Int64 | FfiType::UInt64 => "Long".to_string(),
             FfiType::Float32 => "Float".to_string(),
             FfiType::Float64 => "Double".to_string(),

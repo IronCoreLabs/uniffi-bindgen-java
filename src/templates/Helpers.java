@@ -3,7 +3,7 @@ package {{ config.package_name() }};
 import com.sun.jna.Structure;
 import com.sun.jna.Pointer;
 
-@Structure.FieldOrder("code", "error_buf")
+@Structure.FieldOrder({ "code", "error_buf" })
 public class UniffiRustCallStatus extends Structure {
     public byte code;
     public RustBuffer.ByValue errorBuf;

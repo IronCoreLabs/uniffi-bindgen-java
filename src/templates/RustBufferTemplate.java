@@ -8,7 +8,7 @@ import com.sun.jna.Pointer;
  * A rust-owned buffer is represented by its capacity, its current length, and a
  * pointer to the underlying data.
  */
-@Structure.FieldOrder("capacity", "len", "data")
+@Structure.FieldOrder({ "capacity", "len", "data" })
 public class RustBuffer extends Structure {
     public int capacity;
     public int len;
@@ -82,7 +82,7 @@ import com.sun.jna.Pointer;
 // can take a direct pointer to in the JVM, and if we're going to copy something
 // then we might as well copy it into a `RustBuffer`. But it's here for API
 // completeness.
-@Structure.FieldOrder("len", "data")
+@Structure.FieldOrder({ "len", "data" })
 public class ForeignBytes extends Structure {
     public int len;
     public Pointer data;
