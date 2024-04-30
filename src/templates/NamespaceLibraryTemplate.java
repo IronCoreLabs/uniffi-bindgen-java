@@ -57,6 +57,7 @@ interface {{ callback.name()|ffi_callback_name }} extends Callback {
 package {{ config.package_name() }};
 
 import com.sun.jna.Structure;
+import com.sun.jna.Pointer;
 
 @Structure.FieldOrder({ {% for field in ffi_struct.fields() %}"{{ field.name()|var_name }}"{% if !loop.last %}, {% endif %}{% endfor %} })
 class {{ ffi_struct.name()|ffi_struct_name }} extends Structure {
@@ -81,6 +82,7 @@ class {{ ffi_struct.name()|ffi_struct_name }} extends Structure {
 package {{ config.package_name() }};
 
 import com.sun.jna.Library;
+import com.sun.jna.Pointer;
 
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.

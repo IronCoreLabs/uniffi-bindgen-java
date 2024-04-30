@@ -55,7 +55,7 @@ import com.sun.jna.Pointer;
  *
  * Size is the sum of all values in the struct.
  */
-public class RustBufferByReference extends Structure.ByReference {
+public class RustBufferByReference implements Structure.ByReference {
     public RustBufferByReference() {
         super(16);
     }

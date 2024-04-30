@@ -6,7 +6,9 @@ import java.nio.charset.CharsetEncoder;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 
-public class FfiConverterString implements FfiConverter<String, RustBuffer.ByValue> {
+public enum FfiConverterString implements FfiConverter<String, RustBuffer.ByValue> {
+    INSTANCE;
+
     // Note: we don't inherit from FfiConverterRustBuffer, because we use a
     // special encoding when lowering/lifting.  We can use `RustBuffer.len` to
     // store our length and avoid writing it out to the buffer.

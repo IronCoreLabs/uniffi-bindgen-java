@@ -13,14 +13,16 @@ public interface Disposable {
         Stream.of(args)
               .filter(Disposable.class::isInstance)
               .map(Disposable.class::cast)
-              .forEach(Disposable::destroy);
+              .forEach(disposable -> {disposable.destroy();} );
     }
 }
 
 package {{ config.package_name() }};
 
+// TODO(murph): in the Kotlin code this was an inline function `T.use(block: (T) -> R)`
+//              Will likely need to see where it's being called and make sure this is called instead
 public class DisposableHelper {
-    public static <T extends Disposable> T use(T disposable, java.util.function.Function<T, R> block) {
+    public static <T extends Disposable, R> R use(T disposable, java.util.function.Function<T, R> block) {
         try {
             return block.apply(disposable);
         } finally {

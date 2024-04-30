@@ -41,7 +41,7 @@ trait CodeType: Debug {
     /// This is the newer way of handling these methods and replaces the lower, write, lift, and
     /// read CodeType methods.
     fn ffi_converter_name(&self) -> String {
-        format!("FfiConverter{}", self.canonical_name())
+        format!("FfiConverter{}.INSTANCE", self.canonical_name())
     }
 
     /// A list of imports that are needed if this type is in use.
