@@ -12,8 +12,8 @@ final class NamespaceLibrary {
     return "{{ config.cdylib_name() }}";
   }
 
-  static <Lib extends Library> Lib loadIndirect(String componentName) {
-    return Native.load(findLibraryName(componentName), (Class<Lib>) Lib.class);
+  static <Lib extends Library> Lib loadIndirect(String componentName, Class<Lib> clazz) {
+    return Native.load(findLibraryName(componentName), clazz);
   }
 
   void uniffiCheckContractApiVersion(UniffiLib lib) {
@@ -29,7 +29,7 @@ final class NamespaceLibrary {
   void uniffiCheckApiChecksums(UniffiLib lib) {
     {%- for (name, expected_checksum) in ci.iter_checksums() %}
     if (lib.{{ name }}() != ((short) {{ expected_checksum }})) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project");
+        throw new RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project");
     }
     {%- endfor %}
   }
@@ -114,6 +114,6 @@ final class UniffiLibInitializer {
     }
 
     static UniffiLib load() {
-        return NamespaceLibrary.loadIndirect("{{ ci.namespace() }}");
+        return NamespaceLibrary.loadIndirect("{{ ci.namespace() }}", UniffiLib.class);
     }
 }

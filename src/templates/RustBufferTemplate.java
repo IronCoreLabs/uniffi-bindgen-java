@@ -54,7 +54,9 @@ import com.sun.jna.Pointer;
  *
  * Size is the sum of all values in the struct.
  */
-public class RustBufferByReference implements Structure.ByReference {
+// TODO(murph): in Kotlin this was implementing `ByReference` (not sure if RustBuffer.ByReference or Structure.ByReference)
+//              like `RustBufferByReference : ByReference(16)`. I can't see a way to implement ByReference and pass the align type like that.
+public class RustBufferByReference extends Structure implements Structure.ByReference {
     public RustBufferByReference() {
         super(16);
     }

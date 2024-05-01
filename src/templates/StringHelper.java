@@ -2,6 +2,7 @@ package {{ config.package_name() }};
 
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
+import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CharsetEncoder;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
@@ -35,7 +36,12 @@ public enum FfiConverterString implements FfiConverter<String, RustBuffer.ByValu
         // Make sure we don't have invalid UTF-16, check for lone surrogates.
         CharsetEncoder encoder = StandardCharsets.UTF_8.newEncoder();
         encoder.onMalformedInput(CodingErrorAction.REPORT);
-        return encoder.encode(CharBuffer.wrap(value));
+        // TODO(murph): the Kotlin code essentially unchecked throws I think, so converting to that
+        try {
+            return encoder.encode(CharBuffer.wrap(value));
+        } catch (CharacterCodingException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override

@@ -23,7 +23,9 @@ class UniffiHandleMap<T> {
     public T get(long handle) {
         T obj = map.get(handle);
         if (obj == null) {
-            throw new InternalException("UniffiHandleMap.get: Invalid handle");
+            // TODO(murph): kotlin doesn't have checked exceptions, using runtime to repro. Not sure if we want Java
+            //              to use checked itself or not
+            throw new RuntimeException(new InternalException("UniffiHandleMap.get: Invalid handle"));
         }
         return obj;
     }
@@ -32,7 +34,9 @@ class UniffiHandleMap<T> {
     public T remove(long handle) {
         T obj = map.remove(handle);
         if (obj == null) {
-            throw new InternalException("UniffiHandleMap: Invalid handle");
+            // TODO(murph): kotlin doesn't have checked exceptions, using runtime to repro. Not sure if we want Java
+            //              to use checked itself or not
+            throw new RuntimeException(new InternalException("UniffiHandleMap: Invalid handle"));
         }
         return obj;
     }

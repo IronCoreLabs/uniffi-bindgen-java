@@ -354,9 +354,9 @@ impl JavaCodeOracle {
             FfiType::Float32 => "0.0f".to_owned(),
             FfiType::Float64 => "0.0".to_owned(),
             FfiType::RustArcPtr(_) => "Pointer.NULL".to_owned(),
-            FfiType::RustBuffer(_) => "RustBuffer.ByValue()".to_owned(),
+            FfiType::RustBuffer(_) => "new RustBuffer.ByValue()".to_owned(),
             FfiType::Callback(_) => "null".to_owned(),
-            FfiType::RustCallStatus => "UniffiRustCallStatus.ByValue()".to_owned(),
+            FfiType::RustCallStatus => "new UniffiRustCallStatus.ByValue()".to_owned(),
             _ => unimplemented!("ffi_default_value: {ffi_type:?}"),
         }
     }
