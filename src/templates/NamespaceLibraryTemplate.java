@@ -16,7 +16,7 @@ final class NamespaceLibrary {
     return Native.load(findLibraryName(componentName), clazz);
   }
 
-  void uniffiCheckContractApiVersion(UniffiLib lib) {
+  static void uniffiCheckContractApiVersion(UniffiLib lib) {
     // Get the bindings contract version from our ComponentInterface
     int bindingsContractVersion = {{ ci.uniffi_contract_version() }};
     // Get the scaffolding contract version by calling the into the dylib
@@ -26,7 +26,7 @@ final class NamespaceLibrary {
     }
   }
 
-  void uniffiCheckApiChecksums(UniffiLib lib) {
+  static void uniffiCheckApiChecksums(UniffiLib lib) {
     {%- for (name, expected_checksum) in ci.iter_checksums() %}
     if (lib.{{ name }}() != ((short) {{ expected_checksum }})) {
         throw new RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project");
@@ -105,15 +105,13 @@ package {{ config.package_name() }};
 // To get around that and make sure that when the UniffiLib interface loads it has an initialized library
 // we call this class. The init code won't be called until a function on this interface is called unfortunately.
 final class UniffiLibInitializer {
-    static {
-        NamespaceLibrary.uniffiCheckContractApiVersion(INSTANCE);
-        NamespaceLibrary.uniffiCheckApiChecksums(INSTANCE);
-        {% for fn in self.initialization_fns() -%}
-        {{ fn }}(INSTANCE)
-        {% endfor -%}
-    }
-
     static UniffiLib load() {
-        return NamespaceLibrary.loadIndirect("{{ ci.namespace() }}", UniffiLib.class);
+        UniffiLib instance = NamespaceLibrary.loadIndirect("{{ ci.namespace() }}", UniffiLib.class);
+        NamespaceLibrary.uniffiCheckContractApiVersion(instance);
+        NamespaceLibrary.uniffiCheckApiChecksums(instance);
+        {% for fn in self.initialization_fns() -%}
+        {{ fn }}(instance)
+        {% endfor -%}
+        return instance;
     }
 }

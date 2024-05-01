@@ -80,7 +80,7 @@ public final class UniffiHelpers {
   // Call a rust function that returns a Result<>.  Pass in the Error class companion that corresponds to the Err
   static <U, E extends Exception> U uniffiRustCallWithError(UniffiRustCallStatusErrorHandler<E> errorHandler, Function<UniffiRustCallStatus, U> callback) {
       UniffiRustCallStatus status = new UniffiRustCallStatus();
-      U returnValue = callback.call(status);
+      U returnValue = callback.apply(status);
       uniffiCheckCallStatus(errorHandler, status);
       return returnValue;
   }
@@ -90,18 +90,20 @@ public final class UniffiHelpers {
       if (status.isSuccess()) {
           return;
       } else if (status.isError()) {
-          throw errorHandler.lift(status.errorBuf);
+          throw new RuntimeException(errorHandler.lift(status.errorBuf));
       } else if (status.isPanic()) {
           // when the rust code sees a panic, it tries to construct a rustbuffer
           // with the message.  but if that code panics, then it just sends back
           // an empty buffer.
           if (status.errorBuf.len > 0) {
-              throw new InternalException({{ Type::String.borrow()|lift_fn  }}(status.errorBuf));
+              // TODO(murph): kotlin doesn't have checked exceptions, using runtime to repro. Not sure if we want Java
+              //              to use checked itself or not
+              throw new RuntimeException(new InternalException({{ Type::String.borrow()|lift_fn  }}(status.errorBuf)));
           } else {
-              throw new InternalException("Rust panic");
+              throw new RuntimeException(new InternalException("Rust panic"));
           }
       } else {
-          throw new InternalException("Unknown rust call status: " + status.code);
+          throw new RuntimeException(new InternalException("Unknown rust call status: " + status.code));
       }
   }
 
@@ -127,12 +129,15 @@ public final class UniffiHelpers {
       UniffiRustCallStatus callStatus,
       Supplier<T> makeCall,
       Consumer<T> writeReturn,
-      Function<E, RustBuffer.ByValue> lowerError
+      Function<E, RustBuffer.ByValue> lowerError,
+      Class<E> clazz
   ) {
       try {
           writeReturn.accept(makeCall.get());
       } catch (Exception e) {
-          if (e.getClass().isAssignableFrom(E.class)) {
+          // TODO(murph): this was `e.getClass().isAssignableFrom(E.class)` but generics are erased in Java so we can't
+          //              check if it's from `E` that way
+          if (e.getClass().isAssignableFrom(clazz)) {
               @SuppressWarnings("unchecked")
               E castedE = (E) e;
               callStatus.setCode(UniffiRustCallStatus.UNIFFI_CALL_ERROR);
