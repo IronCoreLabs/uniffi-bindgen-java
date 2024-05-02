@@ -1,47 +1,30 @@
-use anyhow::{bail, Context, Result};
-use camino::Utf8Path;
-use clap::{ArgAction, Command};
-use std::fs::{self, File};
-use std::io::Write;
-use uniffi_bindgen::{generate_external_bindings, BindingGenerator, ComponentInterface};
+use anyhow::{bail, Result};
+use camino::{Utf8Path, Utf8PathBuf};
+use clap::{Parser, Subcommand};
+use std::fs::{self};
+use uniffi_bindgen::{BindingGenerator, ComponentInterface};
 
 mod gen_java;
 
-struct JavaBindingGenerator {
-    stdout: bool,
-}
-
-impl JavaBindingGenerator {
-    fn new(stdout: bool) -> Self {
-        Self { stdout }
-    }
-
-    fn create_writer(
-        &self,
-        ci: &ComponentInterface,
-        out_dir: &Utf8Path,
-    ) -> anyhow::Result<Box<dyn Write>> {
-        if self.stdout {
-            Ok(Box::new(std::io::stdout()))
-        } else {
-            let filename = format!("{}.java", ci.namespace());
-            let out_path = out_dir.join(&filename);
-            Ok(Box::new(
-                File::create(&out_path).context(format!("Failed to create {:?}", filename))?,
-            ))
-        }
-    }
-}
-
+pub struct JavaBindingGenerator;
 impl BindingGenerator for JavaBindingGenerator {
     type Config = gen_java::Config;
+
+    fn new_config(&self, root_toml: &toml::Value) -> Result<Self::Config> {
+        Ok(
+            match root_toml.get("bindings").and_then(|b| b.get("java")) {
+                Some(v) => v.clone().try_into()?,
+                None => Default::default(),
+            },
+        )
+    }
 
     fn write_bindings(
         &self,
         ci: &ComponentInterface,
         config: &Self::Config,
         out_dir: &Utf8Path,
-        try_format_code: bool, // TODO(murph): see what other langs are doing for this
+        try_format_code: bool, // TODO(murph): not many CLI formatters for Java, may run `java` with expected JAR
     ) -> anyhow::Result<()> {
         dbg!(config);
         let filename_capture =
@@ -72,63 +55,122 @@ impl BindingGenerator for JavaBindingGenerator {
     }
 }
 
-pub fn run<I, T>(args: I) -> Result<()>
-where
-    I: IntoIterator<Item = T>,
-    T: Into<std::ffi::OsString> + Clone,
-{
-    // TODO(murph): --help/-h isn't working
-    let matches = Command::new("uniffi-bindgen-java")
-        .about("Scaffolding and bindings generator for Rust")
-        .version(clap::crate_version!())
-        .arg(
-            clap::Arg::new("stdout")
-                .long("stdout")
-                .action(ArgAction::SetTrue)
-                .help("Write output to STDOUT"),
-        )
-        .arg(
-            clap::Arg::new("out_dir")
-                .long("out-dir")
-                .short('o')
-                .num_args(1)
-                .help("Directory in which to write generated files. Default is same folder as .udl file."),
-        )
-        .arg(clap::Arg::new("udl_file").required(true))
-        .arg(
-            clap::Arg::new("config")
-            .long("config-path")
-            .num_args(1)
-            .help("Path to the optional uniffi config file. If not provided, uniffi-bindgen will try to guess it from the UDL's file location.")
-        )
-        .arg(clap::Arg::new("library_file")
-            .long("library-file")
-            .num_args(1)
-            .help("The path to a dynamic library to attempt to extract the definitions from and extend the component interface with. No extensions to component interface occur if it's [`None`]"))
-        .arg(clap::Arg::new("crate_name")
-            .long("crate-name")
-            .num_args(1)
-            .help("Override the default crate name that is guessed from UDL file path."))
-        // TODO(murph): not sure this is right
-        .arg(clap::Arg::new("try_format_bool")
-            .long("try-format")
-            .action(ArgAction::SetTrue)
-            .help("Try to format the resulting code."))
-        .get_matches_from(args);
+/// Scaffolding and bindings generator for Rust
+#[derive(Parser)]
+#[clap(name = "uniffi-bindgen-java")]
+#[clap(version = clap::crate_version!())]
+#[clap(propagate_version = true)]
+struct Cli {
+    #[clap(subcommand)]
+    command: Commands,
+}
 
-    let crate_name = matches.get_one::<String>("crate_name");
-    let binding_generator = JavaBindingGenerator::new(matches.get_flag("stdout"));
-    generate_external_bindings(
-        &binding_generator,
-        matches.get_one::<String>("udl_file").unwrap(), // Required
-        matches.get_one::<String>("config"),
-        matches.get_one::<String>("out_dir"),
-        matches.get_one::<String>("library_file"),
-        crate_name.map(|x| x.as_str()),
-        matches.get_flag("try_format_bool"),
-    )
+#[derive(Subcommand)]
+enum Commands {
+    /// Generate Java bindings
+    Generate {
+        /// Directory in which to write generated files. Default is same folder as .udl file.
+        #[clap(long, short)]
+        out_dir: Option<Utf8PathBuf>,
+
+        /// Do not try to format the generated bindings.
+        #[clap(long, short)]
+        no_format: bool,
+
+        /// Path to optional uniffi config file. This config is merged with the `uniffi.toml` config present in each crate, with its values taking precedence.
+        #[clap(long, short)]
+        config: Option<Utf8PathBuf>,
+
+        /// Extract proc-macro metadata from a native lib (cdylib or staticlib) for this crate.
+        #[clap(long)]
+        lib_file: Option<Utf8PathBuf>,
+
+        /// Pass in a cdylib path rather than a UDL file
+        #[clap(long = "library")]
+        library_mode: bool,
+
+        /// When `--library` is passed, only generate bindings for one crate.
+        /// When `--library` is not passed, use this as the crate name instead of attempting to
+        /// locate and parse Cargo.toml.
+        #[clap(long = "crate")]
+        crate_name: Option<String>,
+
+        /// Path to the UDL file, or cdylib if `library-mode` is specified
+        source: Utf8PathBuf,
+    },
+    /// Generate Rust scaffolding code
+    Scaffolding {
+        /// Directory in which to write generated files. Default is same folder as .udl file.
+        #[clap(long, short)]
+        out_dir: Option<Utf8PathBuf>,
+
+        /// Do not try to format the generated bindings.
+        #[clap(long, short)]
+        no_format: bool,
+
+        /// Path to the UDL file.
+        udl_file: Utf8PathBuf,
+    },
+    /// Print a debug representation of the interface from a dynamic library
+    PrintRepr {
+        /// Path to the library file (.so, .dll, .dylib, or .a)
+        path: Utf8PathBuf,
+    },
 }
 
 pub fn run_main() -> Result<()> {
-    run(std::env::args_os())
+    let cli = Cli::parse();
+    match cli.command {
+        Commands::Generate {
+            out_dir,
+            no_format,
+            config,
+            lib_file,
+            library_mode,
+            crate_name,
+            source,
+        } => {
+            if library_mode {
+                use uniffi_bindgen::library_mode::generate_bindings;
+                if lib_file.is_some() {
+                    panic!("--lib-file is not compatible with --library.")
+                }
+                let out_dir = out_dir.expect("--out-dir is required when using --library");
+                generate_bindings(
+                    &source,
+                    crate_name,
+                    &JavaBindingGenerator,
+                    config.as_deref(),
+                    &out_dir,
+                    !no_format,
+                )?;
+            } else {
+                use uniffi_bindgen::generate_bindings;
+                generate_bindings(
+                    &source,
+                    config.as_deref(),
+                    JavaBindingGenerator,
+                    out_dir.as_deref(),
+                    lib_file.as_deref(),
+                    crate_name.as_deref(),
+                    !no_format,
+                )?;
+            }
+        }
+        Commands::Scaffolding {
+            out_dir,
+            no_format,
+            udl_file,
+        } => {
+            uniffi_bindgen::generate_component_scaffolding(
+                &udl_file,
+                out_dir.as_deref(),
+                !no_format,
+            )?;
+        }
+        Commands::PrintRepr { path } => {
+            uniffi_bindgen::print_repr(&path)?;
+        }
+    };
+    Ok(())
 }
