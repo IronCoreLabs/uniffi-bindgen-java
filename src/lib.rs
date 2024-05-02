@@ -43,6 +43,7 @@ impl BindingGenerator for JavaBindingGenerator {
         out_dir: &Utf8Path,
         try_format_code: bool, // TODO(murph): see what other langs are doing for this
     ) -> anyhow::Result<()> {
+        dbg!(config);
         let filename_capture =
             regex::Regex::new(r"(?m)^(?:public\s)?(?:final\s)?(?:class|interface|enum)\s(\w+)")
                 .unwrap();

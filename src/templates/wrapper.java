@@ -39,10 +39,11 @@
 // Public interface members begin here.
 {{ type_helper_code }}
 
-{#
-{%- for func in ci.function_definitions() %}
-{%- include "TopLevelFunction.java" %}
-{%- endfor %}
-#}
+public class {{ ci.namespace()|capitalize }} {
+  {%- for func in ci.function_definitions() %}
+  // TODO(murph): this macro (only this), is introducing the current error
+  {#{%- call java::func_decl("static", func, 4) %}#}
+  {%- endfor %}
+}
 
 {% import "macros.java" as java %}

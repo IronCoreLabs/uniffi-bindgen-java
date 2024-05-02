@@ -3,20 +3,18 @@ License, v. 2.0. If a copy of the MPL was not distributed with this
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use anyhow::{bail, Context, Result};
-use camino::Utf8PathBuf;
-use std::borrow::Cow;
+use camino::{Utf8Path, Utf8PathBuf};
 use std::env;
-use std::path::{Path, PathBuf};
 use std::process::Command;
 use uniffi_testing::UniFFITestHelper;
 
 /// Run the test fixtures from UniFFI
 
 fn run_test(fixture_name: &str, test_file: &str) -> Result<()> {
-    let test_path = Path::new(".").join("tests").join(test_file);
+    let test_path = Utf8Path::new(".").join("tests").join(test_file);
     let test_helper = UniFFITestHelper::new(fixture_name)?;
-    let out_dir = test_helper.create_out_dir(env!("CARGO_TARGET_TMPDIR"))?;
-    test_helper.copy_fixture_library_to_out_dir(&out_dir)?;
+    let out_dir = test_helper.create_out_dir(env!("CARGO_TARGET_TMPDIR"), test_path)?;
+    test_helper.copy_cdylib_to_out_dir(&out_dir)?;
     generate_sources(&out_dir, &test_helper)?;
     let jar_file = build_jar(&fixture_name, &out_dir)?;
 
@@ -35,7 +33,7 @@ fn run_test(fixture_name: &str, test_file: &str) -> Result<()> {
     if !status.success() {
         anyhow::bail!("running `javac` failed")
     }
-    let compiled_path = test_path.file_stem();
+    let compiled_path = test_path.file_stem().unwrap();
     let run_status = Command::new("java")
         .arg("-classpath")
         .arg(calc_classpath(vec![&out_dir, &jar_file]))
@@ -51,9 +49,9 @@ fn run_test(fixture_name: &str, test_file: &str) -> Result<()> {
 fn generate_sources(out_dir: &Utf8PathBuf, test_helper: &UniFFITestHelper) -> Result<()> {
     for source in test_helper.get_compile_sources()? {
         let mut cmd_line = vec![
-            "uniffi-bindgen-kotlin".to_string(),
+            "uniffi-bindgen-java".to_string(),
             "--out-dir".to_string(),
-            out_dir.to_string_lossy().to_string(),
+            out_dir.into_string(),
         ];
         if let Some(path) = source.config_path {
             cmd_line.push("--config-path".to_string());
@@ -66,10 +64,10 @@ fn generate_sources(out_dir: &Utf8PathBuf, test_helper: &UniFFITestHelper) -> Re
     Ok(())
 }
 
-/// Generate java bindings for the given namespace, then use the java
+/// Generate java bindings for the given namespace, then use the Java
 /// command-line tools to compile them into a .jar file.
-fn build_jar(fixture_name: &str, out_dir: &Path) -> Result<PathBuf> {
-    let mut jar_file = PathBuf::from(out_dir);
+fn build_jar(fixture_name: &str, out_dir: &Utf8PathBuf) -> Result<Utf8PathBuf> {
+    let mut jar_file = Utf8PathBuf::from(out_dir);
     jar_file.push(format!("{}.jar", fixture_name));
 
     let status = Command::new("javac")
@@ -78,9 +76,10 @@ fn build_jar(fixture_name: &str, out_dir: &Path) -> Result<PathBuf> {
         .arg("-d")
         .arg(&jar_file)
         .arg("-classpath")
+        // TODO(murph): probably need JNA here
         .arg(calc_classpath(vec![]))
         .args(
-            glob::glob(&out_dir.join("*.java").to_string_lossy())?
+            glob::glob(&out_dir.join("*.java").into_string())?
                 .flatten()
                 .map(|p| String::from(p.to_string_lossy())),
         )
@@ -91,17 +90,34 @@ fn build_jar(fixture_name: &str, out_dir: &Path) -> Result<PathBuf> {
     if !status.success() {
         bail!("running `javac` failed")
     }
+
+    let jar_status = Command::new("jar")
+        .arg("cf")
+        .arg(jar_file.file_name().unwrap())
+        .args(
+            glob::glob(&out_dir.join("*.class").into_string())?
+                .flatten()
+                .map(|p| String::from(p.to_string_lossy())),
+        )
+        .spawn()
+        .context("Failed to spawn `jar` to package the bindings")?
+        .wait()
+        .context("Failed to wait for `jar` when packaging the bindings")?;
+    if !jar_status.success() {
+        bail!("running `jar` failed")
+    }
+
     Ok(jar_file)
 }
 
-fn calc_classpath(extra_paths: Vec<&Path>) -> String {
+fn calc_classpath(extra_paths: Vec<&Utf8PathBuf>) -> String {
     extra_paths
         .into_iter()
-        .map(|p| p.to_string_lossy())
+        .map(|p| p.to_string())
         // Add the system classpath as a component, using the fact that env::var returns an Option,
         // which implement Iterator
-        .chain(env::var("CLASSPATH").map(Cow::from))
-        .collect::<Vec<Cow<str>>>()
+        .chain(env::var("CLASSPATH"))
+        .collect::<Vec<String>>()
         .join(":")
 }
 
