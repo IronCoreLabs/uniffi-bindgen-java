@@ -55,11 +55,13 @@ impl BindingGenerator for JavaBindingGenerator {
     }
 }
 
+// TODO(murph): --help and -h still aren't working
 /// Scaffolding and bindings generator for Rust
 #[derive(Parser)]
 #[clap(name = "uniffi-bindgen-java")]
 #[clap(version = clap::crate_version!())]
 #[clap(propagate_version = true)]
+#[command(version, about, long_about = None)]
 struct Cli {
     #[clap(subcommand)]
     command: Commands,

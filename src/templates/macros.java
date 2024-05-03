@@ -30,11 +30,6 @@
 
 {%- macro func_decl(func_decl, callable, indent) %}
     {%- call docstring(callable, indent) %}
-    {%- match callable.throws_type() -%}
-    {%-     when Some(throwable) %}
-    @Throws({{ throwable|type_name(ci) }}::class)
-    {%-     else -%}
-    {%- endmatch -%}
     {#
     {%- if callable.is_async() %}
     // TODO(murph): async
@@ -46,10 +41,14 @@
     }
     {%- else -%}
     #}
-    {{ func_decl }} {%- match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|type_name(ci) }}{%- when None %}void{%- endmatch %} {{ callable.name()|fn_name }}(
+    {{ func_decl }} {% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|type_name(ci) }}{%- when None %}void{%- endmatch %} {{ callable.name()|fn_name }}(
         {%- call arg_list(callable, !callable.takes_self()) -%}
-    ) {
-            return {{ return_type|lift_fn }}({% call to_ffi_call(callable) %});
+    ) {% match callable.throws_type() -%}
+        {%-     when Some(throwable) -%}
+        throws {{ throwable|type_name(ci) }}
+        {%-     else -%}
+        {%- endmatch %} {
+            return {% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|lift_fn }}{%- when None %}{%- endmatch %}({% call to_ffi_call(callable) %});
     }
     {# {% endif %} #}
 {% endmacro %}
@@ -100,7 +99,7 @@
 
 {% macro arg_list(func, is_decl) %}
 {%- for arg in func.arguments() -%}
-        {{ arg|type_name(ci) }} { arg.name()|var_name }}
+        {{ arg|type_name(ci) }} {{ arg.name()|var_name }}
 {%-     if is_decl %}
 {%-         match arg.default_value() %}
 {%-             when Some with(literal) %} = {{ literal|render_literal(arg, ci) }}

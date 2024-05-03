@@ -577,7 +577,7 @@ mod filters {
         Ok(JavaCodeOracle.ffi_default_value(&type_))
     }
 
-    /// Get the idiomatic Java rendering of a function name.
+    /// Get the idiomatic Java rendering of a class name.
     pub fn class_name(nm: &str, ci: &ComponentInterface) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.class_name(ci, nm))
     }

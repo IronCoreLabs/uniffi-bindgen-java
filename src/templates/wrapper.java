@@ -39,10 +39,11 @@
 // Public interface members begin here.
 {{ type_helper_code }}
 
-public class {{ ci.namespace()|capitalize }} {
+package {{ config.package_name() }};
+
+public class {{ ci.namespace()|class_name(ci) }} {
   {%- for func in ci.function_definitions() %}
-  // TODO(murph): this macro (only this), is introducing the current error
-  {#{%- call java::func_decl("static", func, 4) %}#}
+  {%- call java::func_decl("static", func, 4) %}
   {%- endfor %}
 }
 

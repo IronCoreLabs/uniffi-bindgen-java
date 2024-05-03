@@ -61,7 +61,7 @@ macro_rules! impl_code_type_for_primitive {
 
             impl CodeType for $T  {
                 fn type_label(&self, _ci: &ComponentInterface) -> String {
-                    format!("java.{}", $class_name)
+                    format!("{}", $class_name)
                 }
 
                 fn canonical_name(&self) -> String {
