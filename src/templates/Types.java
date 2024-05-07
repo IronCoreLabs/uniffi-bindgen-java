@@ -60,6 +60,17 @@ public class DisposableHelper {
 {%- when Type::String %}
 {%- include "StringHelper.java" %}
 
+{%- when Type::Enum { name, module_path } %}
+{%- let e = ci.get_enum_definition(name).unwrap() %}
+{%- if !ci.is_name_used_as_error(name) %}
+{% include "EnumTemplate.java" %}
+{%- else %}
+{% include "ErrorTemplate.java" %}
+{%- endif -%}
+
+{%- when Type::Int64 %}
+{%- include "Int64Helper.java" %}
+
 {# TODO(murph): implement the rest of the types
 {%- when Type::Int8 %}
 {%- include "Int8Helper.kt" %}
@@ -69,9 +80,6 @@ public class DisposableHelper {
 
 {%- when Type::Int32 %}
 {%- include "Int32Helper.kt" %}
-
-{%- when Type::Int64 %}
-{%- include "Int64Helper.kt" %}
 
 {%- when Type::UInt8 %}
 {%- include "UInt8Helper.kt" %}
@@ -93,14 +101,6 @@ public class DisposableHelper {
 
 {%- when Type::Bytes %}
 {%- include "ByteArrayHelper.kt" %}
-
-{%- when Type::Enum { name, module_path } %}
-{%- let e = ci.get_enum_definition(name).unwrap() %}
-{%- if !ci.is_name_used_as_error(name) %}
-{% include "EnumTemplate.kt" %}
-{%- else %}
-{% include "ErrorTemplate.kt" %}
-{%- endif -%}
 
 {%- when Type::Object { module_path, name, imp } %}
 {% include "ObjectTemplate.kt" %}

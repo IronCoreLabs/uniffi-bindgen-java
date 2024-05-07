@@ -16,6 +16,7 @@ use uniffi_bindgen::{
 
 mod enum_;
 mod primitives;
+mod variant;
 
 trait CodeType: Debug {
     /// The language specific label used to reference this type. This will be used in
@@ -294,7 +295,7 @@ impl JavaCodeOracle {
 
     /// Get the idiomatic Java rendering of a function name.
     fn fn_name(&self, nm: &str) -> String {
-        format!("`{}`", nm.to_string().to_lower_camel_case())
+        format!("{}", nm.to_string().to_lower_camel_case())
     }
 
     /// Get the idiomatic Java rendering of a variable name. Java variable names can't be escaped
@@ -432,10 +433,10 @@ impl<T: AsType> AsCodeType for T {
     fn as_codetype(&self) -> Box<dyn CodeType> {
         // Map `Type` instances to a `Box<dyn CodeType>` for that type.
         //
-        // There is a companion match in `templates/Types.kt` which performs a similar function for the
+        // There is a companion match in `templates/Types.java` which performs a similar function for the
         // template code.
         //
-        //   - When adding additional types here, make sure to also add a match arm to the `Types.kt` template.
+        //   - When adding additional types here, make sure to also add a match arm to the `Types.java` template.
         //   - To keep things manageable, let's try to limit ourselves to these 2 mega-matches
         match self.as_type() {
             Type::UInt8 => unimplemented!(), // Box::new(primitives::UInt8CodeType),

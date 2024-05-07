@@ -17,15 +17,14 @@
 {%- macro to_raw_ffi_call(func) -%}
     {%- match func.throws_type() %}
     {%- when Some with (e) %}
-    UniffiHelpers.uniffiRustCallWithError({{ e|type_name(ci) }})
+    UniffiHelpers.uniffiRustCallWithError({{ e|type_name(ci) }}, 
     {%- else %}
-    UniffiHelpers.uniffiRustCall()
-    {%- endmatch %} { _status ->
+    UniffiHelpers.uniffiRustCall(
+    {%- endmatch %} _status ->
     UniffiLib.INSTANCE.{{ func.ffi_func().name() }}(
         {% if func.takes_self() %}it, {% endif -%}
         {% call arg_list_lowered(func) -%}
-        _status)
-}
+        _status))
 {%- endmacro -%}
 
 {%- macro func_decl(func_decl, callable, indent) %}
