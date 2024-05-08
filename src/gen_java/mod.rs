@@ -442,16 +442,7 @@ trait AsCodeType {
 
 // Workaround for the possibility of upstream additions of AsType breaking compilation
 // Downside to this is new types need to be manually added
-// TODO(murph): just write impls of AsCodeType for these and get rid of the blanket impl
-trait Marker {}
-impl Marker for Type {}
-impl Marker for &Type {}
-impl Marker for &&Type {}
-impl Marker for &Field {}
-impl Marker for &Argument {}
-impl Marker for &uniffi_bindgen::interface::Enum {}
-
-impl<T: AsType + Marker> AsCodeType for T {
+impl AsCodeType for Type {
     fn as_codetype(&self) -> Box<dyn CodeType> {
         // Map `Type` instances to a `Box<dyn CodeType>` for that type.
         //
@@ -460,7 +451,7 @@ impl<T: AsType + Marker> AsCodeType for T {
         //
         //   - When adding additional types here, make sure to also add a match arm to the `Types.java` template.
         //   - To keep things manageable, let's try to limit ourselves to these 2 mega-matches
-        match self.as_type() {
+        match self {
             Type::UInt8 => unimplemented!(), // Box::new(primitives::UInt8CodeType),
             Type::Int8 => unimplemented!(),  //Box::new(primitives::Int8CodeType),
             Type::UInt16 => unimplemented!(), //Box::new(primitives::UInt16CodeType),
@@ -478,7 +469,7 @@ impl<T: AsType + Marker> AsCodeType for T {
             Type::Timestamp => unimplemented!(), //Box::new(miscellany::TimestampCodeType),
             Type::Duration => unimplemented!(),  //Box::new(miscellany::DurationCodeType),
 
-            Type::Enum { name, .. } => Box::new(enum_::EnumCodeType::new(name)),
+            Type::Enum { name, .. } => Box::new(enum_::EnumCodeType::new(name.clone())),
             Type::Object { name, imp, .. } => unimplemented!(), //Box::new(object::ObjectCodeType::new(name, imp)),
             Type::Record { name, .. } => unimplemented!(), //Box::new(record::RecordCodeType::new(name)),
             Type::CallbackInterface { name, .. } => {
@@ -497,6 +488,36 @@ impl<T: AsType + Marker> AsCodeType for T {
             Type::External { name, .. } => unimplemented!(), //Box::new(external::ExternalCodeType::new(name)),
             Type::Custom { name, .. } => unimplemented!(), //Box::new(custom::CustomCodeType::new(name)),
         }
+    }
+}
+
+impl AsCodeType for &'_ Type {
+    fn as_codetype(&self) -> Box<dyn CodeType> {
+        (*self).as_codetype()
+    }
+}
+
+impl AsCodeType for &&'_ Type {
+    fn as_codetype(&self) -> Box<dyn CodeType> {
+        (**self).as_codetype()
+    }
+}
+
+impl AsCodeType for &'_ Field {
+    fn as_codetype(&self) -> Box<dyn CodeType> {
+        self.as_type().as_codetype()
+    }
+}
+
+impl AsCodeType for &'_ uniffi_bindgen::interface::Enum {
+    fn as_codetype(&self) -> Box<dyn CodeType> {
+        self.as_type().as_codetype()
+    }
+}
+
+impl AsCodeType for &'_ Argument {
+    fn as_codetype(&self) -> Box<dyn CodeType> {
+        self.as_type().as_codetype()
     }
 }
 
