@@ -2,7 +2,9 @@ package {{ config.package_name() }};
 
 import java.nio.ByteBuffer;
 
-public class FfiConverterLong implements FfiConverter<Long, Long> {
+public enum FfiConverterLong implements FfiConverter<Long, Long> {
+    INSTANCE;
+
     @Override
     public Long lift(Long value) {
         return value;

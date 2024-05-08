@@ -40,6 +40,7 @@ public class DisposableHelper {
 {%- for type_ in ci.iter_types() %}
 {%- let type_name = type_|type_name(ci) %}
 {%- let ffi_converter_name = type_|ffi_converter_name %}
+{%- let ffi_converter_instance = type_|ffi_converter_instance %}
 {%- let canonical_type_name = type_|canonical_name %}
 {%- let contains_object_references = ci.item_contains_object_references(type_) %}
 
@@ -68,7 +69,7 @@ public class DisposableHelper {
 {% include "ErrorTemplate.java" %}
 {%- endif -%}
 
-{%- when Type::Int64 %}
+{%- when Type::Int64 or Type::UInt64 %}
 {%- include "Int64Helper.java" %}
 
 {# TODO(murph): implement the rest of the types
@@ -89,9 +90,6 @@ public class DisposableHelper {
 
 {%- when Type::UInt32 %}
 {%- include "UInt32Helper.kt" %}
-
-{%- when Type::UInt64 %}
-{%- include "UInt64Helper.kt" %}
 
 {%- when Type::Float32 %}
 {%- include "Float32Helper.kt" %}

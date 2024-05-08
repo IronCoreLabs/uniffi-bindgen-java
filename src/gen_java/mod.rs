@@ -34,7 +34,7 @@ trait CodeType: Debug {
         unimplemented!("Unimplemented for {}", self.type_label(ci))
     }
 
-    /// Name of the FfiConverter
+    /// Instance of the FfiConverter
     ///
     /// This is the object that contains the lower, write, lift, and read methods for this type.
     /// Depending on the binding this will either be a singleton or a class with static methods.
@@ -42,7 +42,18 @@ trait CodeType: Debug {
     /// This is the newer way of handling these methods and replaces the lower, write, lift, and
     /// read CodeType methods.
     fn ffi_converter_name(&self) -> String {
-        format!("FfiConverter{}.INSTANCE", self.canonical_name())
+        format!("FfiConverter{}", self.canonical_name())
+    }
+
+    /// Name of the FfiConverter
+    ///
+    /// This is the object that contains the lower, write, lift, and read methods for this type.
+    /// Depending on the binding this will either be a singleton or a class with static methods.
+    ///
+    /// This is the newer way of handling these methods and replaces the lower, write, lift, and
+    /// read CodeType methods.
+    fn ffi_converter_instance(&self) -> String {
+        format!("{}.INSTANCE", self.ffi_converter_name())
     }
 
     /// A list of imports that are needed if this type is in use.
@@ -429,7 +440,18 @@ trait AsCodeType {
     fn as_codetype(&self) -> Box<dyn CodeType>;
 }
 
-impl<T: AsType> AsCodeType for T {
+// Workaround for the possibility of upstream additions of AsType breaking compilation
+// Downside to this is new types need to be manually added
+// TODO(murph): just write impls of AsCodeType for these and get rid of the blanket impl
+trait Marker {}
+impl Marker for Type {}
+impl Marker for &Type {}
+impl Marker for &&Type {}
+impl Marker for &Field {}
+impl Marker for &Argument {}
+impl Marker for &uniffi_bindgen::interface::Enum {}
+
+impl<T: AsType + Marker> AsCodeType for T {
     fn as_codetype(&self) -> Box<dyn CodeType> {
         // Map `Type` instances to a `Box<dyn CodeType>` for that type.
         //
@@ -494,6 +516,10 @@ mod filters {
         Ok(as_ct.as_codetype().canonical_name())
     }
 
+    pub(super) fn ffi_converter_instance(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
+        Ok(as_ct.as_codetype().ffi_converter_instance())
+    }
+
     pub(super) fn ffi_converter_name(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
         Ok(as_ct.as_codetype().ffi_converter_name())
     }
@@ -501,35 +527,41 @@ mod filters {
     pub(super) fn lower_fn(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
         Ok(format!(
             "{}.lower",
-            as_ct.as_codetype().ffi_converter_name()
+            as_ct.as_codetype().ffi_converter_instance()
         ))
     }
 
     pub(super) fn allocation_size_fn(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
         Ok(format!(
             "{}.allocationSize",
-            as_ct.as_codetype().ffi_converter_name()
+            as_ct.as_codetype().ffi_converter_instance()
         ))
     }
 
     pub(super) fn write_fn(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
         Ok(format!(
             "{}.write",
-            as_ct.as_codetype().ffi_converter_name()
+            as_ct.as_codetype().ffi_converter_instance()
         ))
     }
 
     pub(super) fn lift_fn(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
-        Ok(format!("{}.lift", as_ct.as_codetype().ffi_converter_name()))
+        Ok(format!(
+            "{}.lift",
+            as_ct.as_codetype().ffi_converter_instance()
+        ))
     }
 
     pub(super) fn read_fn(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
-        Ok(format!("{}.read", as_ct.as_codetype().ffi_converter_name()))
+        Ok(format!(
+            "{}.read",
+            as_ct.as_codetype().ffi_converter_instance()
+        ))
     }
 
     pub fn render_literal(
         literal: &Literal,
-        as_ct: &impl AsType,
+        as_ct: &impl AsCodeType,
         ci: &ComponentInterface,
     ) -> Result<String, askama::Error> {
         Ok(as_ct.as_codetype().literal(literal, ci))

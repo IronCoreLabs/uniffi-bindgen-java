@@ -1,7 +1,7 @@
 package {{ config.package_name() }};
 
 {%- let type_name = type_|type_name(ci) %}
-{%- let ffi_converter_name = type_|ffi_converter_name %}
+{%- let ffi_converter_instance = type_|ffi_converter_instance %}
 {%- let canonical_type_name = type_|canonical_name %}
 
 {% if e.is_flat() %}
@@ -18,7 +18,7 @@ public sealed interface {{ type_name }} extends Exception{% if contains_object_r
     final class ErrorHandler implements UniffiRustCallStatusErrorHandler<{{ type_name }}> {
       @Override
       public {{ type_name }} lift(RustBuffer.ByValue errorBuf){
-         return {{ ffi_converter_name }}.lift(errorBuf);
+         return {{ ffi_converter_instance }}.lift(errorBuf);
       }
     }
 }
@@ -46,7 +46,7 @@ sealed interface {{ type_name }} extends Exception{% if contains_object_referenc
     final class ErrorHandler implements UniffiRustCallStatusErrorHandler<{{ type_name }}> {
       @Override
       public {{ type_name }} lift(RustBuffer.ByValue errorBuf){
-         return {{ ffi_converter_name }}.lift(errorBuf);
+         return {{ ffi_converter_instance }}.lift(errorBuf);
       }
     }
 
@@ -72,23 +72,25 @@ sealed interface {{ type_name }} extends Exception{% if contains_object_referenc
 
 package {{ config.package_name() }};
 
+import java.nio.ByteBuffer;
+
 public enum {{ e|ffi_converter_name }} implements FfiConverterRustBuffer<{{ type_name }}> {
     INSTANCE;
 
     @Override
     public {{ type_name }} read(ByteBuffer buf) {
-        {% if e.is_flat() %}
+        {%- if e.is_flat() %}
         return switch(buf.getInt()) {
             {%- for variant in e.variants() %}
-            {{ loop.index }} -> {{ type_name }}.{{ variant|error_variant_name }}({{ Type::String.borrow()|read_fn }}(buf));
+            case {{ loop.index }} -> {{ type_name }}.{{ variant|error_variant_name }}({{ Type::String.borrow()|read_fn }}(buf));
             {%- endfor %}
             default -> throw new RuntimeException("invalid error enum value, something is very wrong!!");
         };
-        {% else %}
+        {%- else %}
 
         return switch(buf.getInt()) {
             {%- for variant in e.variants() %}
-            {{ loop.index }} -> {{ type_name }}.{{ variant|error_variant_name }}({% if variant.has_fields() %};
+            case {{ loop.index }} -> {{ type_name }}.{{ variant|error_variant_name }}({% if variant.has_fields() %};
                 {% for field in variant.fields() -%}
                 {{ field|read_fn }}(buf){% if loop.last %}{% else %},{% endif %}
                 {% endfor -%}
@@ -100,9 +102,9 @@ public enum {{ e|ffi_converter_name }} implements FfiConverterRustBuffer<{{ type
     }
 
     @Override
-    public Long allocationSize({{ type_name }} value) {
+    public long allocationSize({{ type_name }} value) {
         {%- if e.is_flat() %}
-        return 4L
+        return 4L;
         {%- else %}
         return switch(value) {
             {%- for variant in e.variants() %}
@@ -127,10 +129,10 @@ public enum {{ e|ffi_converter_name }} implements FfiConverterRustBuffer<{{ type
                 {%- for field in variant.fields() %}
                 {{ field|write_fn }}(value.{{ field.name()|var_name }}, buf);
                 {%- endfor %}
-                return null;
             }
             {%- endfor %}
         };
     }
+}
 
 

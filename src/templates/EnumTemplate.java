@@ -128,7 +128,6 @@ public enum {{ e|ffi_converter_name}} implements FfiConverterRustBuffer<{{ type_
           {%- for field in variant.fields() %}
           {{ field|write_fn }}(value.{%- call java::field_name(field, loop.index) -%}, buf);
           {%- endfor %}
-          return null;
         }
         {%- endfor %}
       };
