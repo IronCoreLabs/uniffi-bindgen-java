@@ -17,7 +17,7 @@
 {%- macro to_raw_ffi_call(func) -%}
     {%- match func.throws_type() %}
     {%- when Some with (e) %}
-    UniffiHelpers.uniffiRustCallWithError({{ e|type_name(ci) }}, 
+    UniffiHelpers.uniffiRustCallWithError(new {{ e|type_name(ci) }}ErrorHandler(), 
     {%- else %}
     UniffiHelpers.uniffiRustCall(
     {%- endmatch %} _status ->

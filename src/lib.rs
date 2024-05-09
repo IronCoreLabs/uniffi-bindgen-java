@@ -27,9 +27,10 @@ impl BindingGenerator for JavaBindingGenerator {
         try_format_code: bool, // TODO(murph): not many CLI formatters for Java, may run `java` with expected JAR
     ) -> anyhow::Result<()> {
         dbg!(config);
-        let filename_capture =
-            regex::Regex::new(r"(?m)^(?:public\s)?(?:final\s)?(?:class|interface|enum)\s(\w+)")
-                .unwrap();
+        let filename_capture = regex::Regex::new(
+            r"(?m)^(?:public\s)?(?:final\s)?(?:sealed\s)?(?:abstract\s)?(?:static\s)?(?:class|interface|enum)\s(\w+)",
+        )
+        .unwrap();
         let bindings_str = gen_java::generate_bindings(&config, &ci)?;
         let package_line = format!("package {};", config.package_name());
         let split_classes = bindings_str.split(&package_line);
