@@ -25,7 +25,7 @@ class UniffiHandleMap<T> {
         if (obj == null) {
             // TODO(murph): kotlin doesn't have checked exceptions, using runtime to repro. Not sure if we want Java
             //              to use checked itself or not
-            throw new RuntimeException(new InternalException("UniffiHandleMap.get: Invalid handle"));
+            throw new InternalException("UniffiHandleMap.get: Invalid handle");
         }
         return obj;
     }
@@ -36,7 +36,7 @@ class UniffiHandleMap<T> {
         if (obj == null) {
             // TODO(murph): kotlin doesn't have checked exceptions, using runtime to repro. Not sure if we want Java
             //              to use checked itself or not
-            throw new RuntimeException(new InternalException("UniffiHandleMap: Invalid handle"));
+            throw new InternalException("UniffiHandleMap: Invalid handle");
         }
         return obj;
     }

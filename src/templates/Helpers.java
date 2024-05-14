@@ -6,7 +6,7 @@ import com.sun.jna.Pointer;
 @Structure.FieldOrder({ "code", "error_buf" })
 public class UniffiRustCallStatus extends Structure {
     public byte code;
-    public RustBuffer.ByValue errorBuf;
+    public RustBuffer.ByValue error_buf;
 
     public static class ByValue extends UniffiRustCallStatus implements Structure.ByValue {}
 
@@ -27,13 +27,13 @@ public class UniffiRustCallStatus extends Structure {
     }
 
     public void setErrorBuf(RustBuffer.ByValue errorBuf) {
-      this.errorBuf = errorBuf;
+      this.error_buf = errorBuf;
     }
 
     public static UniffiRustCallStatus.ByValue create(byte code, RustBuffer.ByValue errorBuf) {
         UniffiRustCallStatus.ByValue callStatus = new UniffiRustCallStatus.ByValue();
         callStatus.code = code;
-        callStatus.errorBuf = errorBuf;
+        callStatus.error_buf = errorBuf;
         return callStatus;
     }
 
@@ -44,7 +44,7 @@ public class UniffiRustCallStatus extends Structure {
 
 package {{ config.package_name() }};
 
-public class InternalException extends Exception {
+public class InternalException extends RuntimeException {
     public InternalException(String message) {
         super(message);
     }
@@ -90,20 +90,18 @@ public final class UniffiHelpers {
       if (status.isSuccess()) {
           return;
       } else if (status.isError()) {
-          throw new RuntimeException(errorHandler.lift(status.errorBuf));
+          throw new RuntimeException(errorHandler.lift(status.error_buf));
       } else if (status.isPanic()) {
           // when the rust code sees a panic, it tries to construct a rustbuffer
           // with the message.  but if that code panics, then it just sends back
           // an empty buffer.
-          if (status.errorBuf.len > 0) {
-              // TODO(murph): kotlin doesn't have checked exceptions, using runtime to repro. Not sure if we want Java
-              //              to use checked itself or not
-              throw new RuntimeException(new InternalException({{ Type::String.borrow()|lift_fn  }}(status.errorBuf)));
+          if (status.error_buf.len > 0) {
+              throw new InternalException({{ Type::String.borrow()|lift_fn  }}(status.error_buf));
           } else {
-              throw new RuntimeException(new InternalException("Rust panic"));
+              throw new InternalException("Rust panic");
           }
       } else {
-          throw new RuntimeException(new InternalException("Unknown rust call status: " + status.code));
+          throw new InternalException("Unknown rust call status: " + status.code);
       }
   }
 
