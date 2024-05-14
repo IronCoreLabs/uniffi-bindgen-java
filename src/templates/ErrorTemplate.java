@@ -6,79 +6,80 @@ package {{ config.package_name() }};
 
 {% if e.is_flat() %}
 {%- call java::docstring(e, 0) %}
-public class {{ type_name }} extends Exception{% if contains_object_references %} Disposable {% endif %} {
+public class {{ type_name }} extends Exception {
     private {{ type_name }}(String message) {
       super(message);
     }
 
     {% for variant in e.variants() -%}
     {%- call java::docstring(variant, 4) %}
-    {# TODO(murph): there should be two fields we're adding to this variant in the arithmetic example #}
-    public static class {{ variant|error_variant_name }} extends {{ type_name }} {
+    {# TODO(murph): this is the same as Kotlin-ish as far as I can tell, but even in a flat error in Rust there
+      can be structs with fields, which this doesn't include #}
+    public static class {{ variant|error_variant_name }} extends {{ type_name }}{% if contains_object_references %}, Disposable{% endif %} {
       public {{ variant|error_variant_name }}(String message) {
         super(message);
       }
     }
     {% endfor %}
-
 }
 
+
+{%- else %}
+{%- call java::docstring(e, 0) %}
+public class {{ type_name }} extends Exception {
+    private {{ type_name }}(String message) {
+      super(message); 
+    }
+
+    {% for variant in e.variants() -%}
+    {%- call java::docstring(variant, 4) %}
+    {%- let variant_name = variant|error_variant_name %}
+    public static class {{ variant_name }} extends {{ type_name }}{% if contains_object_references %}, Disposable{% endif %} {
+      {% for field in variant.fields() -%}
+      {%- call java::docstring(field, 8) %}
+      {{ field|type_name(ci) }} {{ field.name()|var_name }};
+      {% endfor -%}
+
+      public {{ variant_name }}(
+        {%- for field in variant.fields() -%}
+        {{ field|type_name(ci)}} {{ field.name()|var_name }}{% if loop.last %}{% else %}, {% endif %}
+        {%- endfor -%}
+      ) {
+        super("{%- for field in variant.fields() %}{{ field.name()|var_name|unquote }}=${ {{field.name()|var_name }} }{% if !loop.last %}, {% endif %}{% endfor %}");
+        {% for field in variant.fields() -%}
+        this.{{ field.name()|var_name }} = {{ field.name()|var_name }};
+        {% endfor -%}   
+      }
+
+      {% for field in variant.fields() -%}
+      public {{ field|type_name(ci) }} {{ field.name()|getter_name}}() {
+        return this.{{ field.name()|var_name }};
+      }
+      {% endfor %}
+      
+      {% if contains_object_references %}
+      @Override
+      void destroy() {
+        {%- if variant.has_fields() %}
+        {% call java::destroy_fields(variant) %}
+        {% else -%}
+        // Nothing to destroy
+        {%- endif %}
+      }
+      {% endif %}
+    }
+    {% endfor %} 
+}
+{%- endif %}
+
 package {{ config.package_name() }};
-{# TODO(murph): does this actually work? -#}
+
 public class {{ type_name }}ErrorHandler implements UniffiRustCallStatusErrorHandler<{{ type_name }}> {
   @Override
   public {{ type_name }} lift(RustBuffer.ByValue errorBuf){
      return {{ ffi_converter_instance }}.lift(errorBuf);
   }
 }
-
-{%- else %}
-{%- call java::docstring(e, 0) %}
-{# TODO(murph): interface can't extend Exception (class). Records can't be in a sealed class #}
-sealed interface {{ type_name }} extends Exception{% if contains_object_references %}, Disposable {% endif %} {
-    {% for variant in e.variants() -%}
-    {%- call java::docstring(variant, 4) %}
-    {%- let variant_name = variant|error_variant_name %}
-    record {{ variant_name }}(
-        {% for field in variant.fields() -%}
-        {%- call java::docstring(field, 8) %}
-        {{ field|type_name(ci) }} {{ field.name()|var_name }}{% if loop.last %}{% else %}, {% endif %}
-        {% endfor -%}
-    ) implements {{ type_name }} {
-        @Override
-        public String getMessage() {
-          return "{%- for field in variant.fields() %}{{ field.name()|var_name|unquote }}=${ {{field.name()|var_name }} }{% if !loop.last %}, {% endif %}{% endfor %}";
-        }
-    }
-    {% endfor %}
-    
-    {# TODO(murph): does this actually work? #}
-    final class ErrorHandler implements UniffiRustCallStatusErrorHandler<{{ type_name }}> {
-      @Override
-      public {{ type_name }} lift(RustBuffer.ByValue errorBuf){
-         return {{ ffi_converter_instance }}.lift(errorBuf);
-      }
-    }
-
-    {% if contains_object_references %}
-    @Override
-    void destroy() {
-        switch (this) {
-            {%- for variant in e.variants() %}
-            case {{ type_name }}.{{ variant|error_variant_name }} -> {
-                {%- if variant.has_fields() %}
-                {% call java::destroy_fields(variant) %}
-                {% else -%}
-                // Nothing to destroy
-                {%- endif %}
-            }
-            {%- endfor %}
-        };
-    }
-    {% endif %}
-}
-
-{%- endif %}
 
 package {{ config.package_name() }};
 
@@ -118,8 +119,7 @@ public enum {{ e|ffi_converter_name }} implements FfiConverterRustBuffer<{{ type
         {%- else %}
         return switch(value) {
             {%- for variant in e.variants() %}
-            {# TODO(murph): `message` isn't showing up in the variant match, breaking it #}
-            case {{ type_name }}.{{ variant|error_variant_name }} message {% for field in variant.fields() %} {{ field.name() }}{% endfor %} -> (
+            case {{ type_name }}.{{ variant|error_variant_name }} {% for field in variant.fields() %} {{ field.name() }}{% endfor %} -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
                 {%- for field in variant.fields() %}

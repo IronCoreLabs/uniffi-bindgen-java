@@ -315,6 +315,11 @@ impl JavaCodeOracle {
         nm.to_string().to_lower_camel_case()
     }
 
+    /// Get the idiomatic getter name for a variable.
+    pub fn getter_name(&self, nm: &str) -> String {
+        format!("get{}", nm.to_string().to_upper_camel_case())
+    }
+
     /// Get the idiomatic Java rendering of an individual enum variant.
     fn enum_variant_name(&self, nm: &str) -> String {
         nm.to_string().to_shouty_snake_case()
@@ -644,6 +649,11 @@ mod filters {
     /// Get the idiomatic Java rendering of a variable name.
     pub fn var_name(nm: &str) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.var_name(nm))
+    }
+
+    /// Get the idiomatic Java getter method name.
+    pub fn getter_name(nm: &str) -> Result<String, askama::Error> {
+        Ok(JavaCodeOracle.getter_name(nm))
     }
 
     /// Get a String representing the name used for an individual enum variant.

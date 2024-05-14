@@ -30,7 +30,6 @@ fn render_literal(literal: &Literal, _ci: &ComponentInterface) -> String {
     match literal {
         Literal::Boolean(v) => format!("{v}"),
         Literal::String(s) => format!("\"{s}\""),
-        // TODO(murph): don't know if this radix stuff is right on Java
         Literal::Int(i, radix, type_) => typed_number(
             type_,
             match radix {
