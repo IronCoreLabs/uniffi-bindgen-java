@@ -78,7 +78,7 @@ import java.util.function.Supplier;
 // synchronize itself
 public final class UniffiHelpers {
   // Call a rust function that returns a Result<>.  Pass in the Error class companion that corresponds to the Err
-  static <U, E extends Exception> U uniffiRustCallWithError(UniffiRustCallStatusErrorHandler<E> errorHandler, Function<UniffiRustCallStatus, U> callback) {
+  static <U, E extends Exception> U uniffiRustCallWithError(UniffiRustCallStatusErrorHandler<E> errorHandler, Function<UniffiRustCallStatus, U> callback) throws E {
       UniffiRustCallStatus status = new UniffiRustCallStatus();
       U returnValue = callback.apply(status);
       uniffiCheckCallStatus(errorHandler, status);
@@ -86,11 +86,11 @@ public final class UniffiHelpers {
   }
 
   // Check UniffiRustCallStatus and throw an error if the call wasn't successful
-  static <E extends Exception> void uniffiCheckCallStatus(UniffiRustCallStatusErrorHandler<E> errorHandler, UniffiRustCallStatus status) {
+  static <E extends Exception> void uniffiCheckCallStatus(UniffiRustCallStatusErrorHandler<E> errorHandler, UniffiRustCallStatus status) throws E {
       if (status.isSuccess()) {
           return;
       } else if (status.isError()) {
-          throw new RuntimeException(errorHandler.lift(status.error_buf));
+          throw errorHandler.lift(status.error_buf);
       } else if (status.isPanic()) {
           // when the rust code sees a panic, it tries to construct a rustbuffer
           // with the message.  but if that code panics, then it just sends back
