@@ -99,6 +99,9 @@ impl Config {
         }
     }
 
+    // TODO(murph): the lib name in rust isn't being sought out, I had to cp it over
+    // to the expected java location with the name uniffi_arithmetic. Can't tell how it's
+    // supposed to work
     pub fn cdylib_name(&self) -> String {
         if let Some(cdylib_name) = &self.cdylib_name {
             cdylib_name.clone()

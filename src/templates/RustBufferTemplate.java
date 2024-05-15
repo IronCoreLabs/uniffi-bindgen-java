@@ -10,8 +10,8 @@ import com.sun.jna.Pointer;
  */
 @Structure.FieldOrder({ "capacity", "len", "data" })
 public class RustBuffer extends Structure {
-    public int capacity;
-    public int len;
+    public long capacity;
+    public long len;
     public Pointer data;
 
     public static class ByValue extends RustBuffer implements Structure.ByValue {}
@@ -67,8 +67,8 @@ public class RustBufferByReference extends Structure implements Structure.ByRefe
     public void setValue(RustBuffer.ByValue value) {
         // NOTE: The offsets are as they are in the C-like struct.
         Pointer pointer = this.getPointer();
-        pointer.setInt(0, value.capacity);
-        pointer.setInt(4, value.len);
+        pointer.setInt(0, (int) value.capacity);
+        pointer.setInt(4, (int) value.len);
         pointer.setPointer(8, value.data);
     }
 }
