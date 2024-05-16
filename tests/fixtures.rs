@@ -172,6 +172,7 @@ fn build_jar(fixture_name: &str, out_dir: &Utf8PathBuf) -> Result<Utf8PathBuf> {
     }
 
     let jar_status = Command::new("jar")
+        .current_dir(out_dir)
         .arg("cf")
         .arg(jar_file.file_name().unwrap())
         .arg("-C")
