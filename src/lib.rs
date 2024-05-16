@@ -26,12 +26,19 @@ impl BindingGenerator for JavaBindingGenerator {
         out_dir: &Utf8Path,
         try_format_code: bool, // TODO(murph): not many CLI formatters for Java, may run `java` with expected JAR
     ) -> anyhow::Result<()> {
-        dbg!(config);
         let filename_capture = regex::Regex::new(
             r"(?m)^(?:public\s)?(?:final\s)?(?:sealed\s)?(?:abstract\s)?(?:static\s)?(?:class|interface|enum)\s(\w+)",
         )
         .unwrap();
         let bindings_str = gen_java::generate_bindings(&config, &ci)?;
+        let java_package_out_dir = out_dir.join(
+            config
+                .package_name()
+                .split(".")
+                .collect::<Vec<_>>()
+                .join("/"),
+        );
+        fs::create_dir_all(&java_package_out_dir)?;
         let package_line = format!("package {};", config.package_name());
         let split_classes = bindings_str.split(&package_line);
         let writable = split_classes
@@ -41,7 +48,7 @@ impl BindingGenerator for JavaBindingGenerator {
             .collect::<Vec<_>>();
         for (filename, file) in writable {
             fs::write(
-                format!("{}/{}.java", out_dir, filename),
+                format!("{}/{}.java", java_package_out_dir, filename),
                 format!("{}\n{}", package_line, file),
             )?;
         }

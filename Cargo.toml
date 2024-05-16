@@ -29,5 +29,6 @@ regex = "1.10.4"
 glob = "0.3"
 uniffi_testing = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main" }
 uniffi-example-arithmetic = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main" }
+cargo_metadata = "0.18.1"
 
 
