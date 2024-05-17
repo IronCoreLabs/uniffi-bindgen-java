@@ -72,18 +72,16 @@ public class DisposableHelper {
 {%- when Type::Int64 or Type::UInt64 %}
 {%- include "Int64Helper.java" %}
 
+{%- when Type::Int8 or Type::UInt8 %}
+{%- include "Int8Helper.java" %}
+
 {# TODO(murph): implement the rest of the types
-{%- when Type::Int8 %}
-{%- include "Int8Helper.kt" %}
 
 {%- when Type::Int16 %}
 {%- include "Int16Helper.kt" %}
 
 {%- when Type::Int32 %}
 {%- include "Int32Helper.kt" %}
-
-{%- when Type::UInt8 %}
-{%- include "UInt8Helper.kt" %}
 
 {%- when Type::UInt16 %}
 {%- include "UInt16Helper.kt" %}

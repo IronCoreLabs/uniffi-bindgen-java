@@ -1,8 +1,11 @@
 use anyhow::{bail, Result};
 use camino::{Utf8Path, Utf8PathBuf};
 use clap::{Parser, Subcommand};
-use std::fs::{self};
-use uniffi_bindgen::{BindingGenerator, ComponentInterface};
+use std::{
+    collections::HashMap,
+    fs::{self},
+};
+use uniffi_bindgen::{BindingGenerator, Component, ComponentInterface, GenerationSettings};
 
 mod gen_java;
 
@@ -19,45 +22,77 @@ impl BindingGenerator for JavaBindingGenerator {
         )
     }
 
+    fn update_component_configs(
+        &self,
+        settings: &GenerationSettings,
+        components: &mut Vec<Component<Self::Config>>,
+    ) -> Result<()> {
+        for c in &mut *components {
+            c.config
+                .package_name
+                .get_or_insert_with(|| format!("uniffi.{}", c.ci.namespace()));
+            c.config.cdylib_name.get_or_insert_with(|| {
+                settings
+                    .cdylib
+                    .clone()
+                    .unwrap_or_else(|| format!("uniffi_{}", c.ci.namespace()))
+            });
+        }
+        // We need to update package names
+        let packages = HashMap::<String, String>::from_iter(
+            components
+                .iter()
+                .map(|c| (c.ci.crate_name().to_string(), c.config.package_name())),
+        );
+        for c in components {
+            for (ext_crate, ext_package) in &packages {
+                if ext_crate != c.ci.crate_name()
+                    && !c.config.external_packages.contains_key(ext_crate)
+                {
+                    c.config
+                        .external_packages
+                        .insert(ext_crate.to_string(), ext_package.clone());
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn write_bindings(
         &self,
-        ci: &ComponentInterface,
-        config: &Self::Config,
-        out_dir: &Utf8Path,
-        try_format_code: bool, // TODO(murph): not many CLI formatters for Java, may run `java` with expected JAR
+        settings: &GenerationSettings,
+        components: &[Component<Self::Config>],
     ) -> anyhow::Result<()> {
         let filename_capture = regex::Regex::new(
             r"(?m)^(?:public\s)?(?:final\s)?(?:sealed\s)?(?:abstract\s)?(?:static\s)?(?:class|interface|enum)\s(\w+)",
         )
         .unwrap();
-        let bindings_str = gen_java::generate_bindings(&config, &ci)?;
-        let java_package_out_dir = out_dir.join(
-            config
-                .package_name()
-                .split(".")
-                .collect::<Vec<_>>()
-                .join("/"),
-        );
-        fs::create_dir_all(&java_package_out_dir)?;
-        let package_line = format!("package {};", config.package_name());
-        let split_classes = bindings_str.split(&package_line);
-        let writable = split_classes
-            .map(|file| (filename_capture.captures(file), file))
-            .filter(|(x, _)| x.is_some())
-            .map(|(captures, file)| (captures.unwrap().get(1).unwrap().as_str(), file))
-            .collect::<Vec<_>>();
-        for (filename, file) in writable {
-            fs::write(
-                format!("{}/{}.java", java_package_out_dir, filename),
-                format!("{}\n{}", package_line, file),
-            )?;
-        }
-        Ok(())
-    }
-
-    fn check_library_path(&self, library_path: &Utf8Path, cdylib_name: Option<&str>) -> Result<()> {
-        if cdylib_name.is_none() {
-            bail!("Generate bindings for Java requires a cdylib, but {library_path} was given");
+        for Component { ci, config, .. } in components {
+            let bindings_str = gen_java::generate_bindings(&config, &ci)?;
+            let java_package_out_dir = &settings.out_dir.join(
+                config
+                    .package_name()
+                    .split(".")
+                    .collect::<Vec<_>>()
+                    .join("/"),
+            );
+            fs::create_dir_all(&java_package_out_dir)?;
+            let package_line = format!("package {};", config.package_name());
+            let split_classes = bindings_str.split(&package_line);
+            let writable = split_classes
+                .map(|file| (filename_capture.captures(file), file))
+                .filter(|(x, _)| x.is_some())
+                .map(|(captures, file)| (captures.unwrap().get(1).unwrap().as_str(), file))
+                .collect::<Vec<_>>();
+            for (filename, file) in writable {
+                fs::write(
+                    format!("{}/{}.java", java_package_out_dir, filename),
+                    format!("{}\n{}", package_line, file),
+                )?;
+                if settings.try_format_code {
+                    // TODO(murph): find a CLI java formatter we can require be installed in the readme if they want formatting
+                }
+            }
         }
         Ok(())
     }

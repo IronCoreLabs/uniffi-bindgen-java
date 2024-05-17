@@ -76,6 +76,6 @@ macro_rules! impl_code_type_for_primitive {
 }
 
 impl_code_type_for_primitive!(BooleanCodeType, "Boolean");
+impl_code_type_for_primitive!(Int8CodeType, "Byte");
 impl_code_type_for_primitive!(Int64CodeType, "Long");
-impl_code_type_for_primitive!(UInt64CodeType, "Long");
 impl_code_type_for_primitive!(StringCodeType, "String");

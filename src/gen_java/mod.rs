@@ -11,7 +11,6 @@ use std::{
 use uniffi_bindgen::{
     backend::{Literal, TemplateExpression},
     interface::*,
-    BindingsConfig,
 };
 
 mod enum_;
@@ -71,13 +70,13 @@ trait CodeType: Debug {
 // config options to customize the generated Java.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Config {
-    package_name: Option<String>,
-    cdylib_name: Option<String>,
+    pub(super) package_name: Option<String>,
+    pub(super) cdylib_name: Option<String>,
     generate_immutable_records: Option<bool>,
     #[serde(default)]
     custom_types: HashMap<String, CustomTypeConfig>,
     #[serde(default)]
-    external_packages: HashMap<String, String>,
+    pub(super) external_packages: HashMap<String, String>,
     #[serde(default)]
     android: bool,
     #[serde(default)]
@@ -113,29 +112,6 @@ impl Config {
     /// Whether to generate immutable records (`val` instead of `var`)
     pub fn generate_immutable_records(&self) -> bool {
         self.generate_immutable_records.unwrap_or(false)
-    }
-}
-
-impl BindingsConfig for Config {
-    fn update_from_ci(&mut self, ci: &ComponentInterface) {
-        self.package_name
-            .get_or_insert_with(|| format!("uniffi.{}", ci.namespace()));
-        self.cdylib_name
-            .get_or_insert_with(|| format!("uniffi_{}", ci.namespace()));
-    }
-
-    fn update_from_cdylib_name(&mut self, cdylib_name: &str) {
-        self.cdylib_name
-            .get_or_insert_with(|| cdylib_name.to_string());
-    }
-
-    fn update_from_dependency_configs(&mut self, config_map: HashMap<&str, &Self>) {
-        for (crate_name, config) in config_map {
-            if !self.external_packages.contains_key(crate_name) {
-                self.external_packages
-                    .insert(crate_name.to_string(), config.package_name());
-            }
-        }
     }
 }
 
@@ -460,14 +436,12 @@ impl AsCodeType for Type {
         //   - When adding additional types here, make sure to also add a match arm to the `Types.java` template.
         //   - To keep things manageable, let's try to limit ourselves to these 2 mega-matches
         match self {
-            Type::UInt8 => unimplemented!(), // Box::new(primitives::UInt8CodeType),
-            Type::Int8 => unimplemented!(),  //Box::new(primitives::Int8CodeType),
+            Type::UInt8 | Type::Int8 => Box::new(primitives::Int8CodeType),
             Type::UInt16 => unimplemented!(), //Box::new(primitives::UInt16CodeType),
-            Type::Int16 => unimplemented!(), //Box::new(primitives::Int16CodeType),
+            Type::Int16 => unimplemented!(),  //Box::new(primitives::Int16CodeType),
             Type::UInt32 => unimplemented!(), //Box::new(primitives::UInt32CodeType),
-            Type::Int32 => unimplemented!(), //Box::new(primitives::Int32CodeType),
-            Type::UInt64 => Box::new(primitives::UInt64CodeType),
-            Type::Int64 => unimplemented!(), //Box::new(primitives::Int64CodeType),
+            Type::Int32 => unimplemented!(),  //Box::new(primitives::Int32CodeType),
+            Type::UInt64 | Type::Int64 => Box::new(primitives::Int64CodeType),
             Type::Float32 => unimplemented!(), //Box::new(primitives::Float32CodeType),
             Type::Float64 => unimplemented!(), //Box::new(primitives::Float64CodeType),
             Type::Boolean => Box::new(primitives::BooleanCodeType),
