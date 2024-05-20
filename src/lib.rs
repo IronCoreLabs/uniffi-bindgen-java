@@ -4,6 +4,7 @@ use clap::{Parser, Subcommand};
 use std::{
     collections::HashMap,
     fs::{self},
+    process::Command,
 };
 use uniffi_bindgen::{BindingGenerator, Component, ComponentInterface, GenerationSettings};
 
@@ -85,13 +86,16 @@ impl BindingGenerator for JavaBindingGenerator {
                 .map(|(captures, file)| (captures.unwrap().get(1).unwrap().as_str(), file))
                 .collect::<Vec<_>>();
             for (filename, file) in writable {
-                fs::write(
-                    format!("{}/{}.java", java_package_out_dir, filename),
-                    format!("{}\n{}", package_line, file),
-                )?;
-                if settings.try_format_code {
-                    // TODO(murph): find a CLI java formatter we can require be installed in the readme if they want formatting
-                }
+                let java_file_location = java_package_out_dir.join(format!("{}.java", filename));
+                fs::write(&java_file_location, format!("{}\n{}", package_line, file))?;
+            }
+            if settings.try_format_code {
+                // requires npm is installed and functioning
+                // TODO(murph): if there's a CLI formatter that makes sense to use here, use it, PRs welcome
+                //              seems like palantir-java-format is popular, but it's only exposed through plugins
+                //              google-java-format is legacy popular and does have an executable all-deps JAR, but
+                //              must be called with the full jar path including version numbers
+                //              prettier sorta works but requires npm and packages be around for a java generator
             }
         }
         Ok(())

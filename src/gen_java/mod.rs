@@ -14,6 +14,7 @@ use uniffi_bindgen::{
 };
 
 mod enum_;
+mod object;
 mod primitives;
 mod variant;
 
@@ -233,30 +234,6 @@ impl<'a> TypeRenderer<'a> {
             .borrow_mut()
             .insert(name.to_string())
     }
-
-    // Helper to add an import statement
-    //
-    // Call this inside your template to cause an import statement to be added at the top of the
-    // file.  Imports will be sorted and de-deuped.
-    //
-    // Returns an empty string so that it can be used inside an askama `{{ }}` block.
-    fn add_import(&self, name: &str) -> &str {
-        self.imports.borrow_mut().insert(ImportRequirement::Import {
-            name: name.to_owned(),
-        });
-        ""
-    }
-
-    // Like add_import, but arranges for `import name as as_name`
-    fn add_import_as(&self, name: &str, as_name: &str) -> &str {
-        self.imports
-            .borrow_mut()
-            .insert(ImportRequirement::ImportAs {
-                name: name.to_owned(),
-                as_name: as_name.to_owned(),
-            });
-        ""
-    }
 }
 
 #[derive(Clone)]
@@ -437,13 +414,11 @@ impl AsCodeType for Type {
         //   - To keep things manageable, let's try to limit ourselves to these 2 mega-matches
         match self {
             Type::UInt8 | Type::Int8 => Box::new(primitives::Int8CodeType),
-            Type::UInt16 => unimplemented!(), //Box::new(primitives::UInt16CodeType),
-            Type::Int16 => unimplemented!(),  //Box::new(primitives::Int16CodeType),
-            Type::UInt32 => unimplemented!(), //Box::new(primitives::UInt32CodeType),
-            Type::Int32 => unimplemented!(),  //Box::new(primitives::Int32CodeType),
+            Type::UInt16 | Type::Int16 => Box::new(primitives::Int16CodeType),
+            Type::UInt32 | Type::Int32 => Box::new(primitives::Int32CodeType),
             Type::UInt64 | Type::Int64 => Box::new(primitives::Int64CodeType),
-            Type::Float32 => unimplemented!(), //Box::new(primitives::Float32CodeType),
-            Type::Float64 => unimplemented!(), //Box::new(primitives::Float64CodeType),
+            Type::Float32 => Box::new(primitives::Float32CodeType),
+            Type::Float64 => Box::new(primitives::Float64CodeType),
             Type::Boolean => Box::new(primitives::BooleanCodeType),
             Type::String => Box::new(primitives::StringCodeType),
             Type::Bytes => unimplemented!(), //Box::new(primitives::BytesCodeType),
@@ -452,7 +427,9 @@ impl AsCodeType for Type {
             Type::Duration => unimplemented!(),  //Box::new(miscellany::DurationCodeType),
 
             Type::Enum { name, .. } => Box::new(enum_::EnumCodeType::new(name.clone())),
-            Type::Object { name, imp, .. } => unimplemented!(), //Box::new(object::ObjectCodeType::new(name, imp)),
+            Type::Object { name, imp, .. } => {
+                Box::new(object::ObjectCodeType::new(name.clone(), imp.clone()))
+            }
             Type::Record { name, .. } => unimplemented!(), //Box::new(record::RecordCodeType::new(name)),
             Type::CallbackInterface { name, .. } => {
                 unimplemented!() //Box::new(callback_interface::CallbackInterfaceCodeType::new(name))
@@ -497,6 +474,11 @@ impl AsCodeType for &'_ uniffi_bindgen::interface::Enum {
     }
 }
 
+impl AsCodeType for &'_ uniffi_bindgen::interface::Object {
+    fn as_codetype(&self) -> Box<dyn CodeType> {
+        self.as_type().as_codetype()
+    }
+}
 impl AsCodeType for &'_ Argument {
     fn as_codetype(&self) -> Box<dyn CodeType> {
         self.as_type().as_codetype()

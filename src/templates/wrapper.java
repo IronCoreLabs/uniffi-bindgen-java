@@ -43,7 +43,7 @@ package {{ config.package_name() }};
 
 public class {{ ci.namespace()|class_name(ci) }} {
   {%- for func in ci.function_definitions() %}
-  {%- call java::func_decl("public static", func, 4) %}
+  {%- call java::func_decl("public static", "", func, 4) %}
   {%- endfor %}
 }
 

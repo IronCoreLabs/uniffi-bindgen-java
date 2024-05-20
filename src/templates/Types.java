@@ -37,6 +37,16 @@ public class DisposableHelper {
     }
 }
 
+package {{ config.package_name() }};
+
+public class NoPointer {
+    // Private constructor to prevent instantiation
+    private NoPointer() {}
+
+    // Static final instance of the class so it can be used in tests
+    public static final NoPointer INSTANCE = new NoPointer();
+}
+
 {%- for type_ in ci.iter_types() %}
 {%- let type_name = type_|type_name(ci) %}
 {%- let ffi_converter_name = type_|ffi_converter_name %}
@@ -75,31 +85,25 @@ public class DisposableHelper {
 {%- when Type::Int8 or Type::UInt8 %}
 {%- include "Int8Helper.java" %}
 
-{# TODO(murph): implement the rest of the types
+{%- when Type::Int16 or Type::UInt16 %}
+{%- include "Int16Helper.java" %}
 
-{%- when Type::Int16 %}
-{%- include "Int16Helper.kt" %}
-
-{%- when Type::Int32 %}
-{%- include "Int32Helper.kt" %}
-
-{%- when Type::UInt16 %}
-{%- include "UInt16Helper.kt" %}
-
-{%- when Type::UInt32 %}
-{%- include "UInt32Helper.kt" %}
+{%- when Type::Int32 or Type::UInt32 %}
+{%- include "Int32Helper.java" %}
 
 {%- when Type::Float32 %}
-{%- include "Float32Helper.kt" %}
+{%- include "Float32Helper.java" %}
 
 {%- when Type::Float64 %}
-{%- include "Float64Helper.kt" %}
+{%- include "Float64Helper.java" %}
+
+{%- when Type::Object { module_path, name, imp } %}
+{% include "ObjectTemplate.java" %}
+
+{# TODO(murph): implement the rest of the types
 
 {%- when Type::Bytes %}
 {%- include "ByteArrayHelper.kt" %}
-
-{%- when Type::Object { module_path, name, imp } %}
-{% include "ObjectTemplate.kt" %}
 
 {%- when Type::Record { name, module_path } %}
 {% include "RecordTemplate.kt" %}

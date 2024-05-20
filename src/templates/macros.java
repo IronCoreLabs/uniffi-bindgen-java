@@ -27,7 +27,7 @@
         _status))
 {%- endmacro -%}
 
-{%- macro func_decl(func_decl, callable, indent) %}
+{%- macro func_decl(func_decl, annotation, callable, indent) %}
     {%- call docstring(callable, indent) %}
     {#
     {%- if callable.is_async() %}
@@ -40,6 +40,9 @@
     }
     {%- else -%}
     #}
+    {%- if annotation != "" %}
+    @{{ annotation }}
+    {%- endif %}
     {{ func_decl }} {% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|type_name(ci) }}{%- when None %}void{%- endmatch %} {{ callable.name()|fn_name }}(
         {%- call arg_list(callable, !callable.takes_self()) -%}
     ) {% match callable.throws_type() -%}
