@@ -17,6 +17,7 @@ mod compounds;
 mod enum_;
 mod object;
 mod primitives;
+mod record;
 mod variant;
 
 trait CodeType: Debug {
@@ -444,50 +445,51 @@ impl AsCodeType for Type {
             Type::Map {
                 key_type,
                 value_type,
-            } => unimplemented!(), //Box::new(compounds::MapCodeType::new(*key_type, *value_type)),
+            } => Box::new(compounds::MapCodeType::new(
+                (**key_type).clone(),
+                (**value_type).clone(),
+            )),
             Type::External { name, .. } => unimplemented!(), //Box::new(external::ExternalCodeType::new(name)),
             Type::Custom { name, .. } => unimplemented!(), //Box::new(custom::CustomCodeType::new(name)),
         }
     }
 }
-
 impl AsCodeType for &'_ Type {
     fn as_codetype(&self) -> Box<dyn CodeType> {
         (*self).as_codetype()
     }
 }
-
 impl AsCodeType for &&'_ Type {
     fn as_codetype(&self) -> Box<dyn CodeType> {
         (**self).as_codetype()
     }
 }
-
 impl AsCodeType for &'_ Field {
     fn as_codetype(&self) -> Box<dyn CodeType> {
         self.as_type().as_codetype()
     }
 }
-
 impl AsCodeType for &'_ uniffi_bindgen::interface::Enum {
     fn as_codetype(&self) -> Box<dyn CodeType> {
         self.as_type().as_codetype()
     }
 }
-
 impl AsCodeType for &'_ uniffi_bindgen::interface::Object {
     fn as_codetype(&self) -> Box<dyn CodeType> {
         self.as_type().as_codetype()
     }
 }
-
 impl AsCodeType for &'_ Box<uniffi_meta::Type> {
     fn as_codetype(&self) -> Box<dyn CodeType> {
         self.as_type().as_codetype()
     }
 }
-
 impl AsCodeType for &'_ Argument {
+    fn as_codetype(&self) -> Box<dyn CodeType> {
+        self.as_type().as_codetype()
+    }
+}
+impl AsCodeType for &'_ uniffi_bindgen::interface::Record {
     fn as_codetype(&self) -> Box<dyn CodeType> {
         self.as_type().as_codetype()
     }

@@ -97,11 +97,17 @@ public class NoPointer {
 {%- when Type::Float64 %}
 {%- include "Float64Helper.java" %}
 
+{%- when Type::Map { key_type, value_type } %}
+{% include "MapTemplate.java" %}
+
 {%- when Type::Object { module_path, name, imp } %}
 {% include "ObjectTemplate.java" %}
 
 {%- when Type::Optional { inner_type } %}
 {% include "OptionalTemplate.java" %}
+
+{%- when Type::Record { name, module_path } %}
+{% include "RecordTemplate.java" %}
 
 {%- when Type::Sequence { inner_type } %}
 {% include "SequenceTemplate.java" %}
@@ -110,12 +116,6 @@ public class NoPointer {
 
 {%- when Type::Bytes %}
 {%- include "ByteArrayHelper.kt" %}
-
-{%- when Type::Record { name, module_path } %}
-{% include "RecordTemplate.kt" %}
-
-{%- when Type::Map { key_type, value_type } %}
-{% include "MapTemplate.kt" %}
 
 {%- when Type::CallbackInterface { module_path, name } %}
 {% include "CallbackInterfaceTemplate.kt" %}
