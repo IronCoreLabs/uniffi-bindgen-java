@@ -13,6 +13,7 @@ use uniffi_bindgen::{
     interface::*,
 };
 
+mod compounds;
 mod enum_;
 mod object;
 mod primitives;
@@ -430,15 +431,15 @@ impl AsCodeType for Type {
             Type::Object { name, imp, .. } => {
                 Box::new(object::ObjectCodeType::new(name.clone(), imp.clone()))
             }
-            Type::Record { name, .. } => unimplemented!(), //Box::new(record::RecordCodeType::new(name)),
+            Type::Record { name, .. } => Box::new(record::RecordCodeType::new(name.clone())),
             Type::CallbackInterface { name, .. } => {
                 unimplemented!() //Box::new(callback_interface::CallbackInterfaceCodeType::new(name))
             }
             Type::Optional { inner_type } => {
-                unimplemented!() //Box::new(compounds::OptionalCodeType::new(*inner_type))
+                Box::new(compounds::OptionalCodeType::new((**inner_type).clone()))
             }
             Type::Sequence { inner_type } => {
-                unimplemented!() //Box::new(compounds::SequenceCodeType::new(*inner_type))
+                Box::new(compounds::SequenceCodeType::new((**inner_type).clone()))
             }
             Type::Map {
                 key_type,
@@ -479,6 +480,13 @@ impl AsCodeType for &'_ uniffi_bindgen::interface::Object {
         self.as_type().as_codetype()
     }
 }
+
+impl AsCodeType for &'_ Box<uniffi_meta::Type> {
+    fn as_codetype(&self) -> Box<dyn CodeType> {
+        self.as_type().as_codetype()
+    }
+}
+
 impl AsCodeType for &'_ Argument {
     fn as_codetype(&self) -> Box<dyn CodeType> {
         self.as_type().as_codetype()

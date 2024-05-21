@@ -100,6 +100,12 @@ public class NoPointer {
 {%- when Type::Object { module_path, name, imp } %}
 {% include "ObjectTemplate.java" %}
 
+{%- when Type::Optional { inner_type } %}
+{% include "OptionalTemplate.java" %}
+
+{%- when Type::Sequence { inner_type } %}
+{% include "SequenceTemplate.java" %}
+
 {# TODO(murph): implement the rest of the types
 
 {%- when Type::Bytes %}
@@ -107,12 +113,6 @@ public class NoPointer {
 
 {%- when Type::Record { name, module_path } %}
 {% include "RecordTemplate.kt" %}
-
-{%- when Type::Optional { inner_type } %}
-{% include "OptionalTemplate.kt" %}
-
-{%- when Type::Sequence { inner_type } %}
-{% include "SequenceTemplate.kt" %}
 
 {%- when Type::Map { key_type, value_type } %}
 {% include "MapTemplate.kt" %}
