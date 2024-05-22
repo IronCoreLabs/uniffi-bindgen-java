@@ -1,6 +1,8 @@
 {%- let rec = ci|get_record_definition(name) %}
 package {{ config.package_name() }};
 
+import java.util.List;
+import java.util.Map;
 import java.nio.ByteBuffer;
 
 {%- if rec.has_fields() %}

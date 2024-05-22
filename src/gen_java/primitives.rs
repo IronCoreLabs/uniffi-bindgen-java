@@ -79,7 +79,7 @@ impl_code_type_for_primitive!(BooleanCodeType, "Boolean");
 impl_code_type_for_primitive!(StringCodeType, "String");
 impl_code_type_for_primitive!(Int8CodeType, "Byte");
 impl_code_type_for_primitive!(Int16CodeType, "Short");
-impl_code_type_for_primitive!(Int32CodeType, "Int");
+impl_code_type_for_primitive!(Int32CodeType, "Integer");
 impl_code_type_for_primitive!(Int64CodeType, "Long");
 impl_code_type_for_primitive!(Float32CodeType, "Float");
 impl_code_type_for_primitive!(Float64CodeType, "Double");

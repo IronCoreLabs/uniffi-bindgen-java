@@ -22,7 +22,7 @@ public enum {{ ffi_converter_name }} implements FfiConverterRustBuffer<{{ inner_
   }
 
   @Override
-  public Long allocationSize({{ inner_type_name }} value): Long {
+  public long allocationSize({{ inner_type_name }} value) {
     if (value == null) {
       return 1UL;
     } else {

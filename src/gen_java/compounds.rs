@@ -25,7 +25,7 @@ impl OptionalCodeType {
 impl CodeType for OptionalCodeType {
     fn type_label(&self, ci: &ComponentInterface) -> String {
         format!(
-            "{}?",
+            "{}",
             super::JavaCodeOracle.find(self.inner()).type_label(ci)
         )
     }

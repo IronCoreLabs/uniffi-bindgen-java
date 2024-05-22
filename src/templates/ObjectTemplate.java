@@ -99,12 +99,6 @@
   {%- include "ObjectCleanerHelper.java" %}
 {%- endif %}
 
-package {{ config.package_name() }};
-
-import java.util.conncurrent.atomic.AtomicBoolean;
-import java.util.function.Function;
-import com.sun.jna.Pointer;
-
 {%- let obj = ci|get_object_definition(name) %}
 {%- let (interface_name, impl_class_name) = obj|object_names(ci) %}
 {%- let methods = obj.methods() %}
@@ -113,6 +107,15 @@ import com.sun.jna.Pointer;
 {%- let ffi_converter_name = obj|ffi_converter_name %}
 
 {%- include "Interface.java" %}
+
+package {{ config.package_name() }};
+
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
+import com.sun.jna.Pointer;
 
 {%- call java::docstring(obj, 0) %}
 {% if (is_error) %}
@@ -137,8 +140,8 @@ public class {{ impl_class_name }} implements Disposable, AutoCloseable, {{ inte
    * connected Rust object.
    */
   {{ impl_class_name }}(NoPointer noPointer) {
-    this.pointer = null
-    this.cleanable = UniffiLib.CLEANER.register(this, new UniffiCleanAction(pointer))
+    this.pointer = null;
+    this.cleanable = UniffiLib.CLEANER.register(this, new UniffiCleanAction(pointer));
   }
 
   {%- match obj.primary_constructor() %}
@@ -147,14 +150,15 @@ public class {{ impl_class_name }} implements Disposable, AutoCloseable, {{ inte
   // Note no constructor generated for this object as it is async.
   {%-     else %}
   {%- call java::docstring(cons, 4) %}
-  {{ impl_class_name }}({% call java::arg_list(cons, true) -%}) :
-    this({% call java::to_ffi_call(cons) %})
+  {{ impl_class_name }}({% call java::arg_list(cons, true) -%}){
+    this((Pointer){% call java::to_ffi_call(cons) %});
+  }
   {%-     endif %}
   {%- when None %}
   {%- endmatch %}
 
   @Override
-  void destroy() {
+  public void destroy() {
     // Only allow a single call to this method.
     // TODO(uniffi): maybe we should log a warning if called more than once?
     if (this.wasDestroyed.compareAndSet(false, true)) {
@@ -166,25 +170,26 @@ public class {{ impl_class_name }} implements Disposable, AutoCloseable, {{ inte
   }
 
   @Override
-  synchronized void close() {
+  public synchronized void close() {
     this.destroy();
   }
 
-  static R <R> callWithPointer(Function<Pointer, R> block) {
+  public <R> R callWithPointer(Function<Pointer, R> block) {
     // Check and increment the call counter, to keep the object alive.
     // This needs a compare-and-set retry loop in case of concurrent updates.
+    long c;
     do {
-      val c = this.callCounter.get();
+      c = this.callCounter.get();
       if (c == 0L) {
-        throw new IllegalStateException("{{ impl_class_name }} object has already been destroyed")
+        throw new IllegalStateException("{{ impl_class_name }} object has already been destroyed");
       }
       if (c == Long.MAX_VALUE) {
-        throw new IllegalStateException("{{ impl_class_name }} call counter would overflow")
+        throw new IllegalStateException("{{ impl_class_name }} call counter would overflow");
       }
     } while (! this.callCounter.compareAndSet(c, c + 1L));
     // Now we can safely do the method call without the pointer being freed concurrently.
     try {
-      return block(this.uniffiClonePointer());
+      return block.apply(this.uniffiClonePointer());
     } finally {
       // This decrement always matches the increment we performed above.
       if (this.callCounter.decrementAndGet() == 0L) {
@@ -204,9 +209,9 @@ public class {{ impl_class_name }} implements Disposable, AutoCloseable, {{ inte
     public void run() {
       if (pointer != null) {
         UniffiHelpers.uniffiRustCall(status -> {
-          UniffiLib.INSTANCE.{{ obj.ffi_object_free().name() }}(ptr, status);
+          UniffiLib.INSTANCE.{{ obj.ffi_object_free().name() }}(pointer, status);
           return null;
-        })
+        });
       }
     }
   }
@@ -221,21 +226,20 @@ public class {{ impl_class_name }} implements Disposable, AutoCloseable, {{ inte
   }
 
   {% for meth in obj.methods() -%}
-  {# TODO(murph): unclear why we're adding override to all object methods #}
-  {%- call java::func_decl("", "override", meth, 4) %}
+  {%- call java::func_decl("public", "Override", meth, 4) %}
   {% endfor %}
 
   {%- for tm in obj.uniffi_traits() %}
   {%-     match tm %}
   {%         when UniffiTrait::Display { fmt } %}
   @Override
-  String toString() {
+  public String toString() {
       return {{ fmt.return_type().unwrap()|lift_fn }}({% call java::to_ffi_call(fmt) %});
   }
   {%         when UniffiTrait::Eq { eq, ne } %}
   {# only equals used #}
   @Override
-  Boolean equals(Object other) {
+  public Boolean equals(Object other) {
       if (this === other) {
         return true;
       }
@@ -246,7 +250,7 @@ public class {{ impl_class_name }} implements Disposable, AutoCloseable, {{ inte
   }
   {%         when UniffiTrait::Hash { hash } %}
   @Override
-  Integer hashCode() {
+  public Integer hashCode() {
       return {{ hash.return_type().unwrap()|lift_fn }}({%- call java::to_ffi_call(hash) %}).toInt();
   }
   {%-         else %}

@@ -2,7 +2,7 @@ package {{ config.package_name() }};
 
 import java.nio.ByteBuffer;
 
-public enum FfiConverterInt implements FfiConverter<Integer, Integer>{
+public enum FfiConverterInteger implements FfiConverter<Integer, Integer>{
   INSTANCE;
 
     @Override

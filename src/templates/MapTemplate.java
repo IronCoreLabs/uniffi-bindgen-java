@@ -3,6 +3,7 @@
 package {{ config.package_name() }};
 
 import java.nio.ByteBuffer;
+import java.util.Map;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -30,7 +31,7 @@ public enum {{ ffi_converter_name }} implements FfiConverterRustBuffer<Map<{{ ke
 
     @Override
     public void write(Map<{{ key_type_name }}, {{ value_type_name }}> value, ByteBuffer buf) {
-        buf.putInt(value.size);
+        buf.putInt(value.size());
         // The parens on `(k, v)` here ensure we're calling the right method,
         // which is important for compatibility with older android devices.
         // Ref https://blog.danlew.net/2017/03/16/kotlin-puzzler-whose-line-is-it-anyways/

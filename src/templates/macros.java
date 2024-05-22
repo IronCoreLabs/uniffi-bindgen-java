@@ -6,9 +6,9 @@
 
 {%- macro to_ffi_call(func) -%}
     {%- if func.takes_self() %}
-    callWithPointer {
+    callWithPointer(it ->
         {%- call to_raw_ffi_call(func) %}
-    }
+    )
     {% else %}
         {%- call to_raw_ffi_call(func) %}
     {% endif %}
@@ -58,12 +58,12 @@
 {%- macro call_async(callable) -%}
     UniffiHelpers.uniffiRustCallAsync(
 {%- if callable.takes_self() %}
-        callWithPointer { thisPtr ->
+        callWithPointer(thisPtr ->
             UniffiLib.INSTANCE.{{ callable.ffi_func().name() }}(
                 thisPtr,
                 {% call arg_list_lowered(callable) %}
             )
-        },
+        ),
 {%- else %}
         UniffiLib.INSTANCE.{{ callable.ffi_func().name() }}({% call arg_list_lowered(callable) %}),
 {%- endif %}
@@ -94,20 +94,14 @@
 {%- endmacro -%}
 
 {#-
-// Arglist as used in java declarations of methods, functions and constructors.
-// If is_decl, then default values be specified.
+// Arglist as used in Java declarations of methods, functions and constructors.
+// even if `is_decl` there won't be default values, Java doesn't support them in any reasonable way.
 // Note the var_name and type_name filters.
 -#}
 
 {% macro arg_list(func, is_decl) %}
 {%- for arg in func.arguments() -%}
         {{ arg|type_name(ci) }} {{ arg.name()|var_name }}
-{%-     if is_decl %}
-{%-         match arg.default_value() %}
-{%-             when Some with(literal) %} = {{ literal|render_literal(arg, ci) }}
-{%-             else %}
-{%-         endmatch %}
-{%-     endif %}
 {%-     if !loop.last %}, {% endif -%}
 {%- endfor %}
 {%- endmacro %}
@@ -120,7 +114,7 @@
     {%- for arg in func.arguments() %}
         {{- arg.type_().borrow()|ffi_type_name_by_value }} {{arg.name()|var_name -}}{%- if !loop.last %}, {% endif -%}
     {%- endfor %}
-    {%- if func.has_rust_call_status_arg() %}, UniffiRustCallStatus uniffi_out_errmk{% endif %}
+    {%- if func.has_rust_call_status_arg() %}{% if func.arguments().len() != 0 %}, {% endif %}UniffiRustCallStatus uniffi_out_errmk{% endif %}
 {%- endmacro -%}
 
 {% macro field_name(field, field_num) %}

@@ -12,6 +12,28 @@ interface UniffiCleaner {
     }
 
     UniffiCleaner.Cleanable register(Object value, Runnable cleanUpTask);
+
+    public static UniffiCleaner create() {
+        {% if config.android_cleaner() %}
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            return new AndroidSystemCleaner();
+        } else {
+            return new UniffiJnaCleaner();
+        }
+        {%- else %}
+        try {
+            // For safety's sake: if the library hasn't been run in android_cleaner = true
+            // mode, but is being run on Android, then we still need to think about
+            // Android API versions.
+            // So we check if java.lang.ref.Cleaner is there, and use that…
+            Class.forName("java.lang.ref.Cleaner");
+            return new JavaLangRefCleaner();
+        } catch (ClassNotFoundException e) {
+            // … otherwise, fallback to the JNA cleaner.
+            return new UniffiJnaCleaner();
+        }
+        {%- endif %}
+    }
 }
 
 package {{ config.package_name() }};
@@ -49,11 +71,9 @@ class UniffiJnaCleanable implements UniffiCleaner.Cleanable {
 // using Android or not.
 // There are further runtime checks to chose the correct implementation
 // of the cleaner.
-{# TODO(murph): haven't filled this out yet, not sure how to do equivalent in java
 {% if config.android_cleaner() %}
 {%-   include "ObjectCleanerHelperAndroid.java" %}
 {%- else %}
 {%-   include "ObjectCleanerHelperJvm.java" %}
 {%- endif %}
-#}
 

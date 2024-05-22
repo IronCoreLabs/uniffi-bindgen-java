@@ -41,6 +41,9 @@
 
 package {{ config.package_name() }};
 
+import java.util.List;
+import java.util.Map;
+
 public class {{ ci.namespace()|class_name(ci) }} {
   {%- for func in ci.function_definitions() %}
   {%- call java::func_decl("public static", "", func, 4) %}
