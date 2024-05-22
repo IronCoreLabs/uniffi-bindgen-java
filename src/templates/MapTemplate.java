@@ -6,6 +6,7 @@ import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
+import java.util.stream.Collectors;
 
 public enum {{ ffi_converter_name }} implements FfiConverterRustBuffer<Map<{{ key_type_name }}, {{ value_type_name }}>> {
     INSTANCE;
@@ -13,10 +14,10 @@ public enum {{ ffi_converter_name }} implements FfiConverterRustBuffer<Map<{{ ke
     @Override
     public Map<{{ key_type_name }}, {{ value_type_name }}> read(ByteBuffer buf) {
         int len = buf.getInt();
-        return Map.ofEntries(IntStream.range(0, len).mapToObj(_i -> Map.entry(
-          {{ key_type|read_fn }}(buf),
-          {{ value_type|read_fn }}(buf)
-        )).toArray());
+        return IntStream.range(0, len).boxed().collect(Collectors.toMap(
+            _x -> {{ key_type|read_fn }}(buf),
+            _x -> {{ value_type|read_fn }}(buf)
+        ));
     }
 
     @Override

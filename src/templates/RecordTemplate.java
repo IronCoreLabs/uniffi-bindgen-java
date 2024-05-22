@@ -79,7 +79,7 @@ public enum {{ rec|ffi_converter_name }} implements FfiConverterRustBuffer<{{ ty
       {%- if rec.has_fields() %}
       return (
         {%- for field in rec.fields() %}
-            {{ field|allocation_size_fn }}(value.{{ field.name()|var_name }}){% if !loop.last %} +{% endif %}
+            {{ field|allocation_size_fn }}(value.{{ field.name()|var_name }}()){% if !loop.last %} +{% endif %}
         {%- endfor %}
       ); 
       {%- else %}
@@ -90,7 +90,7 @@ public enum {{ rec|ffi_converter_name }} implements FfiConverterRustBuffer<{{ ty
   @Override
   public void write({{ type_name }} value, ByteBuffer buf) {
     {%- for field in rec.fields() %}
-      {{ field|write_fn }}(value.{{ field.name()|var_name }}, buf);
+      {{ field|write_fn }}(value.{{ field.name()|var_name }}(), buf);
     {%- endfor %}
   }
 }

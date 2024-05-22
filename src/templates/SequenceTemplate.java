@@ -21,7 +21,7 @@ public enum {{ ffi_converter_name }} implements FfiConverterRustBuffer<List<{{ i
   @Override
   public long allocationSize(List<{{ inner_type_name }}> value) {
     long sizeForLength = 4L;
-    long sizeForItems = value.stream().map(inner -> {{ inner_type|allocation_size_fn }}(inner)).reduce(0, Long::sum);
+    long sizeForItems = value.stream().mapToLong(inner -> {{ inner_type|allocation_size_fn }}(inner)).sum();
     return sizeForLength + sizeForItems;
   }
 
