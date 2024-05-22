@@ -18,7 +18,7 @@ public record {{ type_name }}(
     {%- endfor %}
 ) {% if contains_object_references %} implements Disposable {% endif %}{
     {#
-      // TODO(murph): java doesn't support optional parmeters. I could do null checks here and set the value where null,
+      // TODO(murph): java doesn't support optional parameters. I could do null checks here and set the value where null,
       // but that's not really an established pattern (expecting to pass null for values to indicate you want the default).
       // Overloading would be too complex to handle all possible default combinations. Builder pattern is the normal way
       // to do it in java, but feels way too heavy here

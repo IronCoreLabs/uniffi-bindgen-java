@@ -65,7 +65,7 @@ impl BindingGenerator for JavaBindingGenerator {
         components: &[Component<Self::Config>],
     ) -> anyhow::Result<()> {
         let filename_capture = regex::Regex::new(
-            r"(?m)^(?:public\s)?(?:final\s)?(?:sealed\s)?(?:abstract\s)?(?:static\s)?(?:class|interface|enum)\s(\w+)",
+            r"(?m)^(?:public\s)?(?:final\s)?(?:sealed\s)?(?:abstract\s)?(?:static\s)?(?:class|interface|enum|record)\s(\w+)",
         )
         .unwrap();
         for Component { ci, config, .. } in components {
