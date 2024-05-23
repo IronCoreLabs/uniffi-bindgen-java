@@ -8,7 +8,7 @@ import java.util.Map;
 {% match e.variant_discr_type() %}
 {% when None %}
 public enum {{ type_name }} {
-  {% for variant in e.variants() -%}
+  {%- for variant in e.variants() -%}
   {%- call java::docstring(variant, 4) %}
   {{ variant|variant_name}}{% if loop.last %};{% else %},{% endif %}
   {%- endfor %}

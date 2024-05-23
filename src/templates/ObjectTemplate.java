@@ -129,7 +129,7 @@ public class {{ impl_class_name }} implements Disposable, AutoCloseable, {{ inte
   private AtomicBoolean wasDestroyed = new AtomicBoolean(false);
   private AtomicLong callCounter = new AtomicLong(1);
 
-  {{ impl_class_name }}(Pointer pointer) {
+  public {{ impl_class_name }}(Pointer pointer) {
     this.pointer = pointer;
     this.cleanable = UniffiLib.CLEANER.register(this, new UniffiCleanAction(pointer));
   }
@@ -139,19 +139,19 @@ public class {{ impl_class_name }} implements Disposable, AutoCloseable, {{ inte
    * attempt to actually use an object constructed this way will fail as there is no
    * connected Rust object.
    */
-  {{ impl_class_name }}(NoPointer noPointer) {
+  public {{ impl_class_name }}(NoPointer noPointer) {
     this.pointer = null;
     this.cleanable = UniffiLib.CLEANER.register(this, new UniffiCleanAction(pointer));
   }
 
-  {%- match obj.primary_constructor() %}
+  {% match obj.primary_constructor() %}
   {%- when Some(cons) %}
   {%-     if cons.is_async() %}
   // Note no constructor generated for this object as it is async.
   {%-     else %}
   {%- call java::docstring(cons, 4) %}
-  {{ impl_class_name }}({% call java::arg_list(cons, true) -%}){
-    this((Pointer){% call java::to_ffi_call(cons) %});
+  public {{ impl_class_name }}({% call java::arg_list(cons, true) -%}){
+    this((Pointer){%- call java::to_ffi_call(cons) -%});
   }
   {%-     endif %}
   {%- when None %}
