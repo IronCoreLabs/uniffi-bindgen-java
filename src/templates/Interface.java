@@ -12,5 +12,4 @@ public interface {{ interface_name }} {
     #}
     public {% match meth.return_type() -%}{%- when Some with (return_type) %}{{ return_type|type_name(ci) }}{%- else -%}void{%- endmatch %} {{ meth.name()|fn_name }}({% call java::arg_list(meth, true) %});
     {% endfor %}
-    {# TODO(murph): may need a static nested class to hold static members the companion object would've been responsible for #}
 }

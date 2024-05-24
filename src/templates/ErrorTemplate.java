@@ -13,8 +13,6 @@ public class {{ type_name }} extends Exception {
 
     {% for variant in e.variants() -%}
     {%- call java::docstring(variant, 4) %}
-    {# TODO(murph): this is the same as Kotlin-ish as far as I can tell, but even in a flat error in Rust there
-      can be structs with fields, which this doesn't include #}
     public static class {{ variant|error_variant_name }} extends {{ type_name }}{% if contains_object_references %}, Disposable{% endif %} {
       public {{ variant|error_variant_name }}(String message) {
         super(message);

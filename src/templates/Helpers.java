@@ -133,8 +133,6 @@ public final class UniffiHelpers {
       try {
           writeReturn.accept(makeCall.get());
       } catch (Exception e) {
-          // TODO(murph): this was `e.getClass().isAssignableFrom(E.class)` but generics are erased in Java so we can't
-          //              check if it's from `E` that way
           if (e.getClass().isAssignableFrom(clazz)) {
               @SuppressWarnings("unchecked")
               E castedE = (E) e;

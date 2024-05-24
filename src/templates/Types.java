@@ -1,6 +1,4 @@
 {%- import "macros.java" as java %}
-// TODO(murph): need a single point to include all the wrapper-y and macro code once if possible, relying on it all
-// being in the same java package to make it available
 
 package {{ config.package_name() }};
 
@@ -19,8 +17,6 @@ public interface Disposable {
 
 package {{ config.package_name() }};
 
-// TODO(murph): in the Kotlin code this was an inline function `T.use(block: (T) -> R)`
-//              Will likely need to see where it's being called and make sure this is called instead
 public class DisposableHelper {
     public static <T extends Disposable, R> R use(T disposable, java.util.function.Function<T, R> block) {
         try {

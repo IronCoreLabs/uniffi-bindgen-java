@@ -55,7 +55,6 @@ public enum {{ e|ffi_converter_name}} implements FfiConverterRustBuffer<{{ type_
 }
 
 {% else %}
-{# TODO(murph): this else seems pretty correct, re-evaluate if the above should be sealed+record also #}
 
 {%- call java::docstring(e, 0) %}
 public sealed interface {{ type_name }}{% if contains_object_references %} extends Disposable {% endif %} {
