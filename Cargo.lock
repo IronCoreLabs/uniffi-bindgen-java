@@ -490,7 +490,7 @@ checksum = "e51733f11c9c4f72aa0c160008246859e340b00807569a0da0e7a1079b27ba85"
 [[package]]
 name = "uniffi"
 version = "0.27.1"
-source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#874e656c94097b0656bcc0af678f844a48ec85d6"
+source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#028f34b63352ccb8d8aeaf3506126f35e93ee113"
 dependencies = [
  "anyhow",
  "uniffi_build",
@@ -515,6 +515,7 @@ dependencies = [
  "textwrap",
  "toml",
  "uniffi-example-arithmetic",
+ "uniffi-example-geometry",
  "uniffi-example-rondpoint",
  "uniffi_bindgen",
  "uniffi_meta",
@@ -524,16 +525,24 @@ dependencies = [
 [[package]]
 name = "uniffi-example-arithmetic"
 version = "0.22.0"
-source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#874e656c94097b0656bcc0af678f844a48ec85d6"
+source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#028f34b63352ccb8d8aeaf3506126f35e93ee113"
 dependencies = [
  "thiserror",
  "uniffi",
 ]
 
 [[package]]
+name = "uniffi-example-geometry"
+version = "0.22.0"
+source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#028f34b63352ccb8d8aeaf3506126f35e93ee113"
+dependencies = [
+ "uniffi",
+]
+
+[[package]]
 name = "uniffi-example-rondpoint"
 version = "0.22.0"
-source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#874e656c94097b0656bcc0af678f844a48ec85d6"
+source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#028f34b63352ccb8d8aeaf3506126f35e93ee113"
 dependencies = [
  "uniffi",
 ]
@@ -541,7 +550,7 @@ dependencies = [
 [[package]]
 name = "uniffi_bindgen"
 version = "0.27.1"
-source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#874e656c94097b0656bcc0af678f844a48ec85d6"
+source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#028f34b63352ccb8d8aeaf3506126f35e93ee113"
 dependencies = [
  "anyhow",
  "askama",
@@ -564,7 +573,7 @@ dependencies = [
 [[package]]
 name = "uniffi_build"
 version = "0.27.1"
-source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#874e656c94097b0656bcc0af678f844a48ec85d6"
+source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#028f34b63352ccb8d8aeaf3506126f35e93ee113"
 dependencies = [
  "anyhow",
  "camino",
@@ -574,7 +583,7 @@ dependencies = [
 [[package]]
 name = "uniffi_checksum_derive"
 version = "0.27.1"
-source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#874e656c94097b0656bcc0af678f844a48ec85d6"
+source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#028f34b63352ccb8d8aeaf3506126f35e93ee113"
 dependencies = [
  "quote",
  "syn",
@@ -583,7 +592,7 @@ dependencies = [
 [[package]]
 name = "uniffi_core"
 version = "0.27.1"
-source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#874e656c94097b0656bcc0af678f844a48ec85d6"
+source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#028f34b63352ccb8d8aeaf3506126f35e93ee113"
 dependencies = [
  "anyhow",
  "bytes",
@@ -597,7 +606,7 @@ dependencies = [
 [[package]]
 name = "uniffi_macros"
 version = "0.27.1"
-source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#874e656c94097b0656bcc0af678f844a48ec85d6"
+source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#028f34b63352ccb8d8aeaf3506126f35e93ee113"
 dependencies = [
  "bincode",
  "camino",
@@ -614,7 +623,7 @@ dependencies = [
 [[package]]
 name = "uniffi_meta"
 version = "0.27.1"
-source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#874e656c94097b0656bcc0af678f844a48ec85d6"
+source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#028f34b63352ccb8d8aeaf3506126f35e93ee113"
 dependencies = [
  "anyhow",
  "bytes",
@@ -625,7 +634,7 @@ dependencies = [
 [[package]]
 name = "uniffi_testing"
 version = "0.27.1"
-source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#874e656c94097b0656bcc0af678f844a48ec85d6"
+source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#028f34b63352ccb8d8aeaf3506126f35e93ee113"
 dependencies = [
  "anyhow",
  "camino",
@@ -637,7 +646,7 @@ dependencies = [
 [[package]]
 name = "uniffi_udl"
 version = "0.27.1"
-source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#874e656c94097b0656bcc0af678f844a48ec85d6"
+source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#028f34b63352ccb8d8aeaf3506126f35e93ee113"
 dependencies = [
  "anyhow",
  "textwrap",
@@ -655,7 +664,7 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 [[package]]
 name = "weedle2"
 version = "5.0.0"
-source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#874e656c94097b0656bcc0af678f844a48ec85d6"
+source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#028f34b63352ccb8d8aeaf3506126f35e93ee113"
 dependencies = [
  "nom",
 ]

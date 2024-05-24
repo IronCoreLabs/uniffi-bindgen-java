@@ -32,7 +32,5 @@ public class TestArithmetic {
     assert Arithmetic.equal(4L, 4L);
     assert !Arithmetic.equal(2L, 4L);
     assert !Arithmetic.equal(4L, 8L);
-
-    System.out.println("Tests passed!");
   }
 }

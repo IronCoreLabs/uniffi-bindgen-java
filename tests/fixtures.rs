@@ -215,7 +215,7 @@ macro_rules! fixture_tests {
 
 fixture_tests! {
     (test_arithmetic, "uniffi-example-arithmetic", "scripts/TestArithmetic.java"),
-    // (test_geometry, "uniffi-example-geometry", "scripts/test_geometry.java"),
+    (test_geometry, "uniffi-example-geometry", "scripts/TestGeometry.java"),
     (test_rondpoint, "uniffi-example-rondpoint", "scripts/TestRondpoint.java"),
     // (test_todolist, "uniffi-example-todolist", "scripts/test_todolist.java"),
     // (test_sprites, "uniffi-example-sprites", "scripts/test_sprites.java"),
