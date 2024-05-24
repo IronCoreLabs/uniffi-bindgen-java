@@ -10,14 +10,11 @@ import java.nio.ByteBuffer;
 public record {{ type_name }}(
     {%- for field in rec.fields() %}
     {%- call java::docstring(field, 4) %}
-    // {# TODO(murph): all record's fields are immutable, do we need a huge if with a whole separate type?
-    {% if config.generate_immutable_records() %}val{% else %}var{% endif %} {{ field.name()|var_name }}: {{ field|type_name(ci) -}}
-    #}
     {{ field|type_name(ci) }} {{ field.name()|var_name -}}
     {% if !loop.last %}, {% endif %}
     {%- endfor %}
 ) {% if contains_object_references %} implements Disposable {% endif %}{
-    {% if contains_object_references %}
+{% if contains_object_references %}
     @Override
     public void destroy() {
         {% call java::destroy_fields(rec) %}
