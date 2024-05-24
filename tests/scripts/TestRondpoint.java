@@ -130,57 +130,17 @@ public class TestRondpoint {
 
     st.destroy();
 
-    // Prove to ourselves that default arguments are being used.
-    // Step 1: call the methods without arguments, and check against the UDL.
-    var op = new Optionneur();
-    
-    // TODO(murph): none of these compile because there aren't defaults in Java. Overloads would work here but don't 
-    // scale because we don't have named parameters. Passing `null` explicitly to indicate None could work and cause
-    // the constructor to set a default, but that isn't any kind of established Java standard. We could use the actual
-    // `Optional<T>` type from Java 8, but it seems to have been broadly scorned and not used by the Java community.
-    // Builder is probably the most expected and consumable pattern for defaults of the form we have in Java... I'm
-    // scared to implement it though.
-    
-    // assert op.sinonString().equals("default");
-    
-    // assert op.sinonBoolean().equals(false);
-
-    // assert op.sinonSequence().equals(List.of());
+    // Defaults aren't supported in Java, so we check that our Java `None` equivalent goes across the barrier correctly
+    // as an option and comes back instead. See Kotlin's rondpoint tests for reference default behavior if you want to
+    // PR defaults as a feature.
+    // Step 1: call the methods without arguments, check that Option works.
+    var op = new Optionneur();  
+  
     // Optionals
-    // assert op.sinonNull() == null;
-    // assert op.sinonZero() == 0;
+    assert op.sinonNull(null) == null;
+    assert op.sinonZero(null) == null;
 
-    // Decimal integers
-    // assert op.sinonI8Dec() == (byte) -42;
-    // assert op.sinonU8Dec() == 42;
-    // assert op.sinonI16Dec() == (short) 42;
-    // assert op.sinonU16Dec() == 42;
-    // assert op.sinonI32Dec() == 42;
-    // assert op.sinonU32Dec() == 42;
-    // assert op.sinonI64Dec() == 42L;
-    // assert op.sinonU64Dec() == 42L;
-
-    // Hexadecimal integers
-    // assert op.sinonI8Hex() == (byte) -0x7f;
-    // assert op.sinonU8Hex() == 0xff;
-    // assert op.sinonI16Hex() == (short) 0x7f;
-    // assert op.sinonU16Hex() == 0xffff;
-    // assert op.sinonI32Hex() == 0x7fffffff;
-    // assert op.sinonU32Hex() == 0xffffffff;
-    // assert op.sinonI64Hex() == 0x7fffffffffffffffL;
-    // assert op.sinonU64Hex() == 0xffffffffffffffffL;
-
-    // Octal integers
-    // assert op.sinonU32Oct() == 493; // 0o755
-
-    // Floats
-    // assert op.sinonF32() == 42.0f;
-    // assert op.sinonF64() == 42.1;
-
-    // Enums
-    // assert op.sinonEnum().equals(Enumeration.TROIS);
-
-    // Step 2. Convince ourselves that if we pass something else, then that changes the output.
+        // Step 2. Convince ourselves that if we pass something else, then that changes the output.
     //         We have shown something coming out of the sinon methods, but without eyeballing the Rust
     //         we can't be sure that the arguments will change the return value.
     affirmAllerRetour(List.of("foo", "bar"), op::sinonString);
@@ -222,35 +182,7 @@ public class TestRondpoint {
     affirmAllerRetour(List.of(Enumeration.values()), op::sinonEnum);
 
     op.destroy();
-
-    // TODO(murph): same problem as objects for records, apply the same solution here
-    // Testing defaulting properties in record types.
-    // var defaultes = new OptionneurDictionnaire();
-    // var explicites = new OptionneurDictionnaire(
-    //     -8,
-    //     8,
-    //     -16,
-    //     0x10,
-    //     -32,
-    //     32,
-    //     -64L,
-    //     64L,
-    //     4.0f,
-    //     8.0,
-    //     true,
-    //     "default",
-    //     listOf(),
-    //     Enumeration.DEUX,
-    //     null
-    // );
-    // assert defaultes.equals(explicites);
-
-    // // …and makes sure they travel across and back the FFI.
-    // val rt2 = new Retourneur();
-    // affirmAllerRetour(List.of(defaultes), rt2::identiqueOptionneurDictionnaire);
-
-    // rt2.destroy();
-  }
+}
 
   private static <T> void affirmAllerRetour(List<T> vs, Function<T, T> f) {
     for (var v : vs) {
