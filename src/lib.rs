@@ -1,8 +1,11 @@
-use anyhow::{bail, Result};
-use camino::{Utf8Path, Utf8PathBuf};
+use anyhow::Result;
+use camino::Utf8PathBuf;
 use clap::{Parser, Subcommand};
-use std::fs::{self};
-use uniffi_bindgen::{BindingGenerator, ComponentInterface};
+use std::{
+    collections::HashMap,
+    fs::{self},
+};
+use uniffi_bindgen::{BindingGenerator, Component, ComponentInterface, GenerationSettings};
 
 mod gen_java;
 
@@ -19,45 +22,79 @@ impl BindingGenerator for JavaBindingGenerator {
         )
     }
 
-    fn write_bindings(
+    fn update_component_configs(
         &self,
-        ci: &ComponentInterface,
-        config: &Self::Config,
-        out_dir: &Utf8Path,
-        try_format_code: bool, // TODO(murph): not many CLI formatters for Java, may run `java` with expected JAR
-    ) -> anyhow::Result<()> {
-        let filename_capture = regex::Regex::new(
-            r"(?m)^(?:public\s)?(?:final\s)?(?:sealed\s)?(?:abstract\s)?(?:static\s)?(?:class|interface|enum)\s(\w+)",
-        )
-        .unwrap();
-        let bindings_str = gen_java::generate_bindings(&config, &ci)?;
-        let java_package_out_dir = out_dir.join(
-            config
-                .package_name()
-                .split(".")
-                .collect::<Vec<_>>()
-                .join("/"),
+        settings: &GenerationSettings,
+        components: &mut Vec<Component<Self::Config>>,
+    ) -> Result<()> {
+        for c in &mut *components {
+            c.config
+                .package_name
+                .get_or_insert_with(|| format!("uniffi.{}", c.ci.namespace()));
+            c.config.cdylib_name.get_or_insert_with(|| {
+                settings
+                    .cdylib
+                    .clone()
+                    .unwrap_or_else(|| format!("uniffi_{}", c.ci.namespace()))
+            });
+        }
+        // We need to update package names
+        let packages = HashMap::<String, String>::from_iter(
+            components
+                .iter()
+                .map(|c| (c.ci.crate_name().to_string(), c.config.package_name())),
         );
-        fs::create_dir_all(&java_package_out_dir)?;
-        let package_line = format!("package {};", config.package_name());
-        let split_classes = bindings_str.split(&package_line);
-        let writable = split_classes
-            .map(|file| (filename_capture.captures(file), file))
-            .filter(|(x, _)| x.is_some())
-            .map(|(captures, file)| (captures.unwrap().get(1).unwrap().as_str(), file))
-            .collect::<Vec<_>>();
-        for (filename, file) in writable {
-            fs::write(
-                format!("{}/{}.java", java_package_out_dir, filename),
-                format!("{}\n{}", package_line, file),
-            )?;
+        for c in components {
+            for (ext_crate, ext_package) in &packages {
+                if ext_crate != c.ci.crate_name()
+                    && !c.config.external_packages.contains_key(ext_crate)
+                {
+                    c.config
+                        .external_packages
+                        .insert(ext_crate.to_string(), ext_package.clone());
+                }
+            }
         }
         Ok(())
     }
 
-    fn check_library_path(&self, library_path: &Utf8Path, cdylib_name: Option<&str>) -> Result<()> {
-        if cdylib_name.is_none() {
-            bail!("Generate bindings for Java requires a cdylib, but {library_path} was given");
+    fn write_bindings(
+        &self,
+        settings: &GenerationSettings,
+        components: &[Component<Self::Config>],
+    ) -> anyhow::Result<()> {
+        let filename_capture = regex::Regex::new(
+            r"(?m)^(?:public\s)?(?:final\s)?(?:sealed\s)?(?:abstract\s)?(?:static\s)?(?:class|interface|enum|record)\s(\w+)",
+        )
+        .unwrap();
+        for Component { ci, config, .. } in components {
+            let bindings_str = gen_java::generate_bindings(config, ci)?;
+            let java_package_out_dir = &settings.out_dir.join(
+                config
+                    .package_name()
+                    .split('.')
+                    .collect::<Vec<_>>()
+                    .join("/"),
+            );
+            fs::create_dir_all(java_package_out_dir)?;
+            let package_line = format!("package {};", config.package_name());
+            let split_classes = bindings_str.split(&package_line);
+            let writable = split_classes
+                .map(|file| (filename_capture.captures(file), file))
+                .filter(|(x, _)| x.is_some())
+                .map(|(captures, file)| (captures.unwrap().get(1).unwrap().as_str(), file))
+                .collect::<Vec<_>>();
+            for (filename, file) in writable {
+                let java_file_location = java_package_out_dir.join(format!("{}.java", filename));
+                fs::write(&java_file_location, format!("{}\n{}", package_line, file))?;
+            }
+            if settings.try_format_code {
+                // TODO: if there's a CLI formatter that makes sense to use here, use it, PRs welcome
+                // seems like palantir-java-format is popular, but it's only exposed through plugins
+                // google-java-format is legacy popular and does have an executable all-deps JAR, but
+                // must be called with the full jar path including version numbers
+                // prettier sorta works but requires npm and packages be around for a java generator
+            }
         }
         Ok(())
     }

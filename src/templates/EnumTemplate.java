@@ -1,11 +1,14 @@
 package {{ config.package_name() }};
 
+import java.util.List;
+import java.util.Map;
+
 {%- if e.is_flat() %}
 {% call java::docstring(e, 0) %}
 {% match e.variant_discr_type() %}
 {% when None %}
 public enum {{ type_name }} {
-  {% for variant in e.variants() -%}
+  {%- for variant in e.variants() -%}
   {%- call java::docstring(variant, 4) %}
   {{ variant|variant_name}}{% if loop.last %};{% else %},{% endif %}
   {%- endfor %}
@@ -26,7 +29,11 @@ public enum {{ type_name }} {
 
 package {{ config.package_name() }};
 
-public class {{ e|ffi_converter_name}} implements FfiConverterRustBuffer<{{ type_name }}> {
+import java.nio.ByteBuffer;
+
+public enum {{ e|ffi_converter_name}} implements FfiConverterRustBuffer<{{ type_name }}> {
+    INSTANCE;
+
     @Override
     public {{ type_name }} read(ByteBuffer buf) {
         try {
@@ -48,14 +55,13 @@ public class {{ e|ffi_converter_name}} implements FfiConverterRustBuffer<{{ type
 }
 
 {% else %}
-{# TODO(murph): this else seems pretty correct, re-evaluate if the above should be sealed+record also #}
 
 {%- call java::docstring(e, 0) %}
 public sealed interface {{ type_name }}{% if contains_object_references %} extends Disposable {% endif %} {
   {% for variant in e.variants() -%}
   {%- call java::docstring(variant, 4) %}
   {% if !variant.has_fields() -%}
-  record {{ variant|type_name(ci)}} implements {{ type_name }} {}
+  record {{ variant|type_name(ci)}}() implements {{ type_name }} {}
   {% else -%}
   record {{ variant|type_name(ci)}}(
     {%- for field in variant.fields()  -%}
@@ -86,6 +92,8 @@ public sealed interface {{ type_name }}{% if contains_object_references %} exten
 
 package {{ config.package_name() }};
 
+import java.nio.ByteBuffer;
+
 public enum {{ e|ffi_converter_name}} implements FfiConverterRustBuffer<{{ type_name }}> {
     INSTANCE;
 
@@ -93,28 +101,27 @@ public enum {{ e|ffi_converter_name}} implements FfiConverterRustBuffer<{{ type_
     public {{ type_name }} read(ByteBuffer buf) {
       return switch (buf.getInt()) {
         {%- for variant in e.variants() %}
-        case {{ loop.index }}: enumLike = {{ type_name }}.{{variant|type_name(ci)}}{% if variant.has_fields() %}(
+        case {{ loop.index }} -> new {{ type_name }}.{{variant|type_name(ci)}}(
+          {%- if variant.has_fields() -%}
           {% for field in variant.fields() -%}
           {{ field|read_fn }}(buf){% if loop.last %}{% else %},{% endif %}
           {% endfor -%}
-        ){%- endif -%}
-          break;
+          {%- endif %});
         {%- endfor %}
-        default:
+        default ->
           throw new RuntimeException("invalid enum value, something is very wrong!");
       };
     }
 
     @Override
     public long allocationSize({{ type_name }} value) {
-        return switch value {
+        return switch (value) {
           {%- for variant in e.variants() %}
-          case {{ type_name }}.{{ variant|type_name(ci) }} -> {
-            4L
+          case {{ type_name }}.{{ variant|type_name(ci) }}({%- for field in variant.fields() %}var {% call java::field_name(field, loop.index) -%}{% if !loop.last%}, {% endif %}{% endfor %}) ->
+            (4L
             {%- for field in variant.fields() %}
-            + {{ field|allocation_size_fn }}(value.{%- call java::field_name(field, loop.index) -%})
-            {%- endfor %};
-          }
+            + {{ field|allocation_size_fn }}({%- call java::field_name(field, loop.index) -%})
+            {%- endfor %});
           {%- endfor %}
         };
     }
@@ -123,10 +130,10 @@ public enum {{ e|ffi_converter_name}} implements FfiConverterRustBuffer<{{ type_
     public void write({{ type_name }} value, ByteBuffer buf) {
       switch (value) {
         {%- for variant in e.variants() %}
-        case {{ type_name }}.{{ variant|type_name(ci) }} -> {
+        case {{ type_name }}.{{ variant|type_name(ci) }}({%- for field in variant.fields() %}var {% call java::field_name(field, loop.index) -%}{% if !loop.last%}, {% endif %}{% endfor %}) -> {
           buf.putInt({{ loop.index }});
           {%- for field in variant.fields() %}
-          {{ field|write_fn }}(value.{%- call java::field_name(field, loop.index) -%}, buf);
+          {{ field|write_fn }}({%- call java::field_name(field, loop.index) -%}, buf);
           {%- endfor %}
         }
         {%- endfor %}

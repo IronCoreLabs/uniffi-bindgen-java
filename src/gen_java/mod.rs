@@ -11,11 +11,13 @@ use std::{
 use uniffi_bindgen::{
     backend::{Literal, TemplateExpression},
     interface::*,
-    BindingsConfig,
 };
 
+mod compounds;
 mod enum_;
+mod object;
 mod primitives;
+mod record;
 mod variant;
 
 trait CodeType: Debug {
@@ -71,13 +73,12 @@ trait CodeType: Debug {
 // config options to customize the generated Java.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Config {
-    package_name: Option<String>,
-    cdylib_name: Option<String>,
-    generate_immutable_records: Option<bool>,
+    pub(super) package_name: Option<String>,
+    pub(super) cdylib_name: Option<String>,
     #[serde(default)]
     custom_types: HashMap<String, CustomTypeConfig>,
     #[serde(default)]
-    external_packages: HashMap<String, String>,
+    pub(super) external_packages: HashMap<String, String>,
     #[serde(default)]
     android: bool,
     #[serde(default)]
@@ -99,42 +100,11 @@ impl Config {
         }
     }
 
-    // TODO(murph): the lib name in rust isn't being sought out, I had to cp it over
-    // to the expected java location with the name uniffi_arithmetic. Can't tell how it's
-    // supposed to work
     pub fn cdylib_name(&self) -> String {
         if let Some(cdylib_name) = &self.cdylib_name {
             cdylib_name.clone()
         } else {
             "uniffi".into()
-        }
-    }
-
-    /// Whether to generate immutable records (`val` instead of `var`)
-    pub fn generate_immutable_records(&self) -> bool {
-        self.generate_immutable_records.unwrap_or(false)
-    }
-}
-
-impl BindingsConfig for Config {
-    fn update_from_ci(&mut self, ci: &ComponentInterface) {
-        self.package_name
-            .get_or_insert_with(|| format!("uniffi.{}", ci.namespace()));
-        self.cdylib_name
-            .get_or_insert_with(|| format!("uniffi_{}", ci.namespace()));
-    }
-
-    fn update_from_cdylib_name(&mut self, cdylib_name: &str) {
-        self.cdylib_name
-            .get_or_insert_with(|| cdylib_name.to_string());
-    }
-
-    fn update_from_dependency_configs(&mut self, config_map: HashMap<&str, &Self>) {
-        for (crate_name, config) in config_map {
-            if !self.external_packages.contains_key(crate_name) {
-                self.external_packages
-                    .insert(crate_name.to_string(), config.package_name());
-            }
         }
     }
 }
@@ -257,30 +227,6 @@ impl<'a> TypeRenderer<'a> {
             .borrow_mut()
             .insert(name.to_string())
     }
-
-    // Helper to add an import statement
-    //
-    // Call this inside your template to cause an import statement to be added at the top of the
-    // file.  Imports will be sorted and de-deuped.
-    //
-    // Returns an empty string so that it can be used inside an askama `{{ }}` block.
-    fn add_import(&self, name: &str) -> &str {
-        self.imports.borrow_mut().insert(ImportRequirement::Import {
-            name: name.to_owned(),
-        });
-        ""
-    }
-
-    // Like add_import, but arranges for `import name as as_name`
-    fn add_import_as(&self, name: &str, as_name: &str) -> &str {
-        self.imports
-            .borrow_mut()
-            .insert(ImportRequirement::ImportAs {
-                name: name.to_owned(),
-                as_name: as_name.to_owned(),
-            });
-        ""
-    }
 }
 
 #[derive(Clone)]
@@ -309,7 +255,7 @@ impl JavaCodeOracle {
 
     /// Get the idiomatic Java rendering of a function name.
     fn fn_name(&self, nm: &str) -> String {
-        format!("{}", nm.to_string().to_lower_camel_case())
+        nm.to_string().to_lower_camel_case()
     }
 
     /// Get the idiomatic Java rendering of a variable name. Java variable names can't be escaped
@@ -355,7 +301,7 @@ impl JavaCodeOracle {
             // Make callbacks function pointers nullable. This matches the semantics of a C
             // function pointer better and allows for `null` as a default value.
             // Everything is nullable in Java by default.
-            FfiType::Callback(name) => format!("{}", self.ffi_callback_name(name)),
+            FfiType::Callback(name) => self.ffi_callback_name(name).to_string(),
             _ => self.ffi_type_label_by_value(ffi_type),
         }
     }
@@ -460,16 +406,12 @@ impl AsCodeType for Type {
         //   - When adding additional types here, make sure to also add a match arm to the `Types.java` template.
         //   - To keep things manageable, let's try to limit ourselves to these 2 mega-matches
         match self {
-            Type::UInt8 => unimplemented!(), // Box::new(primitives::UInt8CodeType),
-            Type::Int8 => unimplemented!(),  //Box::new(primitives::Int8CodeType),
-            Type::UInt16 => unimplemented!(), //Box::new(primitives::UInt16CodeType),
-            Type::Int16 => unimplemented!(), //Box::new(primitives::Int16CodeType),
-            Type::UInt32 => unimplemented!(), //Box::new(primitives::UInt32CodeType),
-            Type::Int32 => unimplemented!(), //Box::new(primitives::Int32CodeType),
-            Type::UInt64 => Box::new(primitives::UInt64CodeType),
-            Type::Int64 => unimplemented!(), //Box::new(primitives::Int64CodeType),
-            Type::Float32 => unimplemented!(), //Box::new(primitives::Float32CodeType),
-            Type::Float64 => unimplemented!(), //Box::new(primitives::Float64CodeType),
+            Type::UInt8 | Type::Int8 => Box::new(primitives::Int8CodeType),
+            Type::UInt16 | Type::Int16 => Box::new(primitives::Int16CodeType),
+            Type::UInt32 | Type::Int32 => Box::new(primitives::Int32CodeType),
+            Type::UInt64 | Type::Int64 => Box::new(primitives::Int64CodeType),
+            Type::Float32 => Box::new(primitives::Float32CodeType),
+            Type::Float64 => Box::new(primitives::Float64CodeType),
             Type::Boolean => Box::new(primitives::BooleanCodeType),
             Type::String => Box::new(primitives::StringCodeType),
             Type::Bytes => unimplemented!(), //Box::new(primitives::BytesCodeType),
@@ -478,52 +420,67 @@ impl AsCodeType for Type {
             Type::Duration => unimplemented!(),  //Box::new(miscellany::DurationCodeType),
 
             Type::Enum { name, .. } => Box::new(enum_::EnumCodeType::new(name.clone())),
-            Type::Object { name, imp, .. } => unimplemented!(), //Box::new(object::ObjectCodeType::new(name, imp)),
-            Type::Record { name, .. } => unimplemented!(), //Box::new(record::RecordCodeType::new(name)),
+            Type::Object { name, imp, .. } => {
+                Box::new(object::ObjectCodeType::new(name.clone(), *imp))
+            }
+            Type::Record { name, .. } => Box::new(record::RecordCodeType::new(name.clone())),
             Type::CallbackInterface { name, .. } => {
                 unimplemented!() //Box::new(callback_interface::CallbackInterfaceCodeType::new(name))
             }
             Type::Optional { inner_type } => {
-                unimplemented!() //Box::new(compounds::OptionalCodeType::new(*inner_type))
+                Box::new(compounds::OptionalCodeType::new((**inner_type).clone()))
             }
             Type::Sequence { inner_type } => {
-                unimplemented!() //Box::new(compounds::SequenceCodeType::new(*inner_type))
+                Box::new(compounds::SequenceCodeType::new((**inner_type).clone()))
             }
             Type::Map {
                 key_type,
                 value_type,
-            } => unimplemented!(), //Box::new(compounds::MapCodeType::new(*key_type, *value_type)),
+            } => Box::new(compounds::MapCodeType::new(
+                (**key_type).clone(),
+                (**value_type).clone(),
+            )),
             Type::External { name, .. } => unimplemented!(), //Box::new(external::ExternalCodeType::new(name)),
             Type::Custom { name, .. } => unimplemented!(), //Box::new(custom::CustomCodeType::new(name)),
         }
     }
 }
-
 impl AsCodeType for &'_ Type {
     fn as_codetype(&self) -> Box<dyn CodeType> {
         (*self).as_codetype()
     }
 }
-
 impl AsCodeType for &&'_ Type {
     fn as_codetype(&self) -> Box<dyn CodeType> {
         (**self).as_codetype()
     }
 }
-
 impl AsCodeType for &'_ Field {
     fn as_codetype(&self) -> Box<dyn CodeType> {
         self.as_type().as_codetype()
     }
 }
-
 impl AsCodeType for &'_ uniffi_bindgen::interface::Enum {
     fn as_codetype(&self) -> Box<dyn CodeType> {
         self.as_type().as_codetype()
     }
 }
-
+impl AsCodeType for &'_ uniffi_bindgen::interface::Object {
+    fn as_codetype(&self) -> Box<dyn CodeType> {
+        self.as_type().as_codetype()
+    }
+}
+impl AsCodeType for &'_ Box<uniffi_meta::Type> {
+    fn as_codetype(&self) -> Box<dyn CodeType> {
+        self.as_type().as_codetype()
+    }
+}
 impl AsCodeType for &'_ Argument {
+    fn as_codetype(&self) -> Box<dyn CodeType> {
+        self.as_type().as_codetype()
+    }
+}
+impl AsCodeType for &'_ uniffi_bindgen::interface::Record {
     fn as_codetype(&self) -> Box<dyn CodeType> {
         self.as_type().as_codetype()
     }

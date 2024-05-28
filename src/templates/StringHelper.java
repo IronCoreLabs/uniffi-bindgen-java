@@ -36,7 +36,6 @@ public enum FfiConverterString implements FfiConverter<String, RustBuffer.ByValu
         // Make sure we don't have invalid UTF-16, check for lone surrogates.
         CharsetEncoder encoder = StandardCharsets.UTF_8.newEncoder();
         encoder.onMalformedInput(CodingErrorAction.REPORT);
-        // TODO(murph): the Kotlin code essentially unchecked throws I think, so converting to that
         try {
             return encoder.encode(CharBuffer.wrap(value));
         } catch (CharacterCodingException e) {
@@ -49,8 +48,6 @@ public enum FfiConverterString implements FfiConverter<String, RustBuffer.ByValu
         ByteBuffer byteBuf = toUtf8(value);
         // Ideally we'd pass these bytes to `ffi_bytebuffer_from_bytes`, but doing so would require us
         // to copy them into a JNA `Memory`. So we might as well directly copy them into a `RustBuffer`.
-        // TODO(murph): this alloc may not work as is, might need to use the `create` method on the
-        //              rustbuffer template in current uniffi main
         RustBuffer.ByValue rbuf = RustBuffer.alloc((long) byteBuf.limit());
         rbuf.asByteBuffer().put(byteBuf);
         return rbuf;

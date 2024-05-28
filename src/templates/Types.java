@@ -1,6 +1,4 @@
 {%- import "macros.java" as java %}
-// TODO(murph): need a single point to include all the wrapper-y and macro code once if possible, relying on it all
-// being in the same java package to make it available
 
 package {{ config.package_name() }};
 
@@ -19,8 +17,6 @@ public interface Disposable {
 
 package {{ config.package_name() }};
 
-// TODO(murph): in the Kotlin code this was an inline function `T.use(block: (T) -> R)`
-//              Will likely need to see where it's being called and make sure this is called instead
 public class DisposableHelper {
     public static <T extends Disposable, R> R use(T disposable, java.util.function.Function<T, R> block) {
         try {
@@ -35,6 +31,16 @@ public class DisposableHelper {
             }
         }
     }
+}
+
+package {{ config.package_name() }};
+
+public class NoPointer {
+    // Private constructor to prevent instantiation
+    private NoPointer() {}
+
+    // Static final instance of the class so it can be used in tests
+    public static final NoPointer INSTANCE = new NoPointer();
 }
 
 {%- for type_ in ci.iter_types() %}
@@ -72,48 +78,40 @@ public class DisposableHelper {
 {%- when Type::Int64 or Type::UInt64 %}
 {%- include "Int64Helper.java" %}
 
-{# TODO(murph): implement the rest of the types
-{%- when Type::Int8 %}
-{%- include "Int8Helper.kt" %}
+{%- when Type::Int8 or Type::UInt8 %}
+{%- include "Int8Helper.java" %}
 
-{%- when Type::Int16 %}
-{%- include "Int16Helper.kt" %}
+{%- when Type::Int16 or Type::UInt16 %}
+{%- include "Int16Helper.java" %}
 
-{%- when Type::Int32 %}
-{%- include "Int32Helper.kt" %}
-
-{%- when Type::UInt8 %}
-{%- include "UInt8Helper.kt" %}
-
-{%- when Type::UInt16 %}
-{%- include "UInt16Helper.kt" %}
-
-{%- when Type::UInt32 %}
-{%- include "UInt32Helper.kt" %}
+{%- when Type::Int32 or Type::UInt32 %}
+{%- include "Int32Helper.java" %}
 
 {%- when Type::Float32 %}
-{%- include "Float32Helper.kt" %}
+{%- include "Float32Helper.java" %}
 
 {%- when Type::Float64 %}
-{%- include "Float64Helper.kt" %}
+{%- include "Float64Helper.java" %}
+
+{%- when Type::Map { key_type, value_type } %}
+{% include "MapTemplate.java" %}
+
+{%- when Type::Object { module_path, name, imp } %}
+{% include "ObjectTemplate.java" %}
+
+{%- when Type::Optional { inner_type } %}
+{% include "OptionalTemplate.java" %}
+
+{%- when Type::Record { name, module_path } %}
+{% include "RecordTemplate.java" %}
+
+{%- when Type::Sequence { inner_type } %}
+{% include "SequenceTemplate.java" %}
+
+{# TODO(murph): implement the rest of the types
 
 {%- when Type::Bytes %}
 {%- include "ByteArrayHelper.kt" %}
-
-{%- when Type::Object { module_path, name, imp } %}
-{% include "ObjectTemplate.kt" %}
-
-{%- when Type::Record { name, module_path } %}
-{% include "RecordTemplate.kt" %}
-
-{%- when Type::Optional { inner_type } %}
-{% include "OptionalTemplate.kt" %}
-
-{%- when Type::Sequence { inner_type } %}
-{% include "SequenceTemplate.kt" %}
-
-{%- when Type::Map { key_type, value_type } %}
-{% include "MapTemplate.kt" %}
 
 {%- when Type::CallbackInterface { module_path, name } %}
 {% include "CallbackInterfaceTemplate.kt" %}

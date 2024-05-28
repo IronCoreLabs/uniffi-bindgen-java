@@ -166,7 +166,7 @@ version = "4.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "528131438037fd55894f62d6e9f068b8f45ac57ffa77517819645d10aed04f64"
 dependencies = [
- "heck 0.5.0",
+ "heck",
  "proc-macro2",
  "quote",
  "syn",
@@ -203,12 +203,6 @@ dependencies = [
  "plain",
  "scroll",
 ]
-
-[[package]]
-name = "heck"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
 
 [[package]]
 name = "heck"
@@ -271,12 +265,6 @@ name = "once_cell"
 version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3fdb12b2476b595f9358c5161aa467c2438859caa136dec86c26fdd2efe17b92"
-
-[[package]]
-name = "oneshot-uniffi"
-version = "0.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c548d5c78976f6955d72d0ced18c48ca07030f7a1d4024529fedd7c1c01b29c"
 
 [[package]]
 name = "paste"
@@ -502,7 +490,7 @@ checksum = "e51733f11c9c4f72aa0c160008246859e340b00807569a0da0e7a1079b27ba85"
 [[package]]
 name = "uniffi"
 version = "0.27.1"
-source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#a47508d22e4b9fe5d82b700c32d6de3bded48807"
+source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#028f34b63352ccb8d8aeaf3506126f35e93ee113"
 dependencies = [
  "anyhow",
  "uniffi_build",
@@ -520,13 +508,15 @@ dependencies = [
  "cargo_metadata 0.18.1",
  "clap",
  "glob",
- "heck 0.5.0",
+ "heck",
  "paste",
  "regex",
  "serde",
  "textwrap",
  "toml",
  "uniffi-example-arithmetic",
+ "uniffi-example-geometry",
+ "uniffi-example-rondpoint",
  "uniffi_bindgen",
  "uniffi_meta",
  "uniffi_testing",
@@ -535,16 +525,32 @@ dependencies = [
 [[package]]
 name = "uniffi-example-arithmetic"
 version = "0.22.0"
-source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#a47508d22e4b9fe5d82b700c32d6de3bded48807"
+source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#028f34b63352ccb8d8aeaf3506126f35e93ee113"
 dependencies = [
  "thiserror",
  "uniffi",
 ]
 
 [[package]]
+name = "uniffi-example-geometry"
+version = "0.22.0"
+source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#028f34b63352ccb8d8aeaf3506126f35e93ee113"
+dependencies = [
+ "uniffi",
+]
+
+[[package]]
+name = "uniffi-example-rondpoint"
+version = "0.22.0"
+source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#028f34b63352ccb8d8aeaf3506126f35e93ee113"
+dependencies = [
+ "uniffi",
+]
+
+[[package]]
 name = "uniffi_bindgen"
 version = "0.27.1"
-source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#a47508d22e4b9fe5d82b700c32d6de3bded48807"
+source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#028f34b63352ccb8d8aeaf3506126f35e93ee113"
 dependencies = [
  "anyhow",
  "askama",
@@ -553,7 +559,7 @@ dependencies = [
  "fs-err",
  "glob",
  "goblin",
- "heck 0.4.1",
+ "heck",
  "once_cell",
  "paste",
  "serde",
@@ -567,7 +573,7 @@ dependencies = [
 [[package]]
 name = "uniffi_build"
 version = "0.27.1"
-source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#a47508d22e4b9fe5d82b700c32d6de3bded48807"
+source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#028f34b63352ccb8d8aeaf3506126f35e93ee113"
 dependencies = [
  "anyhow",
  "camino",
@@ -577,7 +583,7 @@ dependencies = [
 [[package]]
 name = "uniffi_checksum_derive"
 version = "0.27.1"
-source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#a47508d22e4b9fe5d82b700c32d6de3bded48807"
+source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#028f34b63352ccb8d8aeaf3506126f35e93ee113"
 dependencies = [
  "quote",
  "syn",
@@ -586,14 +592,13 @@ dependencies = [
 [[package]]
 name = "uniffi_core"
 version = "0.27.1"
-source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#a47508d22e4b9fe5d82b700c32d6de3bded48807"
+source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#028f34b63352ccb8d8aeaf3506126f35e93ee113"
 dependencies = [
  "anyhow",
  "bytes",
  "camino",
  "log",
  "once_cell",
- "oneshot-uniffi",
  "paste",
  "static_assertions",
 ]
@@ -601,7 +606,7 @@ dependencies = [
 [[package]]
 name = "uniffi_macros"
 version = "0.27.1"
-source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#a47508d22e4b9fe5d82b700c32d6de3bded48807"
+source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#028f34b63352ccb8d8aeaf3506126f35e93ee113"
 dependencies = [
  "bincode",
  "camino",
@@ -618,7 +623,7 @@ dependencies = [
 [[package]]
 name = "uniffi_meta"
 version = "0.27.1"
-source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#a47508d22e4b9fe5d82b700c32d6de3bded48807"
+source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#028f34b63352ccb8d8aeaf3506126f35e93ee113"
 dependencies = [
  "anyhow",
  "bytes",
@@ -629,7 +634,7 @@ dependencies = [
 [[package]]
 name = "uniffi_testing"
 version = "0.27.1"
-source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#a47508d22e4b9fe5d82b700c32d6de3bded48807"
+source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#028f34b63352ccb8d8aeaf3506126f35e93ee113"
 dependencies = [
  "anyhow",
  "camino",
@@ -641,7 +646,7 @@ dependencies = [
 [[package]]
 name = "uniffi_udl"
 version = "0.27.1"
-source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#a47508d22e4b9fe5d82b700c32d6de3bded48807"
+source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#028f34b63352ccb8d8aeaf3506126f35e93ee113"
 dependencies = [
  "anyhow",
  "textwrap",
@@ -659,7 +664,7 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 [[package]]
 name = "weedle2"
 version = "5.0.0"
-source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#a47508d22e4b9fe5d82b700c32d6de3bded48807"
+source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#028f34b63352ccb8d8aeaf3506126f35e93ee113"
 dependencies = [
  "nom",
 ]
