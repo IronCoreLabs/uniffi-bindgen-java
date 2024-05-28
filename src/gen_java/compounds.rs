@@ -24,10 +24,10 @@ impl OptionalCodeType {
 
 impl CodeType for OptionalCodeType {
     fn type_label(&self, ci: &ComponentInterface) -> String {
-        format!(
-            "{}",
-            super::JavaCodeOracle.find(self.inner()).type_label(ci)
-        )
+        super::JavaCodeOracle
+            .find(self.inner())
+            .type_label(ci)
+            .to_string()
     }
 
     fn canonical_name(&self) -> String {

@@ -255,7 +255,7 @@ impl JavaCodeOracle {
 
     /// Get the idiomatic Java rendering of a function name.
     fn fn_name(&self, nm: &str) -> String {
-        format!("{}", nm.to_string().to_lower_camel_case())
+        nm.to_string().to_lower_camel_case()
     }
 
     /// Get the idiomatic Java rendering of a variable name. Java variable names can't be escaped
@@ -301,7 +301,7 @@ impl JavaCodeOracle {
             // Make callbacks function pointers nullable. This matches the semantics of a C
             // function pointer better and allows for `null` as a default value.
             // Everything is nullable in Java by default.
-            FfiType::Callback(name) => format!("{}", self.ffi_callback_name(name)),
+            FfiType::Callback(name) => self.ffi_callback_name(name).to_string(),
             _ => self.ffi_type_label_by_value(ffi_type),
         }
     }
@@ -421,7 +421,7 @@ impl AsCodeType for Type {
 
             Type::Enum { name, .. } => Box::new(enum_::EnumCodeType::new(name.clone())),
             Type::Object { name, imp, .. } => {
-                Box::new(object::ObjectCodeType::new(name.clone(), imp.clone()))
+                Box::new(object::ObjectCodeType::new(name.clone(), *imp))
             }
             Type::Record { name, .. } => Box::new(record::RecordCodeType::new(name.clone())),
             Type::CallbackInterface { name, .. } => {

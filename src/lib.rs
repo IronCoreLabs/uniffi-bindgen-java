@@ -1,10 +1,9 @@
-use anyhow::{bail, Result};
-use camino::{Utf8Path, Utf8PathBuf};
+use anyhow::Result;
+use camino::Utf8PathBuf;
 use clap::{Parser, Subcommand};
 use std::{
     collections::HashMap,
     fs::{self},
-    process::Command,
 };
 use uniffi_bindgen::{BindingGenerator, Component, ComponentInterface, GenerationSettings};
 
@@ -69,15 +68,15 @@ impl BindingGenerator for JavaBindingGenerator {
         )
         .unwrap();
         for Component { ci, config, .. } in components {
-            let bindings_str = gen_java::generate_bindings(&config, &ci)?;
+            let bindings_str = gen_java::generate_bindings(config, ci)?;
             let java_package_out_dir = &settings.out_dir.join(
                 config
                     .package_name()
-                    .split(".")
+                    .split('.')
                     .collect::<Vec<_>>()
                     .join("/"),
             );
-            fs::create_dir_all(&java_package_out_dir)?;
+            fs::create_dir_all(java_package_out_dir)?;
             let package_line = format!("package {};", config.package_name());
             let split_classes = bindings_str.split(&package_line);
             let writable = split_classes
