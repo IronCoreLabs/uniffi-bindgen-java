@@ -15,4 +15,5 @@ jobs:
       run_clippy: false
       minimum_coverage: "0"
       additional_system_deps: "libjna-java"
+      cargo_command_env_vars: "CLASSPATH=/usr/share/java/jna.jar"
     secrets: inherit
