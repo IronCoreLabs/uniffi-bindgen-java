@@ -15,6 +15,7 @@ use uniffi_bindgen::{
 
 mod compounds;
 mod enum_;
+mod miscellany;
 mod object;
 mod primitives;
 mod record;
@@ -416,8 +417,8 @@ impl AsCodeType for Type {
             Type::String => Box::new(primitives::StringCodeType),
             Type::Bytes => unimplemented!(), //Box::new(primitives::BytesCodeType),
 
-            Type::Timestamp => unimplemented!(), //Box::new(miscellany::TimestampCodeType),
-            Type::Duration => unimplemented!(),  //Box::new(miscellany::DurationCodeType),
+            Type::Timestamp => Box::new(miscellany::TimestampCodeType),
+            Type::Duration => Box::new(miscellany::DurationCodeType),
 
             Type::Enum { name, .. } => Box::new(enum_::EnumCodeType::new(name.clone())),
             Type::Object { name, imp, .. } => {
