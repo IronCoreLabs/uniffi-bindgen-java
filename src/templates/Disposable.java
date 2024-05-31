@@ -64,9 +64,6 @@ public class NoPointer {
 {%- when Type::Boolean %}
 {%- include "BooleanHelper.java" %}
 
-{%- when Type::Custom { module_path, name, builtin } %}
-{% include "CustomTypeTemplate.java" %}
-
 {%- when Type::String %}
 {%- include "StringHelper.java" %}
 
@@ -77,9 +74,6 @@ public class NoPointer {
 {%- else %}
 {% include "ErrorTemplate.java" %}
 {%- endif -%}
-
-{%- when Type::Duration %}
-{% include "DurationHelper.java" %}
 
 {%- when Type::Int64 or Type::UInt64 %}
 {%- include "Int64Helper.java" %}
@@ -114,9 +108,6 @@ public class NoPointer {
 {%- when Type::Sequence { inner_type } %}
 {% include "SequenceTemplate.java" %}
 
-{%- when Type::Timestamp %}
-{% include "TimestampHelper.java" %}
-
 {# TODO(murph): implement the rest of the types
 
 {%- when Type::Bytes %}
@@ -124,6 +115,15 @@ public class NoPointer {
 
 {%- when Type::CallbackInterface { module_path, name } %}
 {% include "CallbackInterfaceTemplate.kt" %}
+
+{%- when Type::Timestamp %}
+{% include "TimestampHelper.kt" %}
+
+{%- when Type::Duration %}
+{% include "DurationHelper.kt" %}
+
+{%- when Type::Custom { module_path, name, builtin } %}
+{% include "CustomTypeTemplate.java" %}
 
 {%- when Type::External { module_path, name, namespace, kind, tagged } %}
 {% include "ExternalTypeTemplate.kt" %}
