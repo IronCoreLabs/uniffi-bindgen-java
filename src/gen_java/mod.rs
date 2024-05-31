@@ -649,7 +649,7 @@ mod filters {
     ) -> Result<String, askama::Error> {
         let ffi_func = callable.ffi_rust_future_poll(ci);
         Ok(format!(
-            "{{ future, callback, continuation -> UniffiLib.INSTANCE.{ffi_func}(future, callback, continuation) }}"
+            "(future, callback, continuation) -> UniffiLib.INSTANCE.{ffi_func}(future, callback, continuation)"
         ))
     }
 
@@ -671,7 +671,7 @@ mod filters {
             }
             _ => call,
         };
-        Ok(format!("{{ future, continuation -> {call} }}"))
+        Ok(format!("(future, continuation) -> {call}"))
     }
 
     pub fn async_free(
@@ -679,9 +679,7 @@ mod filters {
         ci: &ComponentInterface,
     ) -> Result<String, askama::Error> {
         let ffi_func = callable.ffi_rust_future_free(ci);
-        Ok(format!(
-            "{{ future -> UniffiLib.INSTANCE.{ffi_func}(future) }}"
-        ))
+        Ok(format!("(future) -> UniffiLib.INSTANCE.{ffi_func}(future)"))
     }
 
     /// Remove the "`" chars we put around function/variable names

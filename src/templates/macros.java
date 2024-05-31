@@ -22,27 +22,25 @@
     UniffiHelpers.uniffiRustCall(
     {%- endmatch %} _status ->
     UniffiLib.INSTANCE.{{ func.ffi_func().name() }}(
+        {# TODO(murph): this `it` doesn't exist #}
         {% if func.takes_self() %}it, {% endif -%}
-        {% call arg_list_lowered(func) -%}
+        {% if func.arguments().len() != 0 %}{% call arg_list_lowered(func) -%}, {% endif -%}
         _status))
 {%- endmacro -%}
 
 {%- macro func_decl(func_decl, annotation, callable, indent) %}
     {%- call docstring(callable, indent) %}
-    {#
+    {%- if annotation != "" %}
+    @{{ annotation }}
+    {% endif %}
     {%- if callable.is_async() %}
     // TODO(murph): async
-    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
-    {{ func_decl }} suspend fun {{ callable.name()|fn_name }}(
+    {{ func_decl }} CompletableFuture<{% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|type_name(ci) }}{%- when None %}void{%- endmatch %}> {{ callable.name()|fn_name }}(
         {%- call arg_list(callable, !callable.takes_self()) -%}
-    ){% match callable.return_type() %}{% when Some with (return_type) %} : {{ return_type|type_name(ci) }}{% when None %}{%- endmatch %} {
+    ){
         return {% call call_async(callable) %};
     }
     {%- else -%}
-    #}
-    {%- if annotation != "" %}
-    @{{ annotation }}
-    {%- endif %}
     {{ func_decl }} {% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|type_name(ci) }}{%- when None %}void{%- endmatch %} {{ callable.name()|fn_name }}(
         {%- call arg_list(callable, !callable.takes_self()) -%}
     ) {% match callable.throws_type() -%}
@@ -52,11 +50,11 @@
         {%- endmatch %} {
             return {% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|lift_fn }}{%- when None %}{%- endmatch %}({% call to_ffi_call(callable) %});
     }
-    {# {% endif %} #}
+    {% endif %}
 {% endmacro %}
 
 {%- macro call_async(callable) -%}
-    UniffiHelpers.uniffiRustCallAsync(
+    UniffiAsyncHelpers.uniffiRustCallAsync(
 {%- if callable.takes_self() %}
         callWithPointer(thisPtr ->
             UniffiLib.INSTANCE.{{ callable.ffi_func().name() }}(
@@ -73,23 +71,24 @@
         // lift function
         {%- match callable.return_type() %}
         {%- when Some(return_type) %}
-        { {{ return_type|lift_fn }}(it) },
+        (it) -> {{ return_type|lift_fn }}(it),
         {%- when None %}
-        { Unit },
+        () -> null,
         {% endmatch %}
         // Error FFI converter
         {%- match callable.throws_type() %}
         {%- when Some(e) %}
-        {{ e|type_name(ci) }}.ErrorHandler,
+        {{ e|type_name(ci) }}.ErrorHandler
         {%- when None %}
-        UniffiNullRustCallStatusErrorHandler,
+        new UniffiNullRustCallStatusErrorHandler()
         {%- endmatch %}
     )
 {%- endmacro %}
 
 {%- macro arg_list_lowered(func) %}
     {%- for arg in func.arguments() %}
-        {{- arg|lower_fn }}({{ arg.name()|var_name }}),
+        {{- arg|lower_fn }}({{ arg.name()|var_name }})
+    {%- if !loop.last %}, {% endif -%}
     {%- endfor %}
 {%- endmacro -%}
 

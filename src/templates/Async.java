@@ -11,14 +11,14 @@ public final class UniffiAsyncHelpers {
     // Async return type handlers
     static final byte UNIFFI_RUST_FUTURE_POLL_READY = (byte) 0;
     static final byte UNIFFI_RUST_FUTURE_POLL_MAYBE_READY = (byte) 1;
-    static final UniffiHandleMap<CompletableFuture<Byte>> uniffiContinuationHandleMap = UniffiHandleMap<>();
+    static final UniffiHandleMap<CompletableFuture<Byte>> uniffiContinuationHandleMap = new UniffiHandleMap<>();
 
     // FFI type for Rust future continuations
     enum UniffiRustFutureContinuationCallbackImpl implements UniffiRustFutureContinuationCallback {
         INSTANCE;
 
         @Override
-        public void callback(long data, byte pollResult) {
+        public void callback(Long data, Byte pollResult) {
             uniffiContinuationHandleMap.remove(data).complete(pollResult);
         }
     }
@@ -54,7 +54,7 @@ public final class UniffiAsyncHelpers {
             } catch (Exception e) {
               future.completeExceptionally(e);
             } finally {
-              freeFunc.apply(rustFuture);
+              freeFunc.accept(rustFuture);
             }
         });
 
@@ -81,13 +81,13 @@ public final class UniffiAsyncHelpers {
         CompletableFuture<Void> job;
         
         try {
-            job = makeCall().thenAcceptAsync(handleSuccess);
+            job = makeCall.get().thenAcceptAsync(handleSuccess);
         } catch(Exception e) {
             // TODO(murph): will the job be cleaned up from the foreign future map?
-            handleError(
+            handleError.accept(
                 UniffiRustCallStatus.create(
                     UNIFFI_CALL_UNEXPECTED_ERROR,
-                    {{ Type::String.borrow()|lower_fn }}(e.toString()),
+                    {{ Type::String.borrow()|lower_fn }}(e.toString())
                 )
             );
         }
@@ -104,29 +104,27 @@ public final class UniffiAsyncHelpers {
     ){
         CompletableFuture<Void> job;
         try {
-            job = makeCall().thenAcceptAsync(handleSuccess);
+            job = makeCall.get().thenAcceptAsync(handleSuccess);
+        } catch (E e) {
+            handleError.accept(
+                UniffiRustCallStatus.create(
+                    UNIFFI_CALL_ERROR,
+                    lowerError(e)
+                )
+            );
         } catch(Exception e) {
-            if (e instanceof E) {
-                handleError(
-                    UniffiRustCallStatus.create(
-                        UNIFFI_CALL_ERROR,
-                        lowerError(e)
-                    )
-                );
-            } else {
-                handleError(
-                    UniffiRustCallStatus.create(
-                        UNIFFI_CALL_UNEXPECTED_ERROR,
-                        {{ Type::String.borrow()|lower_fn }}(e.toString())
-                    )
-                );
-            }
+            handleError.accept(
+                UniffiRustCallStatus.create(
+                    UNIFFI_CALL_UNEXPECTED_ERROR,
+                    {{ Type::String.borrow()|lower_fn }}(e.toString())
+                )
+            );
         }
         var handle = uniffiForeignFutureHandleMap.insert(job);
         return new UniffiForeignFuture(handle, uniffiForeignFutureFreeImpl);
     }
 
-    static final UniffiHandleMap<CompletableFuture<Void>> uniffiForeignFutureHandleMap = UniffiHandleMap<>();
+    static final UniffiHandleMap<CompletableFuture<Void>> uniffiForeignFutureHandleMap = new UniffiHandleMap<>();
 
     enum UniffiForeignFutureFreeImpl implements UniffiForeignFutureFree {
         INSTANCE;

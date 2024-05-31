@@ -116,6 +116,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import com.sun.jna.Pointer;
+import java.util.concurrent.CompletableFuture;
 
 {%- call java::docstring(obj, 0) %}
 {% if (is_error) %}
