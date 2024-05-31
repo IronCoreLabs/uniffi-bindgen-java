@@ -76,6 +76,7 @@ trait CodeType: Debug {
 pub struct Config {
     pub(super) package_name: Option<String>,
     pub(super) cdylib_name: Option<String>,
+    generate_immutable_records: Option<bool>,
     #[serde(default)]
     custom_types: HashMap<String, CustomTypeConfig>,
     #[serde(default)]
@@ -107,6 +108,11 @@ impl Config {
         } else {
             "uniffi".into()
         }
+    }
+
+    /// Whether to generate immutable records (`record` instead of `class`)
+    pub fn generate_immutable_records(&self) -> bool {
+        self.generate_immutable_records.unwrap_or(false)
     }
 }
 
@@ -265,9 +271,9 @@ impl JavaCodeOracle {
         nm.to_string().to_lower_camel_case()
     }
 
-    /// Get the idiomatic getter name for a variable.
-    pub fn getter_name(&self, nm: &str) -> String {
-        format!("get{}", nm.to_string().to_upper_camel_case())
+    /// Get the idiomatic setter name for a variable.
+    pub fn setter(&self, nm: &str) -> String {
+        format!("set{}", nm.to_string().to_upper_camel_case())
     }
 
     /// Get the idiomatic Java rendering of an individual enum variant.
@@ -612,9 +618,9 @@ mod filters {
         Ok(JavaCodeOracle.var_name(nm))
     }
 
-    /// Get the idiomatic Java getter method name.
-    pub fn getter_name(nm: &str) -> Result<String, askama::Error> {
-        Ok(JavaCodeOracle.getter_name(nm))
+    /// Get the idiomatic Java setter method name.
+    pub fn setter(nm: &str) -> Result<String, askama::Error> {
+        Ok(JavaCodeOracle.setter(nm))
     }
 
     /// Get a String representing the name used for an individual enum variant.
