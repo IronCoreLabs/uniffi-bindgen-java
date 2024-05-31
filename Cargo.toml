@@ -29,6 +29,7 @@ uniffi_meta = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main
 cargo_metadata = "0.18.1"
 glob = "0.3"
 uniffi-example-arithmetic = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main" }
+uniffi-example-futures = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main" }
 uniffi-example-geometry = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main" }
 uniffi-example-rondpoint = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main" }
 uniffi_testing = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main" }
