@@ -207,6 +207,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b75356056920673b02621b35afd0f7dda9306d03c79a30f5c56c44cf256e3de"
 
 [[package]]
+name = "async-trait"
+version = "0.1.80"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6fa2087f2753a7da8cc1c0dbfcf89579dd57458e36769de5ac750b4671737ca"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "atomic-waker"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1054,6 +1065,7 @@ dependencies = [
  "textwrap",
  "toml",
  "uniffi-example-arithmetic",
+ "uniffi-example-async-api-client",
  "uniffi-example-futures",
  "uniffi-example-geometry",
  "uniffi-example-rondpoint",
@@ -1068,6 +1080,18 @@ name = "uniffi-example-arithmetic"
 version = "0.22.0"
 source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#0096ee1d071f37a7356184cfa8b73bd8ca165e7c"
 dependencies = [
+ "thiserror",
+ "uniffi",
+]
+
+[[package]]
+name = "uniffi-example-async-api-client"
+version = "0.26.1"
+source = "git+https://github.com/mozilla/uniffi-rs.git?branch=main#0096ee1d071f37a7356184cfa8b73bd8ca165e7c"
+dependencies = [
+ "async-trait",
+ "serde",
+ "serde_json",
  "thiserror",
  "uniffi",
 ]

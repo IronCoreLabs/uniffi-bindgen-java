@@ -48,7 +48,7 @@ interface {{ callback.name()|ffi_callback_name }} extends Callback {
         {%- for arg in callback.arguments() -%}
         {{ arg.type_().borrow()|ffi_type_name_by_value }} {{ arg.name().borrow()|var_name }}{% if !loop.last %},{% endif %}
         {%- endfor -%}
-        {%- if callback.has_rust_call_status_arg() -%}
+        {%- if callback.has_rust_call_status_arg() -%}{% if callback.arguments().len() != 0 %},{% endif %}
         UniffiRustCallStatus uniffiCallStatus
         {%- endif -%}
     );
