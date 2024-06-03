@@ -31,7 +31,7 @@ class UniffiHandleMap<T extends Object> {
         }   
     }
 
-    // Remove an entry from the handlemap and get the Kotlin object back
+    // Remove an entry from the handlemap and get the Java object back
     public T remove(long handle) {
         var entry = map.remove(handle);
         if (entry == null) {
