@@ -4,9 +4,11 @@ package {{ config.package_name() }};
 import java.util.List;
 import java.util.Map;
 import java.nio.ByteBuffer;
+import java.util.Objects;
 
-{%- if rec.has_fields() %}
 {%- call java::docstring(rec, 0) %}
+{%- if rec.has_fields() %}
+{%- if config.generate_immutable_records() %}
 public record {{ type_name }}(
     {%- for field in rec.fields() %}
     {%- call java::docstring(field, 4) %}
@@ -21,8 +23,59 @@ public record {{ type_name }}(
     }
     {% endif %}
 }
+{% else %}
+public class {{ type_name }} {
+    {%- for field in rec.fields() %}
+    {%- call java::docstring(field, 4) %}
+    private {{ field|type_name(ci) }} {{ field.name()|var_name -}};
+    {%- endfor %}
+
+    public {{ type_name }}(
+        {%- for field in rec.fields() %}
+        {{ field|type_name(ci) }} {{ field.name()|var_name -}}
+        {% if !loop.last %}, {% endif %}
+        {%- endfor %}
+    ) {
+        {%- for field in rec.fields() %}
+        {% let field_var_name = field.name()|var_name  %}
+        this.{{ field_var_name }} = {{ field_var_name -}};
+        {%- endfor %}
+    }
+
+    {%- for field in rec.fields() %}
+    {% let field_var_name = field.name()|var_name %}
+    public {{ field|type_name(ci) }} {{ field_var_name }}() {
+        return this.{{ field_var_name }};
+    }
+    {%- endfor %}
+
+    {%- for field in rec.fields() %}
+    {%- let field_var_name = field.name()|var_name %}
+    public void {{ field.name()|setter}}({{ field|type_name(ci) }} {{ field_var_name }}) {
+        this.{{ field_var_name }} = {{ field_var_name }};
+    }
+    {%- endfor %}
+    
+    @Override
+    public boolean equals(Object other) {
+        if (other instanceof {{ type_name }}) {
+            {{ type_name }} t = ({{ type_name }}) other;
+            return ({% for field in rec.fields() %}{% let field_var_name = field.name()|var_name %}
+              {#- currently all primitive are already referenced by their boxed values in generated code, so `.equals` works for everything #}
+              ({{ field_var_name }}.equals(t.{{ field_var_name }})){% if !loop.last%} && {% endif %}
+              {% endfor %}
+            );
+        };
+        return false;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash({% for field in rec.fields() %}{{ field.name()|var_name }}{% if !loop.last%}, {% endif %}{% endfor %});
+    }
+}
+{% endif %}
 {%- else -%}
-{%- call java::docstring(rec, 0) %}
 public class {{ type_name }} {
     @Override
     public boolean equals(Object other) {
