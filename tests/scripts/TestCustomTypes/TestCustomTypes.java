@@ -14,8 +14,8 @@ public class TestCustomTypes {
     assert demo.handle().equals(new Handle(123L));
 
     // // Change some data and ensure that the round-trip works
-    // demo.setUrl(new URL("http://new.example.com/"));
-    // demo.setHandle(456L);
+    demo.setUrl(new Url(new URL("http://new.example.com/")));
+    demo.setHandle(new Handle(456L));
     assert demo.equals(CustomTypes.getCustomTypesDemo(demo));
   }
 }
