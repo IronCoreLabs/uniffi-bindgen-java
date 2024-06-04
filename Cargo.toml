@@ -32,9 +32,10 @@ uniffi_meta = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main
 [dev-dependencies]
 cargo_metadata = "0.18.1"
 glob = "0.3"
+itertools = "0.13.0"
 uniffi-example-arithmetic = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main" }
+uniffi-example-custom-types = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main" }
 uniffi-example-geometry = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main" }
 uniffi-example-rondpoint = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main" }
 uniffi-fixture-time = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main" }
-uniffi-example-custom-types = { path = "../../uniffi-rs/examples/custom-types" }
 uniffi_testing = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main" }
