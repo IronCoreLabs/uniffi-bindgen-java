@@ -50,7 +50,7 @@ public class {{ type_name }} extends Exception {
       }
 
       {% for field in variant.fields() -%}
-      public {{ field|type_name(ci) }} {{ field.name()|getter_name}}() {
+      public {{ field|type_name(ci) }} {{ field.name()|var_name}}() {
         return this.{{ field.name()|var_name }};
       }
       {% endfor %}
