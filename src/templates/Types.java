@@ -64,6 +64,9 @@ public class NoPointer {
 {%- when Type::Boolean %}
 {%- include "BooleanHelper.java" %}
 
+{%- when Type::Custom { module_path, name, builtin } %}
+{% include "CustomTypeTemplate.java" %}
+
 {%- when Type::String %}
 {%- include "StringHelper.java" %}
 
@@ -121,9 +124,6 @@ public class NoPointer {
 
 {%- when Type::CallbackInterface { module_path, name } %}
 {% include "CallbackInterfaceTemplate.kt" %}
-
-{%- when Type::Custom { module_path, name, builtin } %}
-{% include "CustomTypeTemplate.kt" %}
 
 {%- when Type::External { module_path, name, namespace, kind, tagged } %}
 {% include "ExternalTypeTemplate.kt" %}

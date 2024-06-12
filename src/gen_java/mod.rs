@@ -14,6 +14,7 @@ use uniffi_bindgen::{
 };
 
 mod compounds;
+mod custom;
 mod enum_;
 mod miscellany;
 mod object;
@@ -448,7 +449,7 @@ impl AsCodeType for Type {
                 (**value_type).clone(),
             )),
             Type::External { name, .. } => unimplemented!(), //Box::new(external::ExternalCodeType::new(name)),
-            Type::Custom { name, .. } => unimplemented!(), //Box::new(custom::CustomCodeType::new(name)),
+            Type::Custom { name, .. } => Box::new(custom::CustomCodeType::new(name.clone())),
         }
     }
 }
