@@ -33,6 +33,7 @@ uniffi-example-futures = { git = "https://github.com/mozilla/uniffi-rs.git", bra
 uniffi-example-geometry = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main" }
 uniffi-example-rondpoint = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main" }
 uniffi-fixture-time = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main" }
+uniffi-fixture-futures = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main" }
 uniffi_testing = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main" }
 
 
