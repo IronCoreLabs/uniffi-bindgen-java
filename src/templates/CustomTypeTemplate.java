@@ -1,12 +1,11 @@
 {%- let package_name = config.package_name() %}
+{%- let ffi_type_name=builtin|ffi_type|ffi_type_name_by_value %}
 {%- match config.custom_types.get(name.as_str())  %}
 {%- when None %}
-{#- Define the type using typealiases to the builtin #}
-{%- let ffi_type_name=builtin|ffi_type|ffi_type_name_by_value %}
+{#- Define a newtype record that delegates to the builtin #}
 
  package {{ package_name }};
 
-// Newtype
 public record {{ type_name }}(
   {{ builtin|type_name(ci) }} value
 ) {
@@ -46,9 +45,10 @@ public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, {{
 
 {%- when Some with (config) %}
 
-{%- let ffi_type_name=builtin|ffi_type|ffi_type_name_by_value %}
-
-{# When the config specifies a different type name, create a typealias for it #}
+{# 
+  When the config specifies a different type name, use that other type inside our newtype.
+  Lift/lower using their configured code.
+#}
 {%- match config.type_name %}
 {%- when Some(concrete_type_name) %}
 
