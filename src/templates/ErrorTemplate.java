@@ -102,8 +102,8 @@ public enum {{ e|ffi_converter_name }} implements FfiConverterRustBuffer<{{ type
             case {{ loop.index }} -> {{ type_name }}.{{ variant|error_variant_name }}({% if variant.has_fields() %}
                 {% for field in variant.fields() -%}
                 {{ field|read_fn }}(buf){% if loop.last %}{% else %},{% endif %}
-                {% endfor -%});
-            {%- endif -%})
+                {% endfor -%}
+            {%- endif -%});
             {%- endfor %}
             default -> throw RuntimeException("invalid error enum value, something is very wrong!!");
         };
@@ -119,10 +119,10 @@ public enum {{ e|ffi_converter_name }} implements FfiConverterRustBuffer<{{ type
             {%- for variant in e.variants() %}
             case {{ type_name }}.{{ variant|error_variant_name }} {% for field in variant.fields() %} {{ field.name() }}{% endfor %} -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
-                4UL
+                4L
                 {%- for field in variant.fields() %}
                 + {{ field|allocation_size_fn }}(value.{{ field.name()|var_name }})
-                {%- endfor %};
+                {%- endfor %}
             );
             {%- endfor %}
         };

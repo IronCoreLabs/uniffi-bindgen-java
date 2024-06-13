@@ -8,7 +8,6 @@ import java.util.concurrent.CompletableFuture;
 public interface {{ interface_name }} {
     {% for meth in methods.iter() -%}
     {%- call java::docstring(meth, 4) %}
-    {% if meth.is_async() -%}suspend {% endif -%}
     public {% if meth.is_async() %}CompletableFuture<{% endif %}{% match meth.return_type() -%}{%- when Some with (return_type) %}{{ return_type|type_name(ci) }}{%- else -%}void{%- endmatch %}{% if meth.is_async() %}>{% endif %} {{ meth.name()|fn_name }}({% call java::arg_list(meth, true) %});
     {% endfor %}
 }

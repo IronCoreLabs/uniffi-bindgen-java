@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use askama::Template;
 use core::fmt::Debug;
 use heck::{ToLowerCamelCase, ToShoutySnakeCase, ToUpperCamelCase};
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::Borrow,
@@ -71,6 +72,64 @@ trait CodeType: Debug {
         None
     }
 }
+
+// taken from https://docs.oracle.com/javase/specs/ section 3.9
+static KEYWORDS: Lazy<HashSet<String>> = Lazy::new(|| {
+    let kwlist = vec![
+        "abstract",
+        "continue",
+        "for",
+        "new",
+        "switch",
+        "assert",
+        "default",
+        "if",
+        "package",
+        "synchronized",
+        "boolean",
+        "do",
+        "goto",
+        "private",
+        "this",
+        "break",
+        "double",
+        "implements",
+        "protected",
+        "throw",
+        "byte",
+        "else",
+        "import",
+        "public",
+        "throws",
+        "case",
+        "enum",
+        "instanceof",
+        "return",
+        "transient",
+        "catch",
+        "extends",
+        "int",
+        "short",
+        "try",
+        "char",
+        "final",
+        "interface",
+        "static",
+        "void",
+        "class",
+        "finally",
+        "long",
+        "strictfp",
+        "volatile",
+        "const",
+        "float",
+        "native",
+        "super",
+        "while",
+        "_",
+    ];
+    HashSet::from_iter(kwlist.into_iter().map(|s| s.to_string()))
+});
 
 // config options to customize the generated Java.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -237,6 +296,14 @@ impl<'a> TypeRenderer<'a> {
     }
 }
 
+fn fixup_keyword(name: String) -> String {
+    if KEYWORDS.contains(&name) {
+        format!("_{name}")
+    } else {
+        name
+    }
+}
+
 #[derive(Clone)]
 pub struct JavaCodeOracle;
 
@@ -249,9 +316,11 @@ impl JavaCodeOracle {
     fn class_name(&self, ci: &ComponentInterface, nm: &str) -> String {
         let name = nm.to_string().to_upper_camel_case();
         // fixup errors.
-        ci.is_name_used_as_error(nm)
-            .then(|| self.convert_error_suffix(&name))
-            .unwrap_or(name)
+        fixup_keyword(
+            ci.is_name_used_as_error(nm)
+                .then(|| self.convert_error_suffix(&name))
+                .unwrap_or(name),
+        )
     }
 
     fn convert_error_suffix(&self, nm: &str) -> String {
@@ -263,18 +332,18 @@ impl JavaCodeOracle {
 
     /// Get the idiomatic Java rendering of a function name.
     fn fn_name(&self, nm: &str) -> String {
-        nm.to_string().to_lower_camel_case()
+        fixup_keyword(nm.to_string().to_lower_camel_case())
     }
 
     /// Get the idiomatic Java rendering of a variable name. Java variable names can't be escaped
     /// and reserved words will cause breakage.
     pub fn var_name(&self, nm: &str) -> String {
-        nm.to_string().to_lower_camel_case()
+        fixup_keyword(nm.to_string().to_lower_camel_case())
     }
 
     /// Get the idiomatic setter name for a variable.
     pub fn setter(&self, nm: &str) -> String {
-        format!("set{}", nm.to_string().to_upper_camel_case())
+        format!("set{}", fixup_keyword(nm.to_string().to_upper_camel_case()))
     }
 
     /// Get the idiomatic Java rendering of an individual enum variant.

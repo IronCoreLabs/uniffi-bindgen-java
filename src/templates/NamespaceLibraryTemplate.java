@@ -110,7 +110,7 @@ final class UniffiLibInitializer {
         NamespaceLibrary.uniffiCheckContractApiVersion(instance);
         NamespaceLibrary.uniffiCheckApiChecksums(instance);
         {% for fn in self.initialization_fns() -%}
-        {{ fn }}(instance)
+        {{ fn }}(instance);
         {% endfor -%}
         return instance;
     }

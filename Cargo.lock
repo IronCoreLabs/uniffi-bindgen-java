@@ -1472,6 +1472,7 @@ dependencies = [
  "glob",
  "heck",
  "itertools",
+ "once_cell",
  "paste",
  "regex",
  "serde",

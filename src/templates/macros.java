@@ -58,7 +58,7 @@
 {%- if callable.takes_self() %}
         callWithPointer(thisPtr ->
             UniffiLib.INSTANCE.{{ callable.ffi_func().name() }}(
-                thisPtr,
+                thisPtr{% if callable.arguments().len() != 0 %},{% endif %}
                 {% call arg_list_lowered(callable) %}
             )
         ),

@@ -21,6 +21,7 @@ clap = { version = "4", default-features = false, features = [
   "cargo",
 ] }
 heck = "0.5"
+once_cell = "1.19.0"
 paste = "1"
 regex = "1.10.4"
 serde = "1"
