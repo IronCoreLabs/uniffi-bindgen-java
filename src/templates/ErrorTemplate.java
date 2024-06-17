@@ -99,13 +99,13 @@ public enum {{ e|ffi_converter_name }} implements FfiConverterRustBuffer<{{ type
 
         return switch(buf.getInt()) {
             {%- for variant in e.variants() %}
-            case {{ loop.index }} -> {{ type_name }}.{{ variant|error_variant_name }}({% if variant.has_fields() %}
+            case {{ loop.index }} -> new {{ type_name }}.{{ variant|error_variant_name }}({% if variant.has_fields() %}
                 {% for field in variant.fields() -%}
                 {{ field|read_fn }}(buf){% if loop.last %}{% else %},{% endif %}
                 {% endfor -%}
             {%- endif -%});
             {%- endfor %}
-            default -> throw RuntimeException("invalid error enum value, something is very wrong!!");
+            default -> throw new RuntimeException("invalid error enum value, something is very wrong!!");
         };
         {%- endif %}
     }

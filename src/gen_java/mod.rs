@@ -14,6 +14,7 @@ use uniffi_bindgen::{
     interface::*,
 };
 
+mod callback_interface;
 mod compounds;
 mod custom;
 mod enum_;
@@ -335,10 +336,14 @@ impl JavaCodeOracle {
         fixup_keyword(nm.to_string().to_lower_camel_case())
     }
 
-    /// Get the idiomatic Java rendering of a variable name. Java variable names can't be escaped
-    /// and reserved words will cause breakage.
+    /// Get the idiomatic Java rendering of a variable name.
     pub fn var_name(&self, nm: &str) -> String {
-        fixup_keyword(nm.to_string().to_lower_camel_case())
+        fixup_keyword(self.var_name_raw(nm))
+    }
+
+    /// `var_name` without the reserved word alteration.  Useful for using in `@Structure.FieldOrder`.
+    pub fn var_name_raw(&self, nm: &str) -> String {
+        nm.to_string().to_lower_camel_case()
     }
 
     /// Get the idiomatic setter name for a variable.
@@ -501,9 +506,9 @@ impl AsCodeType for Type {
                 Box::new(object::ObjectCodeType::new(name.clone(), *imp))
             }
             Type::Record { name, .. } => Box::new(record::RecordCodeType::new(name.clone())),
-            Type::CallbackInterface { name, .. } => {
-                unimplemented!() //Box::new(callback_interface::CallbackInterfaceCodeType::new(name))
-            }
+            Type::CallbackInterface { name, .. } => Box::new(
+                callback_interface::CallbackInterfaceCodeType::new(name.clone()),
+            ),
             Type::Optional { inner_type } => {
                 Box::new(compounds::OptionalCodeType::new((**inner_type).clone()))
             }
@@ -558,6 +563,11 @@ impl AsCodeType for &'_ Argument {
     }
 }
 impl AsCodeType for &'_ uniffi_bindgen::interface::Record {
+    fn as_codetype(&self) -> Box<dyn CodeType> {
+        self.as_type().as_codetype()
+    }
+}
+impl AsCodeType for &'_ uniffi_bindgen::interface::CallbackInterface {
     fn as_codetype(&self) -> Box<dyn CodeType> {
         self.as_type().as_codetype()
     }
@@ -688,6 +698,11 @@ mod filters {
         Ok(JavaCodeOracle.var_name(nm))
     }
 
+    /// Get the idiomatic Java rendering of a variable name, without altering reserved words.
+    pub fn var_name_raw(nm: &str) -> Result<String, askama::Error> {
+        Ok(JavaCodeOracle.var_name_raw(nm))
+    }
+
     /// Get the idiomatic Java setter method name.
     pub fn setter(nm: &str) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.setter(nm))
@@ -744,6 +759,7 @@ mod filters {
             }) => {
                 // Need to convert the RustBuffer from our package to the RustBuffer of the external package
                 let suffix = JavaCodeOracle.class_name(ci, &name);
+                // TODO(murph): make this Java
                 format!("{call}.let {{ RustBuffer{suffix}.create(it.capacity.toULong(), it.len.toULong(), it.data) }}")
             }
             _ => call,

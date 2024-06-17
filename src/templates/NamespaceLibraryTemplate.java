@@ -48,7 +48,7 @@ interface {{ callback.name()|ffi_callback_name }} extends Callback {
         {%- for arg in callback.arguments() -%}
         {{ arg.type_().borrow()|ffi_type_name_by_value }} {{ arg.name().borrow()|var_name }}{% if !loop.last %},{% endif %}
         {%- endfor -%}
-        {%- if callback.has_rust_call_status_arg() -%}
+        {%- if callback.has_rust_call_status_arg() -%}{% if callback.arguments().len() != 0 %},{% endif %}
         UniffiRustCallStatus uniffiCallStatus
         {%- endif -%}
     );
@@ -59,13 +59,33 @@ package {{ config.package_name() }};
 import com.sun.jna.Structure;
 import com.sun.jna.Pointer;
 
-@Structure.FieldOrder({ {% for field in ffi_struct.fields() %}"{{ field.name()|var_name }}"{% if !loop.last %}, {% endif %}{% endfor %} })
+@Structure.FieldOrder({ {% for field in ffi_struct.fields() %}"{{ field.name()|var_name_raw }}"{% if !loop.last %}, {% endif %}{% endfor %} })
 class {{ ffi_struct.name()|ffi_struct_name }} extends Structure {
     {%- for field in ffi_struct.fields() %}
-    public {{ field.type_().borrow()|ffi_type_name_for_ffi_struct }} {{ field.name()|var_name }} = {{ field.type_()|ffi_default_value }};
+    {{ field.type_().borrow()|ffi_type_name_for_ffi_struct }} {{ field.name()|var_name }} = {{ field.type_()|ffi_default_value }};
     {%- endfor %}
 
-    public static class UniffiByValue extends {{ ffi_struct.name()|ffi_struct_name }} implements Structure.ByValue {}
+    {{ ffi_struct.name()|ffi_struct_name }}(
+        {%- for field in ffi_struct.fields() %}
+        {{ field.type_().borrow()|ffi_type_name_for_ffi_struct }} {{ field.name()|var_name }}{% if !loop.last %},{% endif %}
+        {%- endfor %}
+    ) {
+        {%- for field in ffi_struct.fields() %}
+        this.{{ field.name()|var_name }} = {{ field.name()|var_name }};
+        {%- endfor %}
+    }
+
+    public class UniffiByValue extends {{ ffi_struct.name()|ffi_struct_name }} implements Structure.ByValue {
+        UniffiByValue(
+            {%- for field in ffi_struct.fields() %}
+            {{ field.type_().borrow()|ffi_type_name_for_ffi_struct }} {{ field.name()|var_name }}{% if !loop.last %},{% endif %}
+            {%- endfor %}
+        ) {
+            super({%- for field in ffi_struct.fields() -%}
+                {{ field.name()|var_name }}{% if !loop.last %},{% endif %}        
+            {% endfor %});
+        }
+    }
 
     void uniffiSetValue({{ ffi_struct.name()|ffi_struct_name }} other) {
         {%- for field in ffi_struct.fields() %}

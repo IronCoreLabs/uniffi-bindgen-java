@@ -29,7 +29,6 @@ impl CodeType for ObjectCodeType {
     fn initialization_fn(&self) -> Option<String> {
         self.imp
             .has_callback_interface()
-            // TODO(murph): async
-            .then(|| format!("uniffiCallbackInterface{}.register", self.name))
+            .then(|| format!("UniffiCallbackInterface{}.INSTANCE.register", self.name))
     }
 }

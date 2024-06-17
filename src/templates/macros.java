@@ -20,12 +20,13 @@
     UniffiHelpers.uniffiRustCallWithError(new {{ e|type_name(ci) }}ErrorHandler(), 
     {%- else %}
     UniffiHelpers.uniffiRustCall(
-    {%- endmatch %} _status ->
-    UniffiLib.INSTANCE.{{ func.ffi_func().name() }}(
-        {# TODO(murph): this `it` doesn't exist #}
-        {% if func.takes_self() %}it, {% endif -%}
-        {% if func.arguments().len() != 0 %}{% call arg_list_lowered(func) -%}, {% endif -%}
-        _status))
+    {%- endmatch %} _status -> {
+        return UniffiLib.INSTANCE.{{ func.ffi_func().name() }}(
+            {# TODO(murph): this `it` doesn't exist #}
+            {% if func.takes_self() %}it, {% endif -%}
+            {% if func.arguments().len() != 0 %}{% call arg_list_lowered(func) -%}, {% endif -%}
+            _status);
+    })
 {%- endmacro -%}
 
 {%- macro func_decl(func_decl, annotation, callable, indent) %}
@@ -35,7 +36,7 @@
     {% endif %}
     {%- if callable.is_async() %}
     // TODO(murph): async
-    {{ func_decl }} CompletableFuture<{% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|type_name(ci) }}{%- when None %}void{%- endmatch %}> {{ callable.name()|fn_name }}(
+    {{ func_decl }} CompletableFuture<{% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|type_name(ci) }}{%- when None %}Void{%- endmatch %}> {{ callable.name()|fn_name }}(
         {%- call arg_list(callable, !callable.takes_self()) -%}
     ){
         return {% call call_async(callable) %};
@@ -73,12 +74,12 @@
         {%- when Some(return_type) %}
         (it) -> {{ return_type|lift_fn }}(it),
         {%- when None %}
-        () -> null,
-        {% endmatch %}
+        () -> {},
+        {%- endmatch %}
         // Error FFI converter
         {%- match callable.throws_type() %}
         {%- when Some(e) %}
-        {{ e|type_name(ci) }}.ErrorHandler
+        {{ e|type_name(ci) }}ErrorHandler
         {%- when None %}
         new UniffiNullRustCallStatusErrorHandler()
         {%- endmatch %}
