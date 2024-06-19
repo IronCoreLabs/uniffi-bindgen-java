@@ -135,12 +135,12 @@ public final class UniffiHelpers {
       Supplier<T> makeCall,
       Consumer<T> writeReturn,
       Function<E, RustBuffer.ByValue> lowerError,
-      Class<E> clazz
+      Class<E> errorClazz
   ) {
       try {
           writeReturn.accept(makeCall.get());
       } catch (Exception e) {
-          if (e.getClass().isAssignableFrom(clazz)) {
+          if (e.getClass().isAssignableFrom(errorClazz)) {
               @SuppressWarnings("unchecked")
               E castedE = (E) e;
               callStatus.setCode(UniffiRustCallStatus.UNIFFI_CALL_ERROR);

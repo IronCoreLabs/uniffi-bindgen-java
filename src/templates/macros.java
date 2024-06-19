@@ -35,7 +35,6 @@
     @{{ annotation }}
     {% endif %}
     {%- if callable.is_async() %}
-    // TODO(murph): async
     {{ func_decl }} CompletableFuture<{% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|type_name(ci) }}{%- when None %}Void{%- endmatch %}> {{ callable.name()|fn_name }}(
         {%- call arg_list(callable, !callable.takes_self()) -%}
     ){
@@ -79,7 +78,7 @@
         // Error FFI converter
         {%- match callable.throws_type() %}
         {%- when Some(e) %}
-        {{ e|type_name(ci) }}ErrorHandler
+        new {{ e|type_name(ci) }}ErrorHandler()
         {%- when None %}
         new UniffiNullRustCallStatusErrorHandler()
         {%- endmatch %}

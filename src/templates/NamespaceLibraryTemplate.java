@@ -75,7 +75,7 @@ class {{ ffi_struct.name()|ffi_struct_name }} extends Structure {
         {%- endfor %}
     }
 
-    public class UniffiByValue extends {{ ffi_struct.name()|ffi_struct_name }} implements Structure.ByValue {
+    public static class UniffiByValue extends {{ ffi_struct.name()|ffi_struct_name }} implements Structure.ByValue {
         UniffiByValue(
             {%- for field in ffi_struct.fields() %}
             {{ field.type_().borrow()|ffi_type_name_for_ffi_struct }} {{ field.name()|var_name }}{% if !loop.last %},{% endif %}

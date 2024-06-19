@@ -145,9 +145,7 @@ public final class UniffiAsyncHelpers {
         Class<E> errorClass
     ){
         CompletableFuture<Void> job;
-        try {
-            job = makeCall.get().thenAcceptAsync(handleSuccess);
-        } catch (Exception e) {
+        job = makeCall.get().thenAcceptAsync(handleSuccess).exceptionally((Throwable e) -> {
             if (errorClass.isInstance(e)) {
                 handleError.accept(
                     UniffiRustCallStatus.create(
@@ -163,8 +161,8 @@ public final class UniffiAsyncHelpers {
                     )
                 );
             }
-        }
-        var handle = uniffiForeignFutureHandleMap.insert(job);
+        });
+        long handle = uniffiForeignFutureHandleMap.insert(job);
         return new UniffiForeignFuture(handle, UniffiForeignFutureFreeImpl.INSTANCE);
     }
 

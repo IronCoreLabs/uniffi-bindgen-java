@@ -735,6 +735,28 @@ mod filters {
         Ok(JavaCodeOracle.object_names(ci, obj))
     }
 
+    pub fn async_inner_return_type(
+        callable: impl Callable,
+        ci: &ComponentInterface,
+    ) -> Result<String, askama::Error> {
+        callable
+            .return_type()
+            .map_or(Ok("Void".to_string()), |t| type_name(&t, ci))
+    }
+
+    pub fn async_return_type(
+        callable: impl Callable,
+        ci: &ComponentInterface,
+    ) -> Result<String, askama::Error> {
+        let is_async = callable.is_async();
+        let inner_type = async_inner_return_type(callable, ci)?;
+        if is_async {
+            Ok(format!("CompletableFuture<{inner_type}>"))
+        } else {
+            Ok(inner_type)
+        }
+    }
+
     pub fn async_poll(
         callable: impl Callable,
         ci: &ComponentInterface,

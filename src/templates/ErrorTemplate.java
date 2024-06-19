@@ -117,14 +117,15 @@ public enum {{ e|ffi_converter_name }} implements FfiConverterRustBuffer<{{ type
         {%- else %}
         return switch(value) {
             {%- for variant in e.variants() %}
-            case {{ type_name }}.{{ variant|error_variant_name }} {% for field in variant.fields() %} {{ field.name() }}{% endfor %} -> (
+            case {{ type_name }}.{{ variant|error_variant_name }} x -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4L
                 {%- for field in variant.fields() %}
-                + {{ field|allocation_size_fn }}(value.{{ field.name()|var_name }})
+                + {{ field|allocation_size_fn }}(x.{{ field.name()|var_name }})
                 {%- endfor %}
             );
             {%- endfor %}
+            default -> throw new RuntimeException("invalid error enum value, something is very wrong!!");
         };
         {%- endif %}
     }
@@ -133,10 +134,10 @@ public enum {{ e|ffi_converter_name }} implements FfiConverterRustBuffer<{{ type
     public void write({{ type_name }} value, ByteBuffer buf) {
         switch(value) {
             {%- for variant in e.variants() %}
-            case {{ type_name }}.{{ variant|error_variant_name }} message {% for field in variant.fields() %} {{ field.name() }}{% endfor %} -> {
+            case {{ type_name }}.{{ variant|error_variant_name }} x -> {
                 buf.putInt({{ loop.index }});
                 {%- for field in variant.fields() %}
-                {{ field|write_fn }}(value.{{ field.name()|var_name }}, buf);
+                {{ field|write_fn }}(x.{{ field.name()|var_name }}, buf);
                 {%- endfor %}
             }
             {%- endfor %}

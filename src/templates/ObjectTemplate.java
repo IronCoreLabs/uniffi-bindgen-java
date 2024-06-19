@@ -257,4 +257,79 @@ public class {{ impl_class_name }} implements Disposable, AutoCloseable, {{ inte
   {%-         else %}
   {%-     endmatch %}
   {%- endfor %}
+
+  {% if !obj.alternate_constructors().is_empty() -%}
+  {% for cons in obj.alternate_constructors() -%}
+  {% call java::func_decl("public static", "", cons, 4) %}
+  {% endfor %}
+  {% endif %}
+}
+
+{% if is_error %}
+package {{ config.package_name() }};
+
+public class {{ impl_class_name }}ErrorHandler implements UniffiRustCallStatusErrorHandler<{{ impl_class_name }}> {
+    @Override
+    public {{ impl_class_name }} lift(RustBuffer.ByValue error_buf) {
+        // Due to some mismatches in the ffi converter mechanisms, errors are a RustBuffer.
+        var bb = error_buf.asByteBuffer();
+        if (bb == null) {
+            throw new InternalException("?");
+        }
+        return {{ ffi_converter_name }}.read(bb);
+    }
+}
+{% endif %}
+
+{%- if obj.has_callback_interface() %}
+{%- let vtable = obj.vtable().expect("trait interface should have a vtable") %}
+{%- let vtable_methods = obj.vtable_methods() %}
+{%- let ffi_init_callback = obj.ffi_init_callback() %}
+{% include "CallbackInterfaceImpl.java" %}
+{%- endif %}
+
+package {{ config.package_name() }};
+
+import java.nio.ByteBuffer;
+import com.sun.jna.Pointer;
+
+public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, Pointer> {
+    INSTANCE;
+
+    {%- if obj.has_callback_interface() %}
+    public final UniffiHandleMap<{{ type_name }}> handleMap = new UniffiHandleMap<>();
+    {%- endif %}
+
+    @Override
+    public Pointer lower({{ type_name }} value) {
+        {%- if obj.has_callback_interface() %}
+        return new Pointer(handleMap.insert(value));
+        {%- else %}
+        return value.uniffiClonePointer();
+        {%- endif %}
+    }
+
+    @Override
+    public {{ type_name }} lift(Pointer value) {
+        return new {{ impl_class_name }}(value);
+    }
+
+    @Override
+    public {{ type_name }} read(ByteBuffer buf) {
+        // The Rust code always writes pointers as 8 bytes, and will
+        // fail to compile if they don't fit.
+        return lift(new Pointer(buf.getLong()));
+    }
+
+    @Override
+    public long allocationSize({{ type_name }} value) {
+      return 8L;
+    }
+
+    @Override
+    public void write({{ type_name }} value, ByteBuffer buf) {
+        // The Rust code always expects pointers written as 8 bytes,
+        // and will fail to compile if they don't fit.
+        buf.putLong(Pointer.nativeValue(lower(value)));
+    }
 }
