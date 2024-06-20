@@ -17,7 +17,7 @@ public class {{ trait_impl }} {
     {{ trait_impl }}() {
         vtable = new {{ vtable|ffi_type_name_by_value }}(
             {%- for (ffi_callback, meth) in vtable_methods.iter() %}
-            {{ meth.name()|var_name() }}.INSTANCE,
+            {{ meth.name()|var_name }}.INSTANCE,
             {%- endfor %}
             UniffiFree.INSTANCE
         );
@@ -30,9 +30,10 @@ public class {{ trait_impl }} {
     }        
 
     {%- for (ffi_callback, meth) in vtable_methods.iter() %}
-    public static class {{ meth.name()|var_name }} implements {{ ffi_callback.name()|ffi_callback_name }} {
-        public static final {{ meth.name()|var_name }} INSTANCE = new {{ meth.name()|var_name }}();
-        private {{ meth.name()|var_name }}() {}
+    {% let inner_method_class = meth.name()|var_name %}
+    public static class {{ inner_method_class }} implements {{ ffi_callback.name()|ffi_callback_name }} {
+        public static final {{ inner_method_class }} INSTANCE = new {{ inner_method_class }}();
+        private {{ inner_method_class }}() {}
 
         @Override
         public {% match ffi_callback.return_type() %}{% when Some(return_type) %}{{ return_type|ffi_type_name_by_value }}{% when None %}void{% endmatch %} callback(
