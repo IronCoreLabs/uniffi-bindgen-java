@@ -317,5 +317,5 @@ fixture_tests! {
     // (test_callbacks, "uniffi-fixture-callbacks", "scripts/test_callbacks.java"),
     // (test_external_types, "uniffi-fixture-ext-types", "scripts/test_imported_types.java"),
     (test_futures, "uniffi-example-futures", "scripts/TestFutures.java"),
-    (test_futures_fixtures, "uniffi-fixture-futures", "scripts/TestFixtureFutures.java"),
+    (test_futures_fixtures, "uniffi-fixture-futures", "scripts/TestFixtureFutures/TestFixtureFutures.java"),
 }

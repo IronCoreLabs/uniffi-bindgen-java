@@ -118,20 +118,21 @@ public final class UniffiAsyncHelpers {
     ){
         // Uniffi does its best to support structured concurrency across the FFI.
         // If the Rust future is dropped, `uniffiForeignFutureFreeImpl` is called, which will cancel the Java completable future if it's still running.
-        CompletableFuture<Void> job;
-        
-        try {
-            job = makeCall.get().thenAcceptAsync(handleSuccess);
-        } catch(Exception e) {
-            // TODO(murph): will the job be cleaned up from the foreign future map?
-            handleError.accept(
-                UniffiRustCallStatus.create(
-                    UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR,
-                    {{ Type::String.borrow()|lower_fn }}(e.toString())
-                )
-            );
-        }
+        CompletableFuture<Void> job = CompletableFuture.supplyAsync(() -> {
+            try {
+                makeCall.get().thenAcceptAsync(handleSuccess);
+            } catch(Exception e) {
+                // TODO(murph): will the job be cleaned up from the foreign future map?
+                handleError.accept(
+                    UniffiRustCallStatus.create(
+                        UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR,
+                        {{ Type::String.borrow()|lower_fn }}(e.toString())
+                    )
+                );
+            }
 
+            return null;
+        });
         long handle = uniffiForeignFutureHandleMap.insert(job);
         return new UniffiForeignFuture(handle, UniffiForeignFutureFreeImpl.INSTANCE);
     }
@@ -144,23 +145,29 @@ public final class UniffiAsyncHelpers {
         Function<E, RustBuffer.ByValue> lowerError,
         Class<E> errorClass
     ){
-        CompletableFuture<Void> job;
-        job = makeCall.get().thenAcceptAsync(handleSuccess).exceptionally((Throwable e) -> {
-            if (errorClass.isInstance(e)) {
-                handleError.accept(
-                    UniffiRustCallStatus.create(
-                        UniffiRustCallStatus.UNIFFI_CALL_ERROR,
-                        lowerError.apply((E) e)
-                    )
-                );
-            } else {
-                handleError.accept(
-                    UniffiRustCallStatus.create(
-                        UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR,
-                        {{ Type::String.borrow()|lower_fn }}(e.toString())
-                    )
-                );
+        CompletableFuture<Void> job = CompletableFuture.supplyAsync(() -> {
+            try {
+                makeCall.get().thenAcceptAsync(handleSuccess);
+            } catch (Throwable e) {
+                if (errorClass.isInstance(e)) {
+                    handleError.accept(
+                        UniffiRustCallStatus.create(
+                            UniffiRustCallStatus.UNIFFI_CALL_ERROR,
+                            lowerError.apply((E) e)
+                        )
+                    );
+                } else {
+                    handleError.accept(
+                        UniffiRustCallStatus.create(
+                            UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR,
+                            // TODO(murph): why is this giving an error about a lambda?
+                            {{ Type::String.borrow()|lower_fn }}(e.getMessage())
+                        )
+                    );
+                }
             }
+
+            return null;
         });
         long handle = uniffiForeignFutureHandleMap.insert(job);
         return new UniffiForeignFuture(handle, UniffiForeignFutureFreeImpl.INSTANCE);

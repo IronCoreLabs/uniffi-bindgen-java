@@ -15,7 +15,11 @@ public class TestFixtureFutures {
 
   public static void main(String[] args) throws Exception {
     var time = measureTimeMillis(() -> {
+      try {
         Futures.alwaysReady().get();
+      } catch (Exception e) {
+        assert false : "always_ready future should not be interrupted.";   
+      }
     });
 
     System.out.println(MessageFormat.format("init time: {0}ms", time));
