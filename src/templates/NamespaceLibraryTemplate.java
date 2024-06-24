@@ -44,9 +44,9 @@ package {{ config.package_name() }};
 import com.sun.jna.Callback;
 
 interface {{ callback.name()|ffi_callback_name }} extends Callback {
-    {%- match callback.return_type() %}{%- when Some(return_type) %}{{ return_type|ffi_type_name_by_value }}{%- when None %}void{%- endmatch %} callback(
+    public {% match callback.return_type() %}{%- when Some(return_type) %}{{ return_type|ffi_type_name_for_ffi_struct }}{%- when None %}void{%- endmatch %} callback(
         {%- for arg in callback.arguments() -%}
-        {{ arg.type_().borrow()|ffi_type_name_by_value }} {{ arg.name().borrow()|var_name }}{% if !loop.last %},{% endif %}
+        {{ arg.type_().borrow()|ffi_type_name_for_ffi_struct }} {{ arg.name().borrow()|var_name }}{% if !loop.last %},{% endif %}
         {%- endfor -%}
         {%- if callback.has_rust_call_status_arg() -%}{% if callback.arguments().len() != 0 %},{% endif %}
         UniffiRustCallStatus uniffiCallStatus
@@ -65,7 +65,12 @@ public class {{ ffi_struct.name()|ffi_struct_name }} extends Structure {
     public {{ field.type_().borrow()|ffi_type_name_for_ffi_struct }} {{ field.name()|var_name }} = {{ field.type_()|ffi_default_value }};
     {%- endfor %}
 
-    {{ ffi_struct.name()|ffi_struct_name }}(
+    // no-arg constructor required so JNA can instantiate and reflect
+    public {{ ffi_struct.name()|ffi_struct_name}}() {
+        super();
+    }
+    
+    public {{ ffi_struct.name()|ffi_struct_name }}(
         {%- for field in ffi_struct.fields() %}
         {{ field.type_().borrow()|ffi_type_name_for_ffi_struct }} {{ field.name()|var_name }}{% if !loop.last %},{% endif %}
         {%- endfor %}
@@ -76,7 +81,7 @@ public class {{ ffi_struct.name()|ffi_struct_name }} extends Structure {
     }
 
     public static class UniffiByValue extends {{ ffi_struct.name()|ffi_struct_name }} implements Structure.ByValue {
-        UniffiByValue(
+        public UniffiByValue(
             {%- for field in ffi_struct.fields() %}
             {{ field.type_().borrow()|ffi_type_name_for_ffi_struct }} {{ field.name()|var_name }}{% if !loop.last %},{% endif %}
             {%- endfor %}

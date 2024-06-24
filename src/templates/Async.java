@@ -20,7 +20,7 @@ public final class UniffiAsyncHelpers {
         INSTANCE;
 
         @Override
-        public void callback(Long data, Byte pollResult) {
+        public void callback(long data, byte pollResult) {
             uniffiContinuationHandleMap.remove(data).complete(pollResult);
         }
     }
@@ -177,7 +177,7 @@ public final class UniffiAsyncHelpers {
         INSTANCE;
 
         @Override
-        public void callback(Long handle) {
+        public void callback(long handle) {
             var job = uniffiForeignFutureHandleMap.remove(handle);
             job.cancel(true);
         }

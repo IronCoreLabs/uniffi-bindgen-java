@@ -366,10 +366,11 @@ impl JavaCodeOracle {
         format!("Uniffi{}", nm.to_upper_camel_case())
     }
 
-    fn ffi_type_label_by_value(&self, ffi_type: &FfiType) -> String {
+    fn ffi_type_label_by_value(&self, ffi_type: &FfiType, prefer_primitive: bool) -> String {
         match ffi_type {
             FfiType::RustBuffer(_) => format!("{}.ByValue", self.ffi_type_label(ffi_type)),
             FfiType::Struct(name) => format!("{}.UniffiByValue", self.ffi_struct_name(name)),
+            _ if prefer_primitive => self.ffi_type_primitive(ffi_type),
             _ => self.ffi_type_label(ffi_type),
         }
     }
@@ -384,7 +385,7 @@ impl JavaCodeOracle {
             // function pointer better and allows for `null` as a default value.
             // Everything is nullable in Java by default.
             FfiType::Callback(name) => self.ffi_callback_name(name).to_string(),
-            _ => self.ffi_type_label_by_value(ffi_type),
+            _ => self.ffi_type_label_by_value(ffi_type, true),
         }
     }
 
@@ -411,12 +412,11 @@ impl JavaCodeOracle {
 
     fn ffi_type_label_by_reference(&self, ffi_type: &FfiType) -> String {
         match ffi_type {
+            FfiType::Int32 | FfiType::UInt32 => "IntByReference".to_string(),
             FfiType::Int8
             | FfiType::UInt8
             | FfiType::Int16
             | FfiType::UInt16
-            | FfiType::Int32
-            | FfiType::UInt32
             | FfiType::Int64
             | FfiType::UInt64
             | FfiType::Float32
@@ -440,6 +440,32 @@ impl JavaCodeOracle {
             FfiType::Float32 => "Float".to_string(),
             FfiType::Float64 => "Double".to_string(),
             FfiType::Handle => "Long".to_string(),
+            FfiType::RustArcPtr(_) => "Pointer".to_string(),
+            FfiType::RustBuffer(maybe_suffix) => {
+                format!("RustBuffer{}", maybe_suffix.as_deref().unwrap_or_default())
+            }
+            FfiType::RustCallStatus => "UniffiRustCallStatus.ByValue".to_string(),
+            FfiType::ForeignBytes => "ForeignBytes.ByValue".to_string(),
+            FfiType::Callback(name) => self.ffi_callback_name(name),
+            FfiType::Struct(name) => self.ffi_struct_name(name),
+            FfiType::Reference(inner) => self.ffi_type_label_by_reference(inner),
+            FfiType::VoidPointer => "Pointer".to_string(),
+        }
+    }
+
+    /// Generate primitive types where possible. Useful where we don't need or can't have boxed versions (ie structs).
+    fn ffi_type_primitive(&self, ffi_type: &FfiType) -> String {
+        match ffi_type {
+            // Note that unsigned integers in Java are currently experimental, but java.nio.ByteBuffer does not
+            // support them yet. Thus, we use the signed variants to represent both signed and unsigned
+            // types from the component API.
+            FfiType::Int8 | FfiType::UInt8 => "byte".to_string(),
+            FfiType::Int16 | FfiType::UInt16 => "short".to_string(),
+            FfiType::Int32 | FfiType::UInt32 => "int".to_string(),
+            FfiType::Int64 | FfiType::UInt64 => "long".to_string(),
+            FfiType::Float32 => "float".to_string(),
+            FfiType::Float64 => "double".to_string(),
+            FfiType::Handle => "long".to_string(),
             FfiType::RustArcPtr(_) => "Pointer".to_string(),
             FfiType::RustBuffer(maybe_suffix) => {
                 format!("RustBuffer{}", maybe_suffix.as_deref().unwrap_or_default())
@@ -672,7 +698,7 @@ mod filters {
     }
 
     pub fn ffi_type_name_by_value(type_: &FfiType) -> Result<String, askama::Error> {
-        Ok(JavaCodeOracle.ffi_type_label_by_value(type_))
+        Ok(JavaCodeOracle.ffi_type_label_by_value(type_, false))
     }
 
     pub fn ffi_type_name_for_ffi_struct(type_: &FfiType) -> Result<String, askama::Error> {

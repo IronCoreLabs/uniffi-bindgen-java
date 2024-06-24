@@ -2,26 +2,45 @@ import uniffi.fixture.futures.*;
 
 import java.text.MessageFormat;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 
 public class TestFixtureFutures {
-  public static long measureTimeMillis(Runnable r) {
+  public interface FutureRunnable {
+    void run() throws InterruptedException, ExecutionException;
+  }
+  public static long measureTimeMillis(FutureRunnable r) {
     long startTimeNanos = System.nanoTime();
-    r.run();
+    try {
+      r.run();
+    } catch (Exception e) {
+      assert false : "unexpected future run failure";
+    }
     long endTimeNanos = System.nanoTime();
     long elapsedTimeMillis = (endTimeNanos - startTimeNanos) / 1_000_000;
 
     return elapsedTimeMillis;
   }
 
+  public static void assertReturnsImmediately(long actualTime, String testName) {
+    assert actualTime <= 4 : MessageFormat.format("unexpected {0} time: {1}ms", testName, actualTime);
+  }
+  
+  public static void assertApproximateTime(long actualTime, int expectedTime, String testName) {
+    assert actualTime >= expectedTime && actualTime <= expectedTime + 100 : MessageFormat.format("unexpected {0} time: {1}ms", testName, actualTime);
+  }
+
   public static void main(String[] args) throws Exception {
     var time = measureTimeMillis(() -> {
-      try {
         Futures.alwaysReady().get();
-      } catch (Exception e) {
-        assert false : "always_ready future should not be interrupted.";   
-      }
     });
 
     System.out.println(MessageFormat.format("init time: {0}ms", time));
+
+    time = measureTimeMillis(() -> {
+        var result = Futures.alwaysReady().get();
+        assert result.equals(true);
+    });
+
+    assertReturnsImmediately(time, "always_ready");
   }
 }

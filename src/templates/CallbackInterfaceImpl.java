@@ -36,9 +36,9 @@ public class {{ trait_impl }} {
         private {{ inner_method_class }}() {}
 
         @Override
-        public {% match ffi_callback.return_type() %}{% when Some(return_type) %}{{ return_type|ffi_type_name_by_value }}{% when None %}void{% endmatch %} callback(
+        public {% match ffi_callback.return_type() %}{% when Some(return_type) %}{{ return_type|ffi_type_name_for_ffi_struct }}{% when None %}void{% endmatch %} callback(
             {%- for arg in ffi_callback.arguments() -%}
-            {{ arg.type_().borrow()|ffi_type_name_by_value }} {{ arg.name().borrow()|var_name }}{% if !loop.last || (loop.last && ffi_callback.has_rust_call_status_arg()) %},{% endif %}
+            {{ arg.type_().borrow()|ffi_type_name_for_ffi_struct }} {{ arg.name().borrow()|var_name }}{% if !loop.last || (loop.last && ffi_callback.has_rust_call_status_arg()) %},{% endif %}
             {%- endfor -%}
             {%- if ffi_callback.has_rust_call_status_arg() -%}
             UniffiRustCallStatus uniffiCallStatus
@@ -126,7 +126,7 @@ public class {{ trait_impl }} {
         private UniffiFree() {}
 
         @Override
-        public void callback(Long handle) {
+        public void callback(long handle) {
             {{ ffi_converter_name }}.INSTANCE.handleMap.remove(handle);
         }
     }
