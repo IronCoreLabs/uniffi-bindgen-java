@@ -45,12 +45,13 @@ public class {{ trait_impl }} {
             {%- endif -%}
         ) {
             var uniffiObj = {{ ffi_converter_name }}.INSTANCE.handleMap.get(uniffiHandle);
-            Supplier<{{ meth|async_return_type(ci) }}> makeCall = () -> 
-                uniffiObj.{{ meth.name()|fn_name() }}(
+            Supplier<{% if meth.is_async() %}{{ meth|async_return_type(ci) }}{% else %}{% match meth.return_type() %}{% when Some(return_type)%}{{ return_type|type_name(ci)}}{% when None %}Void{% endmatch %}{% endif %}> makeCall = () -> {
+                return uniffiObj.{{ meth.name()|fn_name() }}(
                     {%- for arg in meth.arguments() %}
                     {{ arg|lift_fn }}({{ arg.name()|var_name }}){% if !loop.last %},{% endif %}
                     {%- endfor %}
                 );
+            };
             {%- if !meth.is_async() %}
             {%- match meth.return_type() %}
             {%- when Some(return_type) %}
@@ -84,7 +85,7 @@ public class {{ trait_impl }} {
                 uniffiResult.write();
                 uniffiFutureCallback.callback(uniffiCallbackData, uniffiResult);
             };
-            Consumer<UniffiRustCallStatus.ByValue> uniffiHandleError = (callStatus) ->
+            Consumer<UniffiRustCallStatus.ByValue> uniffiHandleError = (callStatus) -> {
                 uniffiFutureCallback.callback(
                     uniffiCallbackData,
                     new {{ meth.foreign_future_ffi_result_struct().name()|ffi_struct_name }}.UniffiByValue(
@@ -96,6 +97,7 @@ public class {{ trait_impl }} {
                         callStatus
                     )
                 );
+            };
 
             uniffiOutReturn.uniffiSetValue(
                 {%- match meth.throws_type() %}

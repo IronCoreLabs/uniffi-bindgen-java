@@ -120,8 +120,12 @@ public final class UniffiAsyncHelpers {
         // If the Rust future is dropped, `uniffiForeignFutureFreeImpl` is called, which will cancel the Java completable future if it's still running.
         CompletableFuture<Void> job = CompletableFuture.supplyAsync(() -> {
             try {
-                makeCall.get().thenAcceptAsync(handleSuccess);
-            } catch(Exception e) {
+                makeCall.get().thenAcceptAsync(handleSuccess).get();
+            } catch(Throwable e) {
+                // if we errored inside the CF, it's that error we want to send to Rust, not the wrapper
+                if (e instanceof ExecutionException) {
+                    e = e.getCause();
+                }
                 // TODO(murph): will the job be cleaned up from the foreign future map?
                 handleError.accept(
                     UniffiRustCallStatus.create(
@@ -147,8 +151,12 @@ public final class UniffiAsyncHelpers {
     ){
         CompletableFuture<Void> job = CompletableFuture.supplyAsync(() -> {
             try {
-                makeCall.get().thenAcceptAsync(handleSuccess);
+                makeCall.get().thenAcceptAsync(handleSuccess).get();
             } catch (Throwable e) {
+                // if we errored inside the CF, it's that error we want to send to Rust, not the wrapper
+                if (e instanceof ExecutionException) {
+                    e = e.getCause();
+                }
                 if (errorClass.isInstance(e)) {
                     handleError.accept(
                         UniffiRustCallStatus.create(
@@ -160,7 +168,6 @@ public final class UniffiAsyncHelpers {
                     handleError.accept(
                         UniffiRustCallStatus.create(
                             UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR,
-                            // TODO(murph): why is this giving an error about a lambda?
                             {{ Type::String.borrow()|lower_fn }}(e.getMessage())
                         )
                     );

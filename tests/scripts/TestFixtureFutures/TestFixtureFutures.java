@@ -191,15 +191,18 @@ public class TestFixtureFutures {
 
           @Override
           public CompletableFuture<Integer> tryFromString(Integer delayMs, String value) {
-            return TestFixtureFutures.delay((long)delayMs).thenApply(nothing -> {
+            return TestFixtureFutures.delay((long)delayMs).thenCompose((Void nothing) -> {
+              CompletableFuture<Integer> f = new CompletableFuture<>();
               if (value.equals("force-unexpected-exception")) {
-                throw new RuntimeException("UnexpectedException");
+                f.completeExceptionally(new RuntimeException("UnexpectedException"));
+                return f;
               }
               try {
-                return Integer.parseInt(value);
+                f.complete(Integer.parseInt(value));
               } catch (NumberFormatException e) {
-                throw new RuntimeException(new ParserException.NotAnInt());
+                f.completeExceptionally(new ParserException.NotAnInt());
               }
+              return f;
             });
           }
 
@@ -218,7 +221,9 @@ public class TestFixtureFutures {
                 completedDelays += 1;
               });
             } catch (NumberFormatException e) {
-              throw new RuntimeException(new ParserException.NotAnInt());
+              var f = new CompletableFuture<Void>();
+              f.completeExceptionally(new ParserException.NotAnInt());
+              return f;
             }
           }
         }
@@ -226,40 +231,36 @@ public class TestFixtureFutures {
         var traitObj = new JavaAsyncParser();
         assert Futures.asStringUsingTrait(traitObj, 1, 42).get().equals("42");
         assert Futures.tryFromStringUsingTrait(traitObj, 1, "42").get().equals(42);
-        // TODO(murph): seems like the second call of any method on the trait object hangs forever
-        // try {
-        //   Futures.tryFromStringUsingTrait(traitObj, 1, "fourty-two").get();
-        //   throw new RuntimeException("Expected last statement to throw");
-        // } catch (RuntimeException e) {
-        //   if (e.getCause() instanceof ParserException.NotAnInt) {
-        //     // Expected
-        //   } else {
-        //     throw e;
-        //   }
-        // }
-        // try {
-        //   Futures.tryFromStringUsingTrait(traitObj, 1, "force-unexpected-exception").get();
-        //   throw new RuntimeException("Expected last statement to throw");
-        // } catch (RuntimeException e) {
-        //   if (e.getCause() instanceof ParserException.UnexpectedException) {
-        //      // Expected
-        //   } else {
-        //      throw e;
-        //   }
-        // }
+        try {
+          Futures.tryFromStringUsingTrait(traitObj, 1, "fourty-two").get();
+          throw new RuntimeException("Expected last statement to throw");
+        } catch (ExecutionException e) {
+          if (e.getCause() instanceof ParserException.NotAnInt) {
+              // Expected
+          } else {
+            throw e;
+          }
+        }
+        try {
+          Futures.tryFromStringUsingTrait(traitObj, 1, "force-unexpected-exception").get();
+          throw new RuntimeException("Expected last statement to throw");
+        } catch (ExecutionException e) {
+          if (e.getCause() instanceof ParserException.UnexpectedException) {
+             // Expected
+          } else {
+             throw e;
+          }
+        }
         Futures.delayUsingTrait(traitObj, 1).get();
         try {
           Futures.tryDelayUsingTrait(traitObj, "one").get();
           throw new RuntimeException("Expected last statement to throw");
-        } catch (RuntimeException e) {
-          // TODO(murph): this fails... the Rust side is calling this Java trait implementation. The Java throws a `RuntimeException`, which the Rust side isn't expecting. Even though it contains a `ParserException` on the Java side, Rust doesn't know that and can't lift it out, so it throws an `UnexpectedException` from the Rust side.
-          // if (e.getCause() instanceof ParserException.NotAnInt) {
-             // Expected
-          // } else {
-             // throw e;
-          // }
-        } catch (Exception e) {
-          // TODO(murph): this is the thing that shouldn't actually be getting thrown, see above
+        } catch (ExecutionException e) {
+          if (e.getCause() instanceof ParserException.NotAnInt) {
+            // Expected
+          } else {
+            throw e;
+          }
         }
         var completedDelaysBefore = traitObj.completedDelays;
         Futures.cancelDelayUsingTrait(traitObj, 10).get();
