@@ -18,3 +18,5 @@ Note that if you need additional toml entries for your test, you can put a `unif
 ## TODO
 
 - optimize when primitive and boxed types are used. Boxed types are needed when referencing builtins as generics, but we could be using primitives in a lot more function arguments, return types, and value definitions.
+- methods that return `Result<T, SpecificError>` in Rust should probably `T blah() throws SpecificException` in Java. As is, there are a lot of hard to handle `RuntimeException`s and the same thing needs to be done when someone implements a trait in Java (see `TestFixtureFutures.java`).
+- our use case almost certainly requires older Java versions than 20/21. Investigate supporting back to Java 8, which seems to be the common library target.
