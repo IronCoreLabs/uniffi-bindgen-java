@@ -149,16 +149,16 @@ public final class UniffiAsyncHelpers {
         Consumer<UniffiRustCallStatus.ByValue> handleError 
     ){
         // Uniffi does its best to support structured concurrency across the FFI.
-        // If the Rust future is dropped, `uniffiForeignFutureFreeImpl` is called, which will cancel the Java completable future if it's still running.
+        // If the Rust future is dropped, `UniffiForeignFutureFreeImpl` is called, which will cancel the Java completable future if it's still running.
+        var foreignFutureCf = makeCall.get();
         CompletableFuture<Void> job = CompletableFuture.supplyAsync(() -> {
             try {
-                makeCall.get().thenAcceptAsync(handleSuccess).get();
+                foreignFutureCf.thenAcceptAsync(handleSuccess).get();
             } catch(Throwable e) {
                 // if we errored inside the CF, it's that error we want to send to Rust, not the wrapper
                 if (e instanceof ExecutionException) {
                     e = e.getCause();
                 }
-                // TODO(murph): will the job be cleaned up from the foreign future map?
                 handleError.accept(
                     UniffiRustCallStatus.create(
                         UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR,
@@ -169,8 +169,9 @@ public final class UniffiAsyncHelpers {
 
             return null;
         });
+        
         long handle = uniffiForeignFutureHandleMap.insert(job);
-        return new UniffiForeignFuture(handle, UniffiForeignFutureFreeImpl.INSTANCE);
+        return new UniffiForeignFuture(handle, new UniffiForeignFutureFreeImpl(foreignFutureCf));
     }
 
     @SuppressWarnings("unchecked")
@@ -181,9 +182,11 @@ public final class UniffiAsyncHelpers {
         Function<E, RustBuffer.ByValue> lowerError,
         Class<E> errorClass
     ){
+        var foreignFutureCf = makeCall.get();
         CompletableFuture<Void> job = CompletableFuture.supplyAsync(() -> {
             try {
-                makeCall.get().thenAcceptAsync(handleSuccess).get();
+                foreignFutureCf.thenAcceptAsync(handleSuccess).get();
+                // makeCall.get().thenAcceptAsync(handleSuccess);
             } catch (Throwable e) {
                 // if we errored inside the CF, it's that error we want to send to Rust, not the wrapper
                 if (e instanceof ExecutionException) {
@@ -208,17 +211,25 @@ public final class UniffiAsyncHelpers {
 
             return null;
         });
+
         long handle = uniffiForeignFutureHandleMap.insert(job);
-        return new UniffiForeignFuture(handle, UniffiForeignFutureFreeImpl.INSTANCE);
+        return new UniffiForeignFuture(handle, new UniffiForeignFutureFreeImpl(foreignFutureCf));
     }
 
-    enum UniffiForeignFutureFreeImpl implements UniffiForeignFutureFree {
-        INSTANCE;
+    static class UniffiForeignFutureFreeImpl<T> implements UniffiForeignFutureFree {
+        private CompletableFuture<T> childFuture;
+
+        UniffiForeignFutureFreeImpl(CompletableFuture<T> childFuture) {
+            this.childFuture = childFuture;
+        }
 
         @Override
         public void callback(long handle) {
             var job = uniffiForeignFutureHandleMap.remove(handle);
-            job.cancel(true);
+            var successfullyCancelled = job.cancel(true);
+            if(successfullyCancelled) {
+                childFuture.cancel(true);
+            }
         }
     }
 

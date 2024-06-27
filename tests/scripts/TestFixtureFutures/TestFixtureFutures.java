@@ -267,8 +267,7 @@ public class TestFixtureFutures {
         // sleep long enough so that the `delay()` call would finish if it wasn't cancelled.
         TestFixtureFutures.delay(100).get();
         // If the task was cancelled, then completedDelays won't have increased
-        // TODO(murph): fails, trait cancellation doesn't seem to work, likely related to the second call of anything not working
-        // assert traitObj.completedDelays == completedDelaysBefore;
+        assert traitObj.completedDelays == completedDelaysBefore;
 
         // Test that all handles were cleaned up
         assert UniffiAsyncHelpers.uniffiForeignFutureHandleCount() == 0;
