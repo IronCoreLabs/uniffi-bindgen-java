@@ -29,6 +29,25 @@ public final class UniffiAsyncHelpers {
     interface PollingFunction {
         void apply(long rustFuture, UniffiRustFutureContinuationCallback callback, long continuationHandle);
     }
+    
+    static class UniffiFreeingFuture<T> extends CompletableFuture<T> {
+        private Consumer<Long> freeFunc;
+        private long rustFuture;
+
+        public UniffiFreeingFuture(long rustFuture, Consumer<Long> freeFunc) {
+            this.freeFunc = freeFunc;
+            this.rustFuture = rustFuture;
+        }
+
+        @Override
+        public boolean cancel(boolean ignored) {
+            boolean cancelled = super.cancel(ignored);
+            if (cancelled) {
+                freeFunc.accept(rustFuture);
+            }
+            return cancelled;
+        }
+    } 
 
     static <T, F, E extends Exception> CompletableFuture<T> uniffiRustCallAsync(
         long rustFuture,
@@ -38,7 +57,7 @@ public final class UniffiAsyncHelpers {
         Function<F, T> liftFunc,
         UniffiRustCallStatusErrorHandler<E> errorHandler
     ){
-        CompletableFuture<T> future = new CompletableFuture<>();
+        CompletableFuture<T> future = new UniffiFreeingFuture<>(rustFuture, freeFunc);
 
         // TODO(murph): may want an overload that takes an executor to run on.
         //   That may be misleading though, since the actual work is running in Rust's
@@ -50,21 +69,26 @@ public final class UniffiAsyncHelpers {
                     pollResult = poll(rustFuture, pollFunc);
                 } while (pollResult != UNIFFI_RUST_FUTURE_POLL_READY);
 
-                F result = UniffiHelpers.uniffiRustCallWithError(errorHandler, status -> {
-                    return completeFunc.apply(rustFuture, status);
-                });
-                T liftedResult = liftFunc.apply(result);
-                future.complete(liftedResult);
+                if (!future.isCancelled()) {
+                    F result = UniffiHelpers.uniffiRustCallWithError(errorHandler, status -> {
+                        return completeFunc.apply(rustFuture, status);
+                    });
+                    T liftedResult = liftFunc.apply(result);
+                    future.complete(liftedResult);
+                }
             } catch (Exception e) {
-              future.completeExceptionally(e);
+                future.completeExceptionally(e);
             } finally {
-              freeFunc.accept(rustFuture);
+                if (!future.isCancelled()) {
+                    freeFunc.accept(rustFuture);
+                }
             }
         });
 
         return future;
     }
 
+    
     // overload specifically for Void cases, which aren't within the Object type.
     // This is only necessary because of Java's lack of proper Any/Unit
     static <E extends Exception> CompletableFuture<Void> uniffiRustCallAsync(
@@ -75,8 +99,8 @@ public final class UniffiAsyncHelpers {
         Runnable liftFunc,
         UniffiRustCallStatusErrorHandler<E> errorHandler
     ){
-        CompletableFuture<Void> future = new CompletableFuture<>();
-
+        CompletableFuture<Void> future = new UniffiFreeingFuture<>(rustFuture, freeFunc);
+        
         // TODO(murph): may want an overload that takes an executor to run on.
         //   That may be misleading though, since the actual work is running in Rust's
         //   async runtime, not the provided executor.
@@ -87,14 +111,22 @@ public final class UniffiAsyncHelpers {
                     pollResult = poll(rustFuture, pollFunc);
                 } while (pollResult != UNIFFI_RUST_FUTURE_POLL_READY);
 
-                UniffiHelpers.uniffiRustCallWithError(errorHandler, status -> {
-                    completeFunc.accept(rustFuture, status);
-                });
-                future.complete(null);
-            } catch (Exception e) {
-              future.completeExceptionally(e);
+                // even though the outer `future` has been cancelled, this inner `runAsync` is unsupervised
+                // and keeps running. When it calls `completeFunc` after being cancelled, it's status is `SUCCESS`
+                // (assuming the Rust part succeeded), and the function being called can lead to a core dump.
+                // Guarding with `isCancelled` here makes everything work, but feels like a cludge.
+                if (!future.isCancelled()) {
+                    UniffiHelpers.uniffiRustCallWithError(errorHandler, status -> {
+                        completeFunc.accept(rustFuture, status);
+                    });
+                    future.complete(null);
+                }
+            } catch (Throwable e) {
+                future.completeExceptionally(e);
             } finally {
-              freeFunc.accept(rustFuture);
+                if (!future.isCancelled()) {
+                    freeFunc.accept(rustFuture);
+                }
             }
         });
 

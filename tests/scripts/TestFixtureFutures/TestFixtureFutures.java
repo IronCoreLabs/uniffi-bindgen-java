@@ -378,22 +378,21 @@ public class TestFixtureFutures {
       }
 
       // Test a future that uses a lock and that is cancelled.
-      // TODO(murph): this also fails, also lends to cancelling not working
       {
-        // var time = measureTimeMillis(() -> {
-        //   var job = Futures.useSharedResource(new SharedResourceOptions((short)5000, (short)100));
+        var time = measureTimeMillis(() -> {
+          var job = Futures.useSharedResource(new SharedResourceOptions((short)5000, (short)100));
 
-        //   // Wait some time to ensure the task has locked the shared resource
-        //   TestFixtureFutures.delay(50).get();
-        //   // Cancel the job before the shared resource has been released.
-        //   job.cancel(true);
+          // Wait some time to ensure the task has locked the shared resource
+          TestFixtureFutures.delay(50).get();
+          // Cancel the job before the shared resource has been released.
+          job.cancel(true);
 
-        //   // Try accessing the shared resource again. The initial task should release the shared resource before the
-        //   // timeout expires.
-        //   Futures.useSharedResource(new SharedResourceOptions((short)0, (short)1000)).get();
-        // });
+          // Try accessing the shared resource again. The initial task should release the shared resource before the
+          // timeout expires.
+          Futures.useSharedResource(new SharedResourceOptions((short)0, (short)1000)).get();
+        });
 
-        // System.out.println(MessageFormat.format("useSharedResource: {0}ms", time));
+        System.out.println(MessageFormat.format("useSharedResource: {0}ms", time));
       }
 
       // Test a future that uses a lock and that is not cancelled.
