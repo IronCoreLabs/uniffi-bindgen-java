@@ -22,7 +22,6 @@
     UniffiHelpers.uniffiRustCall(
     {%- endmatch %} _status -> {
         return UniffiLib.INSTANCE.{{ func.ffi_func().name() }}(
-            {# TODO(murph): this `it` doesn't exist #}
             {% if func.takes_self() %}it, {% endif -%}
             {% if func.arguments().len() != 0 %}{% call arg_list_lowered(func) -%}, {% endif -%}
             _status);

@@ -270,6 +270,7 @@ public class TestFixtureFutures {
         assert traitObj.completedDelays == completedDelaysBefore;
 
         // Test that all handles were cleaned up
+        // TODO(murph): this is inconsistently failing in CI
         assert UniffiAsyncHelpers.uniffiForeignFutureHandleCount() == 0;
       }
 

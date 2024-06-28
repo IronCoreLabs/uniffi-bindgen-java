@@ -59,9 +59,6 @@ public final class UniffiAsyncHelpers {
     ){
         CompletableFuture<T> future = new UniffiFreeingFuture<>(rustFuture, freeFunc);
 
-        // TODO(murph): may want an overload that takes an executor to run on.
-        //   That may be misleading though, since the actual work is running in Rust's
-        //   async runtime, not the provided executor.
         CompletableFuture.runAsync(() -> {
             try {
                 byte pollResult;
@@ -186,7 +183,6 @@ public final class UniffiAsyncHelpers {
         CompletableFuture<Void> job = CompletableFuture.supplyAsync(() -> {
             try {
                 foreignFutureCf.thenAcceptAsync(handleSuccess).get();
-                // makeCall.get().thenAcceptAsync(handleSuccess);
             } catch (Throwable e) {
                 // if we errored inside the CF, it's that error we want to send to Rust, not the wrapper
                 if (e instanceof ExecutionException) {
