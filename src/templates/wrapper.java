@@ -27,11 +27,9 @@
 {% include "NamespaceLibraryTemplate.java" %}
 
 // Async support
-{#
 {%- if ci.has_async_fns() %}
 {% include "Async.java" %}
 {%- endif %}
-#}
 
 // Public interface members begin here.
 {{ type_helper_code }}
@@ -40,6 +38,7 @@ package {{ config.package_name() }};
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 {%- call java::docstring_value(ci.namespace_docstring(), 0) %}
 public class {{ ci.namespace()|class_name(ci) }} {

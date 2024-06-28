@@ -84,6 +84,13 @@ public final class UniffiHelpers {
       uniffiCheckCallStatus(errorHandler, status);
       return returnValue;
   }
+  
+  // Overload to call a rust function that returns a Result<()>, because void is outside Java's type system.  Pass in the Error class companion that corresponds to the Err
+  static <E extends Exception> void uniffiRustCallWithError(UniffiRustCallStatusErrorHandler<E> errorHandler, Consumer<UniffiRustCallStatus> callback) throws E {
+      UniffiRustCallStatus status = new UniffiRustCallStatus();
+      callback.accept(status);
+      uniffiCheckCallStatus(errorHandler, status);
+  }
 
   // Check UniffiRustCallStatus and throw an error if the call wasn't successful
   static <E extends Exception> void uniffiCheckCallStatus(UniffiRustCallStatusErrorHandler<E> errorHandler, UniffiRustCallStatus status) throws E {
@@ -128,12 +135,12 @@ public final class UniffiHelpers {
       Supplier<T> makeCall,
       Consumer<T> writeReturn,
       Function<E, RustBuffer.ByValue> lowerError,
-      Class<E> clazz
+      Class<E> errorClazz
   ) {
       try {
           writeReturn.accept(makeCall.get());
       } catch (Exception e) {
-          if (e.getClass().isAssignableFrom(clazz)) {
+          if (e.getClass().isAssignableFrom(errorClazz)) {
               @SuppressWarnings("unchecked")
               E castedE = (E) e;
               callStatus.setCode(UniffiRustCallStatus.UNIFFI_CALL_ERROR);
