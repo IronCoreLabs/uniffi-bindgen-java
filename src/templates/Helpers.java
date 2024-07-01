@@ -72,6 +72,7 @@ package {{ config.package_name() }};
 import java.util.function.Function;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.concurrent.Callable;
 
 // Helpers for calling Rust
 // In practice we usually need to be synchronized to call this safely, so it doesn't
@@ -116,6 +117,11 @@ public final class UniffiHelpers {
   static <U> U uniffiRustCall(Function<UniffiRustCallStatus, U> callback) {
       return uniffiRustCallWithError(new UniffiNullRustCallStatusErrorHandler(), callback);
   }
+  
+  // Call a rust function that returns nothing
+  static void uniffiRustCall(Consumer<UniffiRustCallStatus> callback) {
+      uniffiRustCallWithError(new UniffiNullRustCallStatusErrorHandler(), callback);
+  }
 
   static <T> void uniffiTraitInterfaceCall(
       UniffiRustCallStatus callStatus,
@@ -132,13 +138,13 @@ public final class UniffiHelpers {
 
   static <T, E extends Throwable> void uniffiTraitInterfaceCallWithError(
       UniffiRustCallStatus callStatus,
-      Supplier<T> makeCall,
+      Callable<T> makeCall,
       Consumer<T> writeReturn,
       Function<E, RustBuffer.ByValue> lowerError,
       Class<E> errorClazz
   ) {
       try {
-          writeReturn.accept(makeCall.get());
+          writeReturn.accept(makeCall.call());
       } catch (Exception e) {
           if (e.getClass().isAssignableFrom(errorClazz)) {
               @SuppressWarnings("unchecked")

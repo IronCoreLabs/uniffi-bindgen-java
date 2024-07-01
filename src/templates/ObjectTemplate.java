@@ -115,6 +115,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
+import java.util.function.Consumer;
 import com.sun.jna.Pointer;
 import java.util.concurrent.CompletableFuture;
 
@@ -151,7 +152,7 @@ public class {{ impl_class_name }} implements Disposable, AutoCloseable, {{ inte
   // Note no constructor generated for this object as it is async.
   {%-     else %}
   {%- call java::docstring(cons, 4) %}
-  public {{ impl_class_name }}({% call java::arg_list(cons, true) -%}){
+  public {{ impl_class_name }}({% call java::arg_list(cons, true) -%}) {% match cons.throws_type() %}{% when Some(throwable) %}throws {{ throwable|type_name(ci) }}{% else %}{% endmatch %}{
     this((Pointer){%- call java::to_ffi_call(cons) -%});
   }
   {%-     endif %}
@@ -197,6 +198,13 @@ public class {{ impl_class_name }} implements Disposable, AutoCloseable, {{ inte
           cleanable.clean();
       }
     }
+  }
+
+  public void callWithPointer(Consumer<Pointer> block) {
+    callWithPointer((Pointer p) -> {
+      block.accept(p);
+      return (Void)null;
+    });
   }
 
   private class UniffiCleanAction implements Runnable {

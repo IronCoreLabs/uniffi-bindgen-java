@@ -75,7 +75,7 @@ public class {{ type_name }} {
     }
 }
 {% endif %}
-{%- else -%}
+{%- else %}
 public class {{ type_name }} {
     @Override
     public boolean equals(Object other) {

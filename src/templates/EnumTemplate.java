@@ -61,33 +61,30 @@ public sealed interface {{ type_name }}{% if contains_object_references %} exten
   {% for variant in e.variants() -%}
   {%- call java::docstring(variant, 4) %}
   {% if !variant.has_fields() -%}
-  record {{ variant|type_name(ci)}}() implements {{ type_name }} {}
+  record {{ variant|type_name(ci)}}() implements {{ type_name }} {
+    {% if contains_object_references %}
+    @Override
+    public void destroy() {
+      // Nothing to destroy
+    }
+    {% endif %}
+  }
   {% else -%}
   record {{ variant|type_name(ci)}}(
     {%- for field in variant.fields()  -%}
     {%- call java::docstring(field, 8) %}
     {{ field|type_name(ci)}} {% call java::field_name(field, loop.index) %}{% if loop.last %}{% else %}, {% endif %}
     {%- endfor -%}
-  ) implements {{ type_name }} {}
+  ) implements {{ type_name }} {
+    {% if contains_object_references %}
+    @Override
+    public void destroy() {
+      {% call java::destroy_fields(variant) %}
+    }
+    {% endif %}
+  }
   {%- endif %}
   {% endfor %}
-
-  {% if contains_object_references %}
-  @Override
-  void destroy() {
-    switch (this) {
-      {%- for variant in e.variants() %}
-      case {{ type_name }}.{{ variant|type_name(ci)}} -> {
-        {%- if variant.has_fields() %}
-        {% call java::destroy_fields(variant) %}
-        {% else -%}
-        // Nothing to destroy
-        {%- endif %}
-      }
-      {%- endfor %}
-    }
-  }
-  {% endif %}
 }
 
 package {{ config.package_name() }};

@@ -64,8 +64,9 @@ public class NoPointer {
 {%- when Type::Boolean %}
 {%- include "BooleanHelper.java" %}
 
-// TODO(murph): this isn't being called for the futures fixture test. Why? Tried a random Canary class instead of the
-// full thing but it doesn't show up. The method interfaces and other things _are_ being generated.
+{%- when Type::Bytes %}
+{%- include "ByteArrayHelper.java" %}
+
 {%- when Type::CallbackInterface { module_path, name } %}
 {% include "CallbackInterfaceTemplate.java" %}
 
@@ -123,9 +124,6 @@ public class NoPointer {
 {% include "TimestampHelper.java" %}
 
 {# TODO(murph): implement the rest of the types
-
-{%- when Type::Bytes %}
-{%- include "ByteArrayHelper.kt" %}
 
 {%- when Type::External { module_path, name, namespace, kind, tagged } %}
 {% include "ExternalTypeTemplate.kt" %}
