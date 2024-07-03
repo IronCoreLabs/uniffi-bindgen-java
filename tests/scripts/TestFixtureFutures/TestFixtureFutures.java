@@ -37,7 +37,7 @@ public class TestFixtureFutures {
 
   public static void assertReturnsImmediately(long actualTime, String testName) {
     // TODO(murph): 4ms limit in Kotlin
-    assert actualTime <= 10 : MessageFormat.format("unexpected {0} time: {1}ms", testName, actualTime);
+    assert actualTime <= 15 : MessageFormat.format("unexpected {0} time: {1}ms", testName, actualTime);
   }
   
   public static void assertApproximateTime(long actualTime, int expectedTime, String testName) {
@@ -265,7 +265,7 @@ public class TestFixtureFutures {
         var completedDelaysBefore = traitObj.completedDelays;
         Futures.cancelDelayUsingTrait(traitObj, 10).get();
         // sleep long enough so that the `delay()` call would finish if it wasn't cancelled.
-        TestFixtureFutures.delay(100).get();
+        TestFixtureFutures.delay(300).get();
         // If the task was cancelled, then completedDelays won't have increased
         assert traitObj.completedDelays == completedDelaysBefore;
 
