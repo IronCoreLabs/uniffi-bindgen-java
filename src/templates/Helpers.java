@@ -131,6 +131,7 @@ public final class UniffiHelpers {
       try {
           writeReturn.accept(makeCall.get());
       } catch (Exception e) {
+          System.out.println(e);
           callStatus.setCode(UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR);
           callStatus.setErrorBuf({{ Type::String.borrow()|lower_fn }}(e.toString()));
       }
@@ -146,7 +147,7 @@ public final class UniffiHelpers {
       try {
           writeReturn.accept(makeCall.call());
       } catch (Exception e) {
-          if (e.getClass().isAssignableFrom(errorClazz)) {
+          if (errorClazz.isAssignableFrom(e.getClass())) {
               @SuppressWarnings("unchecked")
               E castedE = (E) e;
               callStatus.setCode(UniffiRustCallStatus.UNIFFI_CALL_ERROR);

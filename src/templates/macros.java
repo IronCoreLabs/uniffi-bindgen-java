@@ -55,8 +55,21 @@
         throws {{ throwable|type_name(ci) }}
         {%-     else -%}
         {%- endmatch %} {
-            // TODO(murph): to_ffi_call(callable) may throw `callable.throws_type` in a RuntimeException because Java closures can't throw. Now that we're in something declaring that throw we should re-catch it and throw it again
-            {% match callable.return_type() -%}{%- when Some with (return_type) -%}return {{ return_type|lift_fn }}({% call to_ffi_call(callable) %}){%- when None %}{% call to_ffi_call(callable) %}{%- endmatch %};
+            try {
+                {% match callable.return_type() -%}{%- when Some with (return_type) -%}return {{ return_type|lift_fn }}({% call to_ffi_call(callable) %}){%- when None %}{% call to_ffi_call(callable) %}{%- endmatch %};
+            } catch (RuntimeException _e) {
+                {% match callable.throws_type() %}
+                {% when Some(throwable) %}
+                if ({{ throwable|type_name(ci) }}.class.isInstance(_e.getCause())) {
+                    throw ({{ throwable|type_name(ci) }})_e.getCause();
+                }
+                {% else %}
+                {% endmatch %}
+                if (InternalException.class.isInstance(_e.getCause())) {
+                    throw (InternalException)_e.getCause();
+                }
+                throw _e;
+            }
     }
     {% endif %}
 {% endmacro %}
@@ -134,7 +147,7 @@ v{{- field_num -}}
 
 // Macro for destroying fields
 {%- macro destroy_fields(member) %}
-    Disposable.destroy(
+    AutoCloseableHelper.close(
     {%- for field in member.fields() %}
         this.{{ field.name()|var_name }}{%- if !loop.last %}, {% endif -%}
     {% endfor -%});

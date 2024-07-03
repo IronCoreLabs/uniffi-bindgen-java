@@ -57,14 +57,14 @@ public enum {{ e|ffi_converter_name}} implements FfiConverterRustBuffer<{{ type_
 {% else %}
 
 {%- call java::docstring(e, 0) %}
-public sealed interface {{ type_name }}{% if contains_object_references %} extends Disposable {% endif %} {
+public sealed interface {{ type_name }}{% if contains_object_references %} extends AutoCloseable {% endif %} {
   {% for variant in e.variants() -%}
   {%- call java::docstring(variant, 4) %}
   {% if !variant.has_fields() -%}
   record {{ variant|type_name(ci)}}() implements {{ type_name }} {
     {% if contains_object_references %}
     @Override
-    public void destroy() {
+    public void close() {
       // Nothing to destroy
     }
     {% endif %}
@@ -78,7 +78,7 @@ public sealed interface {{ type_name }}{% if contains_object_references %} exten
   ) implements {{ type_name }} {
     {% if contains_object_references %}
     @Override
-    public void destroy() {
+    public void close() {
       {% call java::destroy_fields(variant) %}
     }
     {% endif %}

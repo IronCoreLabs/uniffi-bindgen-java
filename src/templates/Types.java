@@ -4,32 +4,18 @@ package {{ config.package_name() }};
 
 import java.util.stream.Stream;
 
-public interface Disposable {
-    void destroy();
-
-    static void destroy(Object... args) {
+public interface AutoCloseableHelper {
+    static void close(Object... args) {
         Stream.of(args)
-              .filter(Disposable.class::isInstance)
-              .map(Disposable.class::cast)
-              .forEach(disposable -> {disposable.destroy();} );
-    }
-}
-
-package {{ config.package_name() }};
-
-public class DisposableHelper {
-    public static <T extends Disposable, R> R use(T disposable, java.util.function.Function<T, R> block) {
-        try {
-            return block.apply(disposable);
-        } finally {
-            try {
-                if (disposable != null) {
-                    disposable.destroy();
-                }
-            } catch (Throwable ignored) {
-                // swallow
-            }
-        }
+              .filter(AutoCloseable.class::isInstance)
+              .map(AutoCloseable.class::cast)
+              .forEach(closable -> { 
+                  try {
+                      closable.close();
+                  } catch (Exception e) {
+                      throw new RuntimeException(e);
+                  }
+              });
     }
 }
 

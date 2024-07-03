@@ -13,7 +13,7 @@ public class {{ type_name }} extends Exception {
 
     {% for variant in e.variants() -%}
     {%- call java::docstring(variant, 4) %}
-    public static class {{ variant|error_variant_name }} extends {{ type_name }}{% if contains_object_references %}, Disposable{% endif %} {
+    public static class {{ variant|error_variant_name }} extends {{ type_name }}{% if contains_object_references %}, AutoCloseable{% endif %} {
       public {{ variant|error_variant_name }}(String message) {
         super(message);
       }
@@ -32,7 +32,7 @@ public class {{ type_name }} extends Exception {
     {% for variant in e.variants() -%}
     {%- call java::docstring(variant, 4) %}
     {%- let variant_name = variant|error_variant_name %}
-    public static class {{ variant_name }} extends {{ type_name }}{% if contains_object_references %}, Disposable{% endif %} {
+    public static class {{ variant_name }} extends {{ type_name }}{% if contains_object_references %}, AutoCloseable{% endif %} {
       {% for field in variant.fields() -%}
       {%- call java::docstring(field, 8) %}
       {{ field|type_name(ci) }} {{ field.name()|var_name }};
@@ -43,7 +43,15 @@ public class {{ type_name }} extends Exception {
         {{ field|type_name(ci)}} {{ field.name()|var_name }}{% if loop.last %}{% else %}, {% endif %}
         {%- endfor -%}
       ) {
-        super("{%- for field in variant.fields() %}{{ field.name()|var_name|unquote }}=${ {{field.name()|var_name }} }{% if !loop.last %}, {% endif %}{% endfor %}");
+        super(new StringBuilder()
+        {%- for field in variant.fields() %}
+        .append("{{ field.name()|var_name|unquote }}=")
+        .append({{field.name()|var_name }})
+        {% if !loop.last %}
+        .append(", ")
+        {% endif %}
+        {% endfor %}
+        .toString());
         {% for field in variant.fields() -%}
         this.{{ field.name()|var_name }} = {{ field.name()|var_name }};
         {% endfor -%}   
@@ -57,7 +65,7 @@ public class {{ type_name }} extends Exception {
       
       {% if contains_object_references %}
       @Override
-      void destroy() {
+      void close() {
         {%- if variant.has_fields() %}
         {% call java::destroy_fields(variant) %}
         {% else -%}

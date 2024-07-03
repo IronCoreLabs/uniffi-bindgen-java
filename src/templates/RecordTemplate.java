@@ -15,16 +15,16 @@ public record {{ type_name }}(
     {{ field|type_name(ci) }} {{ field.name()|var_name -}}
     {% if !loop.last %}, {% endif %}
     {%- endfor %}
-) {% if contains_object_references %} implements Disposable {% endif %}{
-{% if contains_object_references %}
+) {% if contains_object_references %}implements AutoCloseable {% endif %}{
+    {% if contains_object_references %}
     @Override
-    public void destroy() {
+    public void close() {
         {% call java::destroy_fields(rec) %}
     }
     {% endif %}
 }
 {% else %}
-public class {{ type_name }} {
+public class {{ type_name }} {% if contains_object_references %}implements AutoCloseable {% endif %}{
     {%- for field in rec.fields() %}
     {%- call java::docstring(field, 4) %}
     private {{ field|type_name(ci) }} {{ field.name()|var_name -}};
@@ -55,6 +55,13 @@ public class {{ type_name }} {
         this.{{ field_var_name }} = {{ field_var_name }};
     }
     {%- endfor %}
+
+    {% if contains_object_references %}
+    @Override
+    public void close() {
+        {% call java::destroy_fields(rec) %}
+    }
+    {% endif %}
     
     @Override
     public boolean equals(Object other) {
