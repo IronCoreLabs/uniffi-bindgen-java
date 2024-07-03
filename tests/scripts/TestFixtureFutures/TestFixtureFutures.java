@@ -265,13 +265,14 @@ public class TestFixtureFutures {
         var completedDelaysBefore = traitObj.completedDelays;
         Futures.cancelDelayUsingTrait(traitObj, 10).get();
         // sleep long enough so that the `delay()` call would finish if it wasn't cancelled.
-        TestFixtureFutures.delay(300).get();
+        TestFixtureFutures.delay(100).get();
         // If the task was cancelled, then completedDelays won't have increased
-        assert traitObj.completedDelays == completedDelaysBefore;
+        assert traitObj.completedDelays == completedDelaysBefore : MessageFormat.format("{0} current delays != {1} delays before", traitObj.completedDelays, completedDelaysBefore);
 
         // Test that all handles were cleaned up
         // TODO(murph): this is inconsistently failing in CI
-        assert UniffiAsyncHelpers.uniffiForeignFutureHandleCount() == 0;
+        var endingHandleCount = UniffiAsyncHelpers.uniffiForeignFutureHandleCount();
+        assert endingHandleCount == 0 : MessageFormat.format("{0} current handle count != 0", endingHandleCount);
       }
 
       // Test with the Tokio runtime.
