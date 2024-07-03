@@ -6,6 +6,7 @@ import uniffi.coverall.*;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.*;
@@ -13,75 +14,6 @@ import java.lang.ref.WeakReference;
 import java.text.MessageFormat;
 
 public class TestFixtureCoverall {
-  public static boolean almostEquals(float a, float b) {
-    return Math.abs(a - b) < .000001f;
-  }
-  public static boolean almostEquals(double a, double b) {
-    return Math.abs(a - b) < .000001d;
-  }
-  // Test traits from Java.
-  static void testGettersFromJava(Getters getters) {
-    assert getters.getBool(true, true) == false;
-    assert getters.getBool(true, false) == true;
-    assert getters.getBool(false, true) == true;
-    assert getters.getBool(false, false) == false;
-
-    try {
-      assert getters.getString("hello", false).equals("hello");
-      assert getters.getString("hello", true).equals("HELLO");
-    } catch (CoverallException e) {
-      throw new RuntimeException("Unexpected CoverallException", e);
-    }
-
-    try {
-      assert getters.getOption("hello", true).equals("HELLO");
-      assert getters.getOption("hello", false).equals("hello");
-      assert getters.getOption("", true) == null;
-    } catch (ComplexException e) {
-      throw new RuntimeException("Unexpected ComplexException", e);
-    }
-
-    assert getters.getList(Arrays.asList(1, 2, 3), true).equals(Arrays.asList(1, 2, 3));
-    assert getters.getList(Arrays.asList(1, 2, 3), false).equals(Arrays.asList());
-
-    // void function returns nothing, compiler won't let us write this test
-    // assert getters.getNothing("hello") == Unit;
-
-    try {
-      getters.getString("too-many-holes", true);
-      throw new RuntimeException("Expected method to throw exception");
-    } catch (CoverallException.TooManyHoles e) {
-      // Expected
-    } catch (Exception e) {
-      throw new RuntimeException(e);
-    }
-
-    try {
-      getters.getOption("os-error", true);
-      throw new RuntimeException("Expected method to throw exception");
-    } catch (ComplexException.OsException e) {
-      assert e.code().intValue() == 100;
-      assert e.extendedCode().intValue() == 200;
-    } catch (Exception e) {
-      throw new RuntimeException(e);
-    }
-
-    try {
-      getters.getOption("unknown-error", true);
-      throw new RuntimeException("Expected method to throw exception");
-    } catch (ComplexException.UnknownException e) {
-      // Expected
-    } catch (Exception e) {
-      throw new RuntimeException(e);
-    }
-
-    try {
-      getters.getString("unexpected-error", true);
-    } catch (Exception e) {
-      // Expected
-    } 
-  }
-
   public static void main(String[] args) throws Exception {
     // Test some_dict()
     try (var d = Coverall.createSomeDict()) {
@@ -518,14 +450,14 @@ public class TestFixtureCoverall {
       }
 
       @Override
-      public Color color() {
+      public Color getColor() {
         return this.color;
       }
     } 
 
     class FakeCoveralls extends Coveralls {
       private String name;
-      private List<Repair> repairs = ArrayList.of();
+      private ArrayList<Repair> repairs = new ArrayList(List.of());
 
       public FakeCoveralls(String name) {
         super(NoPointer.INSTANCE);
@@ -534,13 +466,145 @@ public class TestFixtureCoverall {
 
       @Override
       public void addPatch(Patch patch) {
-        repairs += Repair(Instant.now(), patch);
+        repairs.add(new Repair(Instant.now(), patch));
       }
 
       @Override
-      public List<Repair> repairs() {
+      public List<Repair> getRepairs() {
         return repairs;
       }
     }
+
+    try (FakeCoveralls coveralls = new FakeCoveralls("using_fakes")) {
+      Patch patch = new FakePatch(Color.RED);
+      coveralls.addPatch(patch);
+      assert !coveralls.getRepairs().isEmpty();
+    }
+
+    try (FakeCoveralls coveralls = new FakeCoveralls("using_fakes_and_calling_methods_without_override_crashes")) {
+      Throwable exception = null;
+      try {
+        coveralls.cloneMe();
+      } catch (Throwable e) {
+        exception = e;
+      }
+      assert exception != null;
+    }
+
+    try (FakeCoveralls coveralls = new FakeCoveralls("using_fallible_constructors")) {
+      Throwable exception = null;
+      try {
+        new FalliblePatch();
+      } catch (Throwable e) {
+        exception = e;
+      }
+      assert exception != null;
+
+      exception = null;
+
+      try {
+        FalliblePatch.secondary();
+      } catch (Throwable e) {
+        exception = e;
+      }
+      assert exception != null;
+    }
+
+    try (Coveralls coveralls = new Coveralls("using_fakes_with_real_objects_crashes")) {
+      FakePatch patch = new FakePatch(Color.RED);
+      Throwable exception = null;
+      try {
+        coveralls.addPatch(patch);
+      } catch (Throwable e) {
+        exception = e;
+      }
+      assert exception != null;
+    }
+
+    // This is from an earlier GC test; ealier, we made 1000 new objects.
+    // By now, the GC has had time to clean up, and now we should see 0 alive.
+    // (hah! Wishful-thinking there ;)
+    // * We need to System.gc() and/or sleep.
+    // * There's one stray thing alive, not sure what that is, but it's unrelated.
+    for (int i = 0; i < 100; i++) {
+      if (Coverall.getNumAlive() <= 1L) {
+        break;
+      }
+      System.gc();
+      Thread.sleep(100);
+    }
+
+    assert Coverall.getNumAlive() <= 1L : MessageFormat.format("Num alive is {0}. GC/Cleaner thread has starved", Coverall.getNumAlive());
+  }
+  
+  public static boolean almostEquals(float a, float b) {
+    return Math.abs(a - b) < .000001f;
+  }
+  
+  public static boolean almostEquals(double a, double b) {
+    return Math.abs(a - b) < .000001d;
+  }
+  
+  // Test traits from Java.
+  static void testGettersFromJava(Getters getters) {
+    assert getters.getBool(true, true) == false;
+    assert getters.getBool(true, false) == true;
+    assert getters.getBool(false, true) == true;
+    assert getters.getBool(false, false) == false;
+
+    try {
+      assert getters.getString("hello", false).equals("hello");
+      assert getters.getString("hello", true).equals("HELLO");
+    } catch (CoverallException e) {
+      throw new RuntimeException("Unexpected CoverallException", e);
+    }
+
+    try {
+      assert getters.getOption("hello", true).equals("HELLO");
+      assert getters.getOption("hello", false).equals("hello");
+      assert getters.getOption("", true) == null;
+    } catch (ComplexException e) {
+      throw new RuntimeException("Unexpected ComplexException", e);
+    }
+
+    assert getters.getList(Arrays.asList(1, 2, 3), true).equals(Arrays.asList(1, 2, 3));
+    assert getters.getList(Arrays.asList(1, 2, 3), false).equals(Arrays.asList());
+
+    // void function returns nothing, compiler won't let us write this test
+    // assert getters.getNothing("hello") == Unit;
+
+    try {
+      getters.getString("too-many-holes", true);
+      throw new RuntimeException("Expected method to throw exception");
+    } catch (CoverallException.TooManyHoles e) {
+      // Expected
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+
+    try {
+      getters.getOption("os-error", true);
+      throw new RuntimeException("Expected method to throw exception");
+    } catch (ComplexException.OsException e) {
+      assert e.code().intValue() == 100;
+      assert e.extendedCode().intValue() == 200;
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+
+    try {
+      getters.getOption("unknown-error", true);
+      throw new RuntimeException("Expected method to throw exception");
+    } catch (ComplexException.UnknownException e) {
+      // Expected
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+
+    try {
+      getters.getString("unexpected-error", true);
+    } catch (Exception e) {
+      // Expected
+    } 
   }
 }
