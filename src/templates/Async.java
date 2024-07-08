@@ -145,7 +145,6 @@ public final class UniffiAsyncHelpers {
         Consumer<T> handleSuccess,
         Consumer<UniffiRustCallStatus.ByValue> handleError 
     ){
-        System.out.println("where");
         // Uniffi does its best to support structured concurrency across the FFI.
         // If the Rust future is dropped, `UniffiForeignFutureFreeImpl` is called, which will cancel the Java completable future if it's still running.
         var foreignFutureCf = makeCall.get();
@@ -222,7 +221,6 @@ public final class UniffiAsyncHelpers {
 
         @Override
         public void callback(long handle) {
-            System.out.println("We've been cancelled from Rust!");
             var job = uniffiForeignFutureHandleMap.remove(handle);
             var successfullyCancelled = job.cancel(true);
             if(successfullyCancelled) {
