@@ -270,7 +270,7 @@ public class TestFixtureFutures {
         assert traitObj.completedDelays == completedDelaysBefore : MessageFormat.format("{0} current delays != {1} delays before", traitObj.completedDelays, completedDelaysBefore);
 
         // Test that all handles were cleaned up
-        // TODO(murph): this is inconsistently failing in CI
+        // TODO(murph): this is inconsistently failing in CI, touch
         var endingHandleCount = UniffiAsyncHelpers.uniffiForeignFutureHandleCount();
         assert endingHandleCount == 0 : MessageFormat.format("{0} current handle count != 0", endingHandleCount);
       }
