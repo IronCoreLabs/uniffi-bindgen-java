@@ -131,7 +131,6 @@ public final class UniffiHelpers {
       try {
           writeReturn.accept(makeCall.get());
       } catch (Exception e) {
-          System.out.println(e);
           callStatus.setCode(UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR);
           callStatus.setErrorBuf({{ Type::String.borrow()|lower_fn }}(e.toString()));
       }
