@@ -4,32 +4,18 @@ package {{ config.package_name() }};
 
 import java.util.stream.Stream;
 
-public interface Disposable {
-    void destroy();
-
-    static void destroy(Object... args) {
+public interface AutoCloseableHelper {
+    static void close(Object... args) {
         Stream.of(args)
-              .filter(Disposable.class::isInstance)
-              .map(Disposable.class::cast)
-              .forEach(disposable -> {disposable.destroy();} );
-    }
-}
-
-package {{ config.package_name() }};
-
-public class DisposableHelper {
-    public static <T extends Disposable, R> R use(T disposable, java.util.function.Function<T, R> block) {
-        try {
-            return block.apply(disposable);
-        } finally {
-            try {
-                if (disposable != null) {
-                    disposable.destroy();
-                }
-            } catch (Throwable ignored) {
-                // swallow
-            }
-        }
+              .filter(AutoCloseable.class::isInstance)
+              .map(AutoCloseable.class::cast)
+              .forEach(closable -> { 
+                  try {
+                      closable.close();
+                  } catch (Exception e) {
+                      throw new RuntimeException(e);
+                  }
+              });
     }
 }
 
@@ -64,11 +50,17 @@ public class NoPointer {
 {%- when Type::Boolean %}
 {%- include "BooleanHelper.java" %}
 
+{%- when Type::Bytes %}
+{%- include "ByteArrayHelper.java" %}
+
+{%- when Type::CallbackInterface { module_path, name } %}
+{% include "CallbackInterfaceTemplate.java" %}
+
 {%- when Type::Custom { module_path, name, builtin } %}
 {% include "CustomTypeTemplate.java" %}
 
-{%- when Type::String %}
-{%- include "StringHelper.java" %}
+{%- when Type::Duration %}
+{% include "DurationHelper.java" %}
 
 {%- when Type::Enum { name, module_path } %}
 {%- let e = ci.get_enum_definition(name).unwrap() %}
@@ -77,9 +69,6 @@ public class NoPointer {
 {%- else %}
 {% include "ErrorTemplate.java" %}
 {%- endif -%}
-
-{%- when Type::Duration %}
-{% include "DurationHelper.java" %}
 
 {%- when Type::Int64 or Type::UInt64 %}
 {%- include "Int64Helper.java" %}
@@ -102,11 +91,11 @@ public class NoPointer {
 {%- when Type::Map { key_type, value_type } %}
 {% include "MapTemplate.java" %}
 
-{%- when Type::Object { module_path, name, imp } %}
-{% include "ObjectTemplate.java" %}
-
 {%- when Type::Optional { inner_type } %}
 {% include "OptionalTemplate.java" %}
+
+{%- when Type::Object { module_path, name, imp } %}
+{% include "ObjectTemplate.java" %}
 
 {%- when Type::Record { name, module_path } %}
 {% include "RecordTemplate.java" %}
@@ -114,16 +103,13 @@ public class NoPointer {
 {%- when Type::Sequence { inner_type } %}
 {% include "SequenceTemplate.java" %}
 
+{%- when Type::String %}
+{%- include "StringHelper.java" %}
+
 {%- when Type::Timestamp %}
 {% include "TimestampHelper.java" %}
 
 {# TODO(murph): implement the rest of the types
-
-{%- when Type::Bytes %}
-{%- include "ByteArrayHelper.kt" %}
-
-{%- when Type::CallbackInterface { module_path, name } %}
-{% include "CallbackInterfaceTemplate.kt" %}
 
 {%- when Type::External { module_path, name, namespace, kind, tagged } %}
 {% include "ExternalTypeTemplate.kt" %}
@@ -131,16 +117,3 @@ public class NoPointer {
 {%- else %}
 {%- endmatch %}
 {%- endfor %}
-
-{# TODO(murph): async
-{%- if ci.has_async_fns() %}
-{# Import types needed for async support #}
-{{ self.add_import("kotlin.coroutines.resume") }}
-{{ self.add_import("kotlinx.coroutines.launch") }}
-{{ self.add_import("kotlinx.coroutines.suspendCancellableCoroutine") }}
-{{ self.add_import("kotlinx.coroutines.CancellableContinuation") }}
-{{ self.add_import("kotlinx.coroutines.DelicateCoroutinesApi") }}
-{{ self.add_import("kotlinx.coroutines.Job") }}
-{{ self.add_import("kotlinx.coroutines.GlobalScope") }}
-{%- endif %}
-#}

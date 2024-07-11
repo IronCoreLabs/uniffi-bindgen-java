@@ -311,9 +311,11 @@ fixture_tests! {
     (test_rondpoint, "uniffi-example-rondpoint", "scripts/TestRondpoint.java"),
     // (test_todolist, "uniffi-example-todolist", "scripts/test_todolist.java"),
     // (test_sprites, "uniffi-example-sprites", "scripts/test_sprites.java"),
-    // (test_coverall, "uniffi-fixture-coverall", "scripts/test_coverall.java"),
+    (test_coverall, "uniffi-fixture-coverall", "scripts/TestFixtureCoverall.java"),
     (test_chronological, "uniffi-fixture-time", "scripts/TestChronological.java"),
     (test_custom_types, "uniffi-example-custom-types", "scripts/TestCustomTypes/TestCustomTypes.java"),
     // (test_callbacks, "uniffi-fixture-callbacks", "scripts/test_callbacks.java"),
     // (test_external_types, "uniffi-fixture-ext-types", "scripts/test_imported_types.java"),
+    (test_futures, "uniffi-example-futures", "scripts/TestFutures.java"),
+    (test_futures_fixtures, "uniffi-fixture-futures", "scripts/TestFixtureFutures/TestFixtureFutures.java"),
 }

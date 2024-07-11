@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use askama::Template;
 use core::fmt::Debug;
 use heck::{ToLowerCamelCase, ToShoutySnakeCase, ToUpperCamelCase};
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::Borrow,
@@ -13,6 +14,7 @@ use uniffi_bindgen::{
     interface::*,
 };
 
+mod callback_interface;
 mod compounds;
 mod custom;
 mod enum_;
@@ -71,6 +73,64 @@ trait CodeType: Debug {
         None
     }
 }
+
+// taken from https://docs.oracle.com/javase/specs/ section 3.9
+static KEYWORDS: Lazy<HashSet<String>> = Lazy::new(|| {
+    let kwlist = vec![
+        "abstract",
+        "continue",
+        "for",
+        "new",
+        "switch",
+        "assert",
+        "default",
+        "if",
+        "package",
+        "synchronized",
+        "boolean",
+        "do",
+        "goto",
+        "private",
+        "this",
+        "break",
+        "double",
+        "implements",
+        "protected",
+        "throw",
+        "byte",
+        "else",
+        "import",
+        "public",
+        "throws",
+        "case",
+        "enum",
+        "instanceof",
+        "return",
+        "transient",
+        "catch",
+        "extends",
+        "int",
+        "short",
+        "try",
+        "char",
+        "final",
+        "interface",
+        "static",
+        "void",
+        "class",
+        "finally",
+        "long",
+        "strictfp",
+        "volatile",
+        "const",
+        "float",
+        "native",
+        "super",
+        "while",
+        "_",
+    ];
+    HashSet::from_iter(kwlist.into_iter().map(|s| s.to_string()))
+});
 
 // config options to customize the generated Java.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -237,6 +297,14 @@ impl<'a> TypeRenderer<'a> {
     }
 }
 
+fn fixup_keyword(name: String) -> String {
+    if KEYWORDS.contains(&name) {
+        format!("_{name}")
+    } else {
+        name
+    }
+}
+
 #[derive(Clone)]
 pub struct JavaCodeOracle;
 
@@ -249,9 +317,11 @@ impl JavaCodeOracle {
     fn class_name(&self, ci: &ComponentInterface, nm: &str) -> String {
         let name = nm.to_string().to_upper_camel_case();
         // fixup errors.
-        ci.is_name_used_as_error(nm)
-            .then(|| self.convert_error_suffix(&name))
-            .unwrap_or(name)
+        fixup_keyword(
+            ci.is_name_used_as_error(nm)
+                .then(|| self.convert_error_suffix(&name))
+                .unwrap_or(name),
+        )
     }
 
     fn convert_error_suffix(&self, nm: &str) -> String {
@@ -263,18 +333,22 @@ impl JavaCodeOracle {
 
     /// Get the idiomatic Java rendering of a function name.
     fn fn_name(&self, nm: &str) -> String {
-        nm.to_string().to_lower_camel_case()
+        fixup_keyword(nm.to_string().to_lower_camel_case())
     }
 
-    /// Get the idiomatic Java rendering of a variable name. Java variable names can't be escaped
-    /// and reserved words will cause breakage.
+    /// Get the idiomatic Java rendering of a variable name.
     pub fn var_name(&self, nm: &str) -> String {
+        fixup_keyword(self.var_name_raw(nm))
+    }
+
+    /// `var_name` without the reserved word alteration.  Useful for using in `@Structure.FieldOrder`.
+    pub fn var_name_raw(&self, nm: &str) -> String {
         nm.to_string().to_lower_camel_case()
     }
 
     /// Get the idiomatic setter name for a variable.
     pub fn setter(&self, nm: &str) -> String {
-        format!("set{}", nm.to_string().to_upper_camel_case())
+        format!("set{}", fixup_keyword(nm.to_string().to_upper_camel_case()))
     }
 
     /// Get the idiomatic Java rendering of an individual enum variant.
@@ -292,10 +366,11 @@ impl JavaCodeOracle {
         format!("Uniffi{}", nm.to_upper_camel_case())
     }
 
-    fn ffi_type_label_by_value(&self, ffi_type: &FfiType) -> String {
+    fn ffi_type_label_by_value(&self, ffi_type: &FfiType, prefer_primitive: bool) -> String {
         match ffi_type {
             FfiType::RustBuffer(_) => format!("{}.ByValue", self.ffi_type_label(ffi_type)),
             FfiType::Struct(name) => format!("{}.UniffiByValue", self.ffi_struct_name(name)),
+            _ if prefer_primitive => self.ffi_type_primitive(ffi_type),
             _ => self.ffi_type_label(ffi_type),
         }
     }
@@ -310,7 +385,7 @@ impl JavaCodeOracle {
             // function pointer better and allows for `null` as a default value.
             // Everything is nullable in Java by default.
             FfiType::Callback(name) => self.ffi_callback_name(name).to_string(),
-            _ => self.ffi_type_label_by_value(ffi_type),
+            _ => self.ffi_type_label_by_value(ffi_type, true),
         }
     }
 
@@ -337,12 +412,11 @@ impl JavaCodeOracle {
 
     fn ffi_type_label_by_reference(&self, ffi_type: &FfiType) -> String {
         match ffi_type {
+            FfiType::Int32 | FfiType::UInt32 => "IntByReference".to_string(),
             FfiType::Int8
             | FfiType::UInt8
             | FfiType::Int16
             | FfiType::UInt16
-            | FfiType::Int32
-            | FfiType::UInt32
             | FfiType::Int64
             | FfiType::UInt64
             | FfiType::Float32
@@ -366,6 +440,32 @@ impl JavaCodeOracle {
             FfiType::Float32 => "Float".to_string(),
             FfiType::Float64 => "Double".to_string(),
             FfiType::Handle => "Long".to_string(),
+            FfiType::RustArcPtr(_) => "Pointer".to_string(),
+            FfiType::RustBuffer(maybe_suffix) => {
+                format!("RustBuffer{}", maybe_suffix.as_deref().unwrap_or_default())
+            }
+            FfiType::RustCallStatus => "UniffiRustCallStatus.ByValue".to_string(),
+            FfiType::ForeignBytes => "ForeignBytes.ByValue".to_string(),
+            FfiType::Callback(name) => self.ffi_callback_name(name),
+            FfiType::Struct(name) => self.ffi_struct_name(name),
+            FfiType::Reference(inner) => self.ffi_type_label_by_reference(inner),
+            FfiType::VoidPointer => "Pointer".to_string(),
+        }
+    }
+
+    /// Generate primitive types where possible. Useful where we don't need or can't have boxed versions (ie structs).
+    fn ffi_type_primitive(&self, ffi_type: &FfiType) -> String {
+        match ffi_type {
+            // Note that unsigned integers in Java are currently experimental, but java.nio.ByteBuffer does not
+            // support them yet. Thus, we use the signed variants to represent both signed and unsigned
+            // types from the component API.
+            FfiType::Int8 | FfiType::UInt8 => "byte".to_string(),
+            FfiType::Int16 | FfiType::UInt16 => "short".to_string(),
+            FfiType::Int32 | FfiType::UInt32 => "int".to_string(),
+            FfiType::Int64 | FfiType::UInt64 => "long".to_string(),
+            FfiType::Float32 => "float".to_string(),
+            FfiType::Float64 => "double".to_string(),
+            FfiType::Handle => "long".to_string(),
             FfiType::RustArcPtr(_) => "Pointer".to_string(),
             FfiType::RustBuffer(maybe_suffix) => {
                 format!("RustBuffer{}", maybe_suffix.as_deref().unwrap_or_default())
@@ -422,7 +522,7 @@ impl AsCodeType for Type {
             Type::Float64 => Box::new(primitives::Float64CodeType),
             Type::Boolean => Box::new(primitives::BooleanCodeType),
             Type::String => Box::new(primitives::StringCodeType),
-            Type::Bytes => unimplemented!(), //Box::new(primitives::BytesCodeType),
+            Type::Bytes => Box::new(primitives::BytesCodeType),
 
             Type::Timestamp => Box::new(miscellany::TimestampCodeType),
             Type::Duration => Box::new(miscellany::DurationCodeType),
@@ -432,9 +532,9 @@ impl AsCodeType for Type {
                 Box::new(object::ObjectCodeType::new(name.clone(), *imp))
             }
             Type::Record { name, .. } => Box::new(record::RecordCodeType::new(name.clone())),
-            Type::CallbackInterface { name, .. } => {
-                unimplemented!() //Box::new(callback_interface::CallbackInterfaceCodeType::new(name))
-            }
+            Type::CallbackInterface { name, .. } => Box::new(
+                callback_interface::CallbackInterfaceCodeType::new(name.clone()),
+            ),
             Type::Optional { inner_type } => {
                 Box::new(compounds::OptionalCodeType::new((**inner_type).clone()))
             }
@@ -489,6 +589,11 @@ impl AsCodeType for &'_ Argument {
     }
 }
 impl AsCodeType for &'_ uniffi_bindgen::interface::Record {
+    fn as_codetype(&self) -> Box<dyn CodeType> {
+        self.as_type().as_codetype()
+    }
+}
+impl AsCodeType for &'_ uniffi_bindgen::interface::CallbackInterface {
     fn as_codetype(&self) -> Box<dyn CodeType> {
         self.as_type().as_codetype()
     }
@@ -593,7 +698,7 @@ mod filters {
     }
 
     pub fn ffi_type_name_by_value(type_: &FfiType) -> Result<String, askama::Error> {
-        Ok(JavaCodeOracle.ffi_type_label_by_value(type_))
+        Ok(JavaCodeOracle.ffi_type_label_by_value(type_, false))
     }
 
     pub fn ffi_type_name_for_ffi_struct(type_: &FfiType) -> Result<String, askama::Error> {
@@ -617,6 +722,11 @@ mod filters {
     /// Get the idiomatic Java rendering of a variable name.
     pub fn var_name(nm: &str) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.var_name(nm))
+    }
+
+    /// Get the idiomatic Java rendering of a variable name, without altering reserved words.
+    pub fn var_name_raw(nm: &str) -> Result<String, askama::Error> {
+        Ok(JavaCodeOracle.var_name_raw(nm))
     }
 
     /// Get the idiomatic Java setter method name.
@@ -651,13 +761,35 @@ mod filters {
         Ok(JavaCodeOracle.object_names(ci, obj))
     }
 
+    pub fn async_inner_return_type(
+        callable: impl Callable,
+        ci: &ComponentInterface,
+    ) -> Result<String, askama::Error> {
+        callable
+            .return_type()
+            .map_or(Ok("Void".to_string()), |t| type_name(&t, ci))
+    }
+
+    pub fn async_return_type(
+        callable: impl Callable,
+        ci: &ComponentInterface,
+    ) -> Result<String, askama::Error> {
+        let is_async = callable.is_async();
+        let inner_type = async_inner_return_type(callable, ci)?;
+        if is_async {
+            Ok(format!("CompletableFuture<{inner_type}>"))
+        } else {
+            Ok(inner_type)
+        }
+    }
+
     pub fn async_poll(
         callable: impl Callable,
         ci: &ComponentInterface,
     ) -> Result<String, askama::Error> {
         let ffi_func = callable.ffi_rust_future_poll(ci);
         Ok(format!(
-            "{{ future, callback, continuation -> UniffiLib.INSTANCE.{ffi_func}(future, callback, continuation) }}"
+            "(future, callback, continuation) -> UniffiLib.INSTANCE.{ffi_func}(future, callback, continuation)"
         ))
     }
 
@@ -675,11 +807,12 @@ mod filters {
             }) => {
                 // Need to convert the RustBuffer from our package to the RustBuffer of the external package
                 let suffix = JavaCodeOracle.class_name(ci, &name);
+                // TODO(murph): make this Java
                 format!("{call}.let {{ RustBuffer{suffix}.create(it.capacity.toULong(), it.len.toULong(), it.data) }}")
             }
             _ => call,
         };
-        Ok(format!("{{ future, continuation -> {call} }}"))
+        Ok(format!("(future, continuation) -> {call}"))
     }
 
     pub fn async_free(
@@ -687,9 +820,7 @@ mod filters {
         ci: &ComponentInterface,
     ) -> Result<String, askama::Error> {
         let ffi_func = callable.ffi_rust_future_free(ci);
-        Ok(format!(
-            "{{ future -> UniffiLib.INSTANCE.{ffi_func}(future) }}"
-        ))
+        Ok(format!("(future) -> UniffiLib.INSTANCE.{ffi_func}(future)"))
     }
 
     /// Remove the "`" chars we put around function/variable names

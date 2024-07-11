@@ -13,7 +13,7 @@ public class {{ type_name }} extends Exception {
 
     {% for variant in e.variants() -%}
     {%- call java::docstring(variant, 4) %}
-    public static class {{ variant|error_variant_name }} extends {{ type_name }}{% if contains_object_references %}, Disposable{% endif %} {
+    public static class {{ variant|error_variant_name }} extends {{ type_name }}{% if contains_object_references %}, AutoCloseable{% endif %} {
       public {{ variant|error_variant_name }}(String message) {
         super(message);
       }
@@ -32,7 +32,7 @@ public class {{ type_name }} extends Exception {
     {% for variant in e.variants() -%}
     {%- call java::docstring(variant, 4) %}
     {%- let variant_name = variant|error_variant_name %}
-    public static class {{ variant_name }} extends {{ type_name }}{% if contains_object_references %}, Disposable{% endif %} {
+    public static class {{ variant_name }} extends {{ type_name }}{% if contains_object_references %}, AutoCloseable{% endif %} {
       {% for field in variant.fields() -%}
       {%- call java::docstring(field, 8) %}
       {{ field|type_name(ci) }} {{ field.name()|var_name }};
@@ -43,7 +43,15 @@ public class {{ type_name }} extends Exception {
         {{ field|type_name(ci)}} {{ field.name()|var_name }}{% if loop.last %}{% else %}, {% endif %}
         {%- endfor -%}
       ) {
-        super("{%- for field in variant.fields() %}{{ field.name()|var_name|unquote }}=${ {{field.name()|var_name }} }{% if !loop.last %}, {% endif %}{% endfor %}");
+        super(new StringBuilder()
+        {%- for field in variant.fields() %}
+        .append("{{ field.name()|var_name|unquote }}=")
+        .append({{field.name()|var_name }})
+        {% if !loop.last %}
+        .append(", ")
+        {% endif %}
+        {% endfor %}
+        .toString());
         {% for field in variant.fields() -%}
         this.{{ field.name()|var_name }} = {{ field.name()|var_name }};
         {% endfor -%}   
@@ -57,7 +65,7 @@ public class {{ type_name }} extends Exception {
       
       {% if contains_object_references %}
       @Override
-      void destroy() {
+      void close() {
         {%- if variant.has_fields() %}
         {% call java::destroy_fields(variant) %}
         {% else -%}
@@ -99,13 +107,13 @@ public enum {{ e|ffi_converter_name }} implements FfiConverterRustBuffer<{{ type
 
         return switch(buf.getInt()) {
             {%- for variant in e.variants() %}
-            case {{ loop.index }} -> {{ type_name }}.{{ variant|error_variant_name }}({% if variant.has_fields() %}
+            case {{ loop.index }} -> new {{ type_name }}.{{ variant|error_variant_name }}({% if variant.has_fields() %}
                 {% for field in variant.fields() -%}
                 {{ field|read_fn }}(buf){% if loop.last %}{% else %},{% endif %}
-                {% endfor -%});
-            {%- endif -%})
+                {% endfor -%}
+            {%- endif -%});
             {%- endfor %}
-            default -> throw RuntimeException("invalid error enum value, something is very wrong!!");
+            default -> throw new RuntimeException("invalid error enum value, something is very wrong!!");
         };
         {%- endif %}
     }
@@ -117,14 +125,15 @@ public enum {{ e|ffi_converter_name }} implements FfiConverterRustBuffer<{{ type
         {%- else %}
         return switch(value) {
             {%- for variant in e.variants() %}
-            case {{ type_name }}.{{ variant|error_variant_name }} {% for field in variant.fields() %} {{ field.name() }}{% endfor %} -> (
+            case {{ type_name }}.{{ variant|error_variant_name }} x -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
-                4UL
+                4L
                 {%- for field in variant.fields() %}
-                + {{ field|allocation_size_fn }}(value.{{ field.name()|var_name }})
-                {%- endfor %};
+                + {{ field|allocation_size_fn }}(x.{{ field.name()|var_name }})
+                {%- endfor %}
             );
             {%- endfor %}
+            default -> throw new RuntimeException("invalid error enum value, something is very wrong!!");
         };
         {%- endif %}
     }
@@ -133,10 +142,10 @@ public enum {{ e|ffi_converter_name }} implements FfiConverterRustBuffer<{{ type
     public void write({{ type_name }} value, ByteBuffer buf) {
         switch(value) {
             {%- for variant in e.variants() %}
-            case {{ type_name }}.{{ variant|error_variant_name }} message {% for field in variant.fields() %} {{ field.name() }}{% endfor %} -> {
+            case {{ type_name }}.{{ variant|error_variant_name }} x -> {
                 buf.putInt({{ loop.index }});
                 {%- for field in variant.fields() %}
-                {{ field|write_fn }}(value.{{ field.name()|var_name }}, buf);
+                {{ field|write_fn }}(x.{{ field.name()|var_name }}, buf);
                 {%- endfor %}
             }
             {%- endfor %}
