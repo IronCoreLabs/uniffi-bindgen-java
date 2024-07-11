@@ -75,6 +75,22 @@ macro_rules! impl_code_type_for_primitive {
     };
 }
 
+#[derive(Debug)]
+pub struct BytesCodeType;
+impl CodeType for BytesCodeType {
+    fn type_label(&self, _ci: &ComponentInterface) -> String {
+        "byte[]".to_string()
+    }
+
+    fn canonical_name(&self) -> String {
+        "ByteArray".to_string()
+    }
+
+    fn literal(&self, literal: &Literal, ci: &ComponentInterface) -> String {
+        render_literal(&literal, ci)
+    }
+}
+
 impl_code_type_for_primitive!(BooleanCodeType, "Boolean");
 impl_code_type_for_primitive!(StringCodeType, "String");
 impl_code_type_for_primitive!(Int8CodeType, "Byte");

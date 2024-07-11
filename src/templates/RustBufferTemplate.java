@@ -17,6 +17,12 @@ public class RustBuffer extends Structure {
     public static class ByValue extends RustBuffer implements Structure.ByValue {}
     public static class ByReference extends RustBuffer implements Structure.ByReference {}
 
+    void setValue(RustBuffer other) {
+        this.capacity = other.capacity;
+        this.len = other.len;
+        this.data = other.data;
+    }
+
     public static RustBuffer.ByValue alloc(long size) {
         RustBuffer.ByValue buffer = UniffiHelpers.uniffiRustCall((UniffiRustCallStatus status) -> {
             return (RustBuffer.ByValue) UniffiLib.INSTANCE.{{ ci.ffi_rustbuffer_alloc().name() }}(size, status);
@@ -68,6 +74,19 @@ public class RustBufferByReference extends Structure implements Structure.ByRefe
         pointer.setInt(0, (int) value.capacity);
         pointer.setInt(4, (int) value.len);
         pointer.setPointer(8, value.data);
+    }
+
+    /**
+     * Get a `RustBuffer.ByValue` from this reference.
+     */
+    public RustBuffer.ByValue getValue() {
+        Pointer pointer = this.getPointer();
+        RustBuffer.ByValue value = new RustBuffer.ByValue();
+        value.writeField("capacity", pointer.getLong(0));
+        value.writeField("len", pointer.getLong(8));
+        value.writeField("data", pointer.getLong(16));
+
+        return value;
     }
 }
 

@@ -6,9 +6,17 @@
 
 {%- macro to_ffi_call(func) -%}
     {%- if func.takes_self() %}
-    callWithPointer(it ->
-        {%- call to_raw_ffi_call(func) %}
-    )
+    callWithPointer(it -> {
+        try {
+    {% if func.return_type().is_some() %}
+            return {%- call to_raw_ffi_call(func) %};
+    {% else %}
+            {%- call to_raw_ffi_call(func) %};
+    {% endif %}
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    })
     {% else %}
         {%- call to_raw_ffi_call(func) %}
     {% endif %}
@@ -21,7 +29,7 @@
     {%- else %}
     UniffiHelpers.uniffiRustCall(
     {%- endmatch %} _status -> {
-        return UniffiLib.INSTANCE.{{ func.ffi_func().name() }}(
+        {% if func.return_type().is_some() %}return {% endif %}UniffiLib.INSTANCE.{{ func.ffi_func().name() }}(
             {% if func.takes_self() %}it, {% endif -%}
             {% if func.arguments().len() != 0 %}{% call arg_list_lowered(func) -%}, {% endif -%}
             _status);
@@ -47,7 +55,21 @@
         throws {{ throwable|type_name(ci) }}
         {%-     else -%}
         {%- endmatch %} {
-            return {% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|lift_fn }}{%- when None %}{%- endmatch %}({% call to_ffi_call(callable) %});
+            try {
+                {% match callable.return_type() -%}{%- when Some with (return_type) -%}return {{ return_type|lift_fn }}({% call to_ffi_call(callable) %}){%- when None %}{% call to_ffi_call(callable) %}{%- endmatch %};
+            } catch (RuntimeException _e) {
+                {% match callable.throws_type() %}
+                {% when Some(throwable) %}
+                if ({{ throwable|type_name(ci) }}.class.isInstance(_e.getCause())) {
+                    throw ({{ throwable|type_name(ci) }})_e.getCause();
+                }
+                {% else %}
+                {% endmatch %}
+                if (InternalException.class.isInstance(_e.getCause())) {
+                    throw (InternalException)_e.getCause();
+                }
+                throw _e;
+            }
     }
     {% endif %}
 {% endmacro %}
@@ -55,12 +77,12 @@
 {%- macro call_async(callable) -%}
     UniffiAsyncHelpers.uniffiRustCallAsync(
 {%- if callable.takes_self() %}
-        callWithPointer(thisPtr ->
-            UniffiLib.INSTANCE.{{ callable.ffi_func().name() }}(
+        callWithPointer(thisPtr -> {
+            return UniffiLib.INSTANCE.{{ callable.ffi_func().name() }}(
                 thisPtr{% if callable.arguments().len() != 0 %},{% endif %}
                 {% call arg_list_lowered(callable) %}
-            )
-        ),
+            );
+        }),
 {%- else %}
         UniffiLib.INSTANCE.{{ callable.ffi_func().name() }}({% call arg_list_lowered(callable) %}),
 {%- endif %}
@@ -125,10 +147,10 @@ v{{- field_num -}}
 
 // Macro for destroying fields
 {%- macro destroy_fields(member) %}
-    Disposable.destroy(
+    AutoCloseableHelper.close(
     {%- for field in member.fields() %}
         this.{{ field.name()|var_name }}{%- if !loop.last %}, {% endif -%}
-    {% endfor -%})
+    {% endfor -%});
 {%- endmacro -%}
 
 {%- macro docstring_value(maybe_docstring, indent_spaces) %}

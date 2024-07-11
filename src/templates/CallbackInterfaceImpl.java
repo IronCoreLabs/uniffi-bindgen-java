@@ -3,9 +3,13 @@
 package {{ config.package_name() }};
 
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Callable;
 import java.util.function.Function;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.List;
+import com.sun.jna.*;
+import com.sun.jna.ptr.*;
 
 {%- let trait_impl=format!("UniffiCallbackInterface{}", name) %}
 
@@ -45,19 +49,20 @@ public class {{ trait_impl }} {
             {%- endif -%}
         ) {
             var uniffiObj = {{ ffi_converter_name }}.INSTANCE.handleMap.get(uniffiHandle);
-            Supplier<{% if meth.is_async() %}{{ meth|async_return_type(ci) }}{% else %}{% match meth.return_type() %}{% when Some(return_type)%}{{ return_type|type_name(ci)}}{% when None %}Void{% endmatch %}{% endif %}> makeCall = () -> {
-                return uniffiObj.{{ meth.name()|fn_name() }}(
+            {% if !meth.is_async() && meth.throws_type().is_some() %}Callable{% else %}Supplier{%endif%}<{% if meth.is_async() %}{{ meth|async_return_type(ci) }}{% else %}{% match meth.return_type() %}{% when Some(return_type)%}{{ return_type|type_name(ci)}}{% when None %}Void{% endmatch %}{% endif %}> makeCall = () -> {
+                {% if meth.return_type().is_some() || meth.is_async() %}return {% endif %}uniffiObj.{{ meth.name()|fn_name() }}(
                     {%- for arg in meth.arguments() %}
                     {{ arg|lift_fn }}({{ arg.name()|var_name }}){% if !loop.last %},{% endif %}
                     {%- endfor %}
                 );
+                {% if meth.return_type().is_none() && !meth.is_async() %}return null;{% endif %}
             };
             {%- if !meth.is_async() %}
             {%- match meth.return_type() %}
             {%- when Some(return_type) %}
-            var writeReturn = ({{ return_type|type_name(ci) }} value) -> { uniffiOutReturn.setValue({{ return_type|lower_fn }}(value)); };
+            Consumer<{{ return_type|type_name(ci)}}> writeReturn = ({{ return_type|type_name(ci) }} value) -> { uniffiOutReturn.setValue({{ return_type|lower_fn }}(value)); };
             {%- when None %}
-            var writeReturn = () -> {};
+            Consumer<Void> writeReturn = (nothing) -> {};
             {%- endmatch %}
 
             {%- match meth.throws_type() %}
@@ -68,8 +73,9 @@ public class {{ trait_impl }} {
                 uniffiCallStatus,
                 makeCall,
                 writeReturn,
-                ({{error_type|type_name(ci) }} e) -> { {{ error_type|lower_fn }}(e) }
-            )
+                ({{error_type|type_name(ci) }} e) -> { return {{ error_type|lower_fn }}(e); },
+                {{error_type|type_name(ci)}}.class
+            );
             {%- endmatch %}
 
             {%- else %}

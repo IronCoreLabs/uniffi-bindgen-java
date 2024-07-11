@@ -74,7 +74,7 @@ public class TestRondpoint {
     affirmAllerRetour(List.of(-1, 0, 1).stream().map(i -> new DictionnaireNombresSignes(i.byteValue(), i.shortValue(), i, i.longValue())).collect(Collectors.toList()), rt::identiqueNombresSignes);
     affirmAllerRetour(List.of(0, 1).stream().map(i -> new DictionnaireNombres(i.byteValue(), i.shortValue(), i, i.longValue())).collect(Collectors.toList()), rt::identiqueNombres);
 
-    rt.destroy();
+    rt.close();
 
     // Test one way across the FFI.
     //
@@ -128,7 +128,7 @@ public class TestRondpoint {
     // MIN_VALUE is 4.9E-324. Accuracy and formatting get weird at small sizes.
     affirmEnchaine(List.of(0.0, 1.0, -1.0, Double.MIN_VALUE, Double.MAX_VALUE), st::toStringDouble, (s, n) -> Double.parseDouble(s) == n);
 
-    st.destroy();
+    st.close();
 
     // Defaults aren't supported in Java, so we check that our Java `None` equivalent goes across the barrier correctly
     // as an option and comes back instead. See Kotlin's rondpoint tests for reference default behavior if you want to
@@ -181,7 +181,7 @@ public class TestRondpoint {
     // Enums
     affirmAllerRetour(List.of(Enumeration.values()), op::sinonEnum);
 
-    op.destroy();
+    op.close();
 }
 
   private static <T> void affirmAllerRetour(List<T> vs, Function<T, T> f) {

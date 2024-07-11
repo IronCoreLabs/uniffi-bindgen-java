@@ -41,7 +41,8 @@ final class NamespaceLibrary {
 {%- when FfiDefinition::CallbackFunction(callback) %}
 package {{ config.package_name() }};
 
-import com.sun.jna.Callback;
+import com.sun.jna.*;
+import com.sun.jna.ptr.*;
 
 interface {{ callback.name()|ffi_callback_name }} extends Callback {
     public {% match callback.return_type() %}{%- when Some(return_type) %}{{ return_type|ffi_type_name_for_ffi_struct }}{%- when None %}void{%- endmatch %} callback(
