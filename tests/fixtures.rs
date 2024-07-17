@@ -27,7 +27,7 @@ fn run_test(fixture_name: &str, test_file: &str) -> Result<()> {
         let maybe_base_uniffi_toml_string =
             find_uniffi_toml(fixture_name)?.and_then(read_file_contents);
         let maybe_extra_uniffi_toml_string =
-            read_file_contents(dbg!(test_path.with_file_name("uniffi-extras.toml")));
+            read_file_contents(test_path.with_file_name("uniffi-extras.toml"));
 
         // final_string will be "" if there aren't any toml files to read.
         let final_string: String = itertools::Itertools::intersperse(
@@ -315,7 +315,7 @@ fixture_tests! {
     (test_chronological, "uniffi-fixture-time", "scripts/TestChronological.java"),
     (test_custom_types, "uniffi-example-custom-types", "scripts/TestCustomTypes/TestCustomTypes.java"),
     // (test_callbacks, "uniffi-fixture-callbacks", "scripts/test_callbacks.java"),
-    // (test_external_types, "uniffi-fixture-ext-types", "scripts/test_imported_types.java"),
+    (test_external_types, "uniffi-fixture-ext-types", "scripts/TestImportedTypes.java"),
     (test_futures, "uniffi-example-futures", "scripts/TestFutures.java"),
     (test_futures_fixtures, "uniffi-fixture-futures", "scripts/TestFixtureFutures/TestFixtureFutures.java"),
 }

@@ -4,7 +4,10 @@
 {%- when None %}
 {#- Define a newtype record that delegates to the builtin #}
 
- package {{ package_name }};
+package {{ package_name }};
+
+import java.util.List;
+import java.util.Map;
 
 public record {{ type_name }}(
   {{ builtin|type_name(ci) }} value
@@ -12,7 +15,9 @@ public record {{ type_name }}(
 }
 
 package {{ package_name }};
+
 import java.nio.ByteBuffer;
+import com.sun.jna.Pointer;
 
 public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, {{ ffi_type_name}}> {
   INSTANCE;
@@ -61,6 +66,8 @@ import {{ import_name }};
 {%- endfor %}
 {%- else %}
 {%- endmatch %}
+import java.util.List;
+import java.util.Map;
 
 public record {{ type_name }}(
   {{ concrete_type_name }} value
@@ -70,7 +77,9 @@ public record {{ type_name }}(
 {%- endmatch %}
 
 package {{ package_name }};
+
 import java.nio.ByteBuffer;
+import com.sun.jna.Pointer;
 
 {%- match config.imports %}
 {%- when Some(imports) %}

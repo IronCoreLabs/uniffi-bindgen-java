@@ -39,6 +39,7 @@ uniffi-example-custom-types = { git = "https://github.com/mozilla/uniffi-rs.git"
 uniffi-example-futures = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main" }
 uniffi-example-geometry = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main" }
 uniffi-example-rondpoint = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main" }
+uniffi-fixture-ext-types = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main" }
 uniffi-fixture-coverall = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main" }
 uniffi-fixture-futures = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main" }
 uniffi-fixture-time = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main" }

@@ -14,8 +14,8 @@ fn render_literal(literal: &Literal, _ci: &ComponentInterface) -> String {
             Type::Int8 | Type::Int16 | Type::Int32 => num_str,
             Type::Int64 => format!("{num_str}L"),
 
-            // TODO(murph): Java has pretty hacky unsigned support, see https://docs.oracle.com/javase/8/docs/api/java/lang/Long.html (search for unsigned)
-            // and https://docs.oracle.com/javase/8/docs/api/java/lang/Integer.html search for unsigned. Have to see how this affects generated code, if it's possible to use these things
+            // Java has pretty hacky unsigned support, see https://docs.oracle.com/javase/8/docs/api/java/lang/Long.html (search for unsigned)
+            // and https://docs.oracle.com/javase/8/docs/api/java/lang/Integer.html search for unsigned.
             Type::UInt8 | Type::UInt16 | Type::UInt32 => {
                 format!("Integer.parseUnsignedInt({num_str})")
             }

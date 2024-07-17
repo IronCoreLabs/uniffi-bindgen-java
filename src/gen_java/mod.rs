@@ -18,6 +18,7 @@ mod callback_interface;
 mod compounds;
 mod custom;
 mod enum_;
+mod external;
 mod miscellany;
 mod object;
 mod primitives;
@@ -197,7 +198,7 @@ pub fn generate_bindings(config: &Config, ci: &ComponentInterface) -> Result<Str
 pub enum ImportRequirement {
     /// The name we are importing.
     Import { name: String },
-    /// Import the name with the specified local name.
+    /// Import the name with the specified local name (not supported in Java right now).
     ImportAs { name: String, as_name: String },
 }
 
@@ -206,8 +207,10 @@ impl ImportRequirement {
     fn render(&self) -> String {
         match &self {
             ImportRequirement::Import { name } => format!("import {name};"),
-            ImportRequirement::ImportAs { name, as_name } => {
-                format!("import {name} as {as_name};")
+            ImportRequirement::ImportAs { .. } => {
+                unimplemented!(
+                    "Java doesn't support import aliases, use fully qualified values instead if possible."
+                )
             }
         }
     }
@@ -295,6 +298,31 @@ impl<'a> TypeRenderer<'a> {
             .borrow_mut()
             .insert(name.to_string())
     }
+
+    // Helper to add an import statement
+    //
+    // Call this inside your template to cause an import statement to be added at the top of every
+    // file.
+    //
+    // Returns an empty string so that it can be used inside an askama `{{ }}` block.
+    fn add_import(&self, name: &str) -> &str {
+        self.imports.borrow_mut().insert(ImportRequirement::Import {
+            name: name.to_owned(),
+        });
+        ""
+    }
+
+    // Like add_import, but arranges for `import name as as_name`
+    // TODO(murph): java doesn't support import aliases
+    // fn add_import_as(&self, name: &str, as_name: &str) -> &str {
+    //     self.imports
+    //         .borrow_mut()
+    //         .insert(ImportRequirement::ImportAs {
+    //             name: name.to_owned(),
+    //             as_name: as_name.to_owned(),
+    //         });
+    //     ""
+    // }
 }
 
 fn fixup_keyword(name: String) -> String {
@@ -441,9 +469,10 @@ impl JavaCodeOracle {
             FfiType::Float64 => "Double".to_string(),
             FfiType::Handle => "Long".to_string(),
             FfiType::RustArcPtr(_) => "Pointer".to_string(),
-            FfiType::RustBuffer(maybe_suffix) => {
-                format!("RustBuffer{}", maybe_suffix.as_deref().unwrap_or_default())
-            }
+            FfiType::RustBuffer(maybe_suffix) => match maybe_suffix {
+                Some(suffix) => format!("uniffi.{}.RustBuffer", suffix),
+                None => "RustBuffer".to_string(),
+            },
             FfiType::RustCallStatus => "UniffiRustCallStatus.ByValue".to_string(),
             FfiType::ForeignBytes => "ForeignBytes.ByValue".to_string(),
             FfiType::Callback(name) => self.ffi_callback_name(name),
@@ -467,9 +496,10 @@ impl JavaCodeOracle {
             FfiType::Float64 => "double".to_string(),
             FfiType::Handle => "long".to_string(),
             FfiType::RustArcPtr(_) => "Pointer".to_string(),
-            FfiType::RustBuffer(maybe_suffix) => {
-                format!("RustBuffer{}", maybe_suffix.as_deref().unwrap_or_default())
-            }
+            FfiType::RustBuffer(maybe_suffix) => match maybe_suffix {
+                Some(suffix) => format!("uniffi.{}.RustBuffer", suffix),
+                None => "RustBuffer".to_string(),
+            },
             FfiType::RustCallStatus => "UniffiRustCallStatus.ByValue".to_string(),
             FfiType::ForeignBytes => "ForeignBytes.ByValue".to_string(),
             FfiType::Callback(name) => self.ffi_callback_name(name),
@@ -548,7 +578,16 @@ impl AsCodeType for Type {
                 (**key_type).clone(),
                 (**value_type).clone(),
             )),
-            Type::External { name, .. } => unimplemented!(), //Box::new(external::ExternalCodeType::new(name)),
+            Type::External {
+                name,
+                module_path,
+                namespace,
+                ..
+            } => Box::new(external::ExternalCodeType::new(
+                name.clone(),
+                module_path.clone(),
+                namespace.clone(),
+            )),
             Type::Custom { name, .. } => Box::new(custom::CustomCodeType::new(name.clone())),
         }
     }

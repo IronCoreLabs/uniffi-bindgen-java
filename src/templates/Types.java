@@ -82,6 +82,9 @@ public class NoPointer {
 {%- when Type::Int32 or Type::UInt32 %}
 {%- include "Int32Helper.java" %}
 
+{%- when Type::External { module_path, name, namespace, kind, tagged } %}
+{% include "ExternalTypeTemplate.java" %}
+
 {%- when Type::Float32 %}
 {%- include "Float32Helper.java" %}
 
@@ -109,11 +112,6 @@ public class NoPointer {
 {%- when Type::Timestamp %}
 {% include "TimestampHelper.java" %}
 
-{# TODO(murph): implement the rest of the types
-
-{%- when Type::External { module_path, name, namespace, kind, tagged } %}
-{% include "ExternalTypeTemplate.kt" %}
-#}
 {%- else %}
 {%- endmatch %}
 {%- endfor %}

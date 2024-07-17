@@ -13,10 +13,6 @@
 // compile the Rust component. The easiest way to ensure this is to bundle the Java
 // helpers directly inline like we're doing here.
 
-{%- for req in self.imports() %}
-{{ req.render() }}
-{%- endfor %}
-
 {% include "RustBufferTemplate.java" %}
 {% include "FfiConverterTemplate.java" %}
 {% include "Helpers.java" %}
@@ -39,6 +35,10 @@ package {{ config.package_name() }};
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+
+{%- for req in self.imports() %}
+{{ req.render() }}
+{%- endfor %}
 
 {%- call java::docstring_value(ci.namespace_docstring(), 0) %}
 public class {{ ci.namespace()|class_name(ci) }} {
