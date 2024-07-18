@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use super::{AsCodeType, CodeType};
+use super::{AsCodeType, CodeType, Config};
 use uniffi_bindgen::{
     backend::{Literal, Type},
     ComponentInterface,
@@ -23,10 +23,10 @@ impl OptionalCodeType {
 }
 
 impl CodeType for OptionalCodeType {
-    fn type_label(&self, ci: &ComponentInterface) -> String {
+    fn type_label(&self, ci: &ComponentInterface, config: &Config) -> String {
         super::JavaCodeOracle
             .find(self.inner())
-            .type_label(ci)
+            .type_label(ci, config)
             .to_string()
     }
 
@@ -37,10 +37,12 @@ impl CodeType for OptionalCodeType {
         )
     }
 
-    fn literal(&self, literal: &Literal, ci: &ComponentInterface) -> String {
+    fn literal(&self, literal: &Literal, ci: &ComponentInterface, config: &Config) -> String {
         match literal {
             Literal::None => "null".into(),
-            Literal::Some { inner } => super::JavaCodeOracle.find(&self.inner).literal(inner, ci),
+            Literal::Some { inner } => super::JavaCodeOracle
+                .find(&self.inner)
+                .literal(inner, ci, config),
             _ => panic!("Invalid literal for Optional type: {literal:?}"),
         }
     }
@@ -61,10 +63,12 @@ impl SequenceCodeType {
 }
 
 impl CodeType for SequenceCodeType {
-    fn type_label(&self, ci: &ComponentInterface) -> String {
+    fn type_label(&self, ci: &ComponentInterface, config: &Config) -> String {
         format!(
             "List<{}>",
-            super::JavaCodeOracle.find(self.inner()).type_label(ci)
+            super::JavaCodeOracle
+                .find(self.inner())
+                .type_label(ci, config)
         )
     }
 
@@ -75,7 +79,7 @@ impl CodeType for SequenceCodeType {
         )
     }
 
-    fn literal(&self, literal: &Literal, _ci: &ComponentInterface) -> String {
+    fn literal(&self, literal: &Literal, _ci: &ComponentInterface, _config: &Config) -> String {
         match literal {
             Literal::EmptySequence => "List.of()".into(),
             _ => panic!("Invalid literal for List type: {literal:?}"),
@@ -104,11 +108,15 @@ impl MapCodeType {
 }
 
 impl CodeType for MapCodeType {
-    fn type_label(&self, ci: &ComponentInterface) -> String {
+    fn type_label(&self, ci: &ComponentInterface, config: &Config) -> String {
         format!(
             "Map<{}, {}>",
-            super::JavaCodeOracle.find(self.key()).type_label(ci),
-            super::JavaCodeOracle.find(self.value()).type_label(ci),
+            super::JavaCodeOracle
+                .find(self.key())
+                .type_label(ci, config),
+            super::JavaCodeOracle
+                .find(self.value())
+                .type_label(ci, config),
         )
     }
 
@@ -120,7 +128,7 @@ impl CodeType for MapCodeType {
         )
     }
 
-    fn literal(&self, literal: &Literal, _ci: &ComponentInterface) -> String {
+    fn literal(&self, literal: &Literal, _ci: &ComponentInterface, _config: &Config) -> String {
         match literal {
             Literal::EmptyMap => "Map.of()".into(),
             _ => panic!("Invalid literal for Map type: {literal:?}"),

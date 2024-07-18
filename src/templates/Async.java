@@ -159,7 +159,7 @@ public final class UniffiAsyncHelpers {
                 handleError.accept(
                     UniffiRustCallStatus.create(
                         UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR,
-                        {{ Type::String.borrow()|lower_fn }}(e.toString())
+                        {{ Type::String.borrow()|lower_fn(config) }}(e.toString())
                     )
                 );
             }
@@ -199,7 +199,7 @@ public final class UniffiAsyncHelpers {
                     handleError.accept(
                         UniffiRustCallStatus.create(
                             UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR,
-                            {{ Type::String.borrow()|lower_fn }}(e.getMessage())
+                            {{ Type::String.borrow()|lower_fn(config) }}(e.getMessage())
                         )
                     );
                 }

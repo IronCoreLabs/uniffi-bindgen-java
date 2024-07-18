@@ -25,7 +25,7 @@
 {%- macro to_raw_ffi_call(func) -%}
     {%- match func.throws_type() %}
     {%- when Some with (e) %}
-    UniffiHelpers.uniffiRustCallWithError(new {{ e|type_name(ci) }}ErrorHandler(), 
+    UniffiHelpers.uniffiRustCallWithError(new {{ e|type_name(ci, config) }}ErrorHandler(), 
     {%- else %}
     UniffiHelpers.uniffiRustCall(
     {%- endmatch %} _status -> {
@@ -42,26 +42,26 @@
     @{{ annotation }}
     {% endif %}
     {%- if callable.is_async() %}
-    {{ func_decl }} CompletableFuture<{% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|type_name(ci) }}{%- when None %}Void{%- endmatch %}> {{ callable.name()|fn_name }}(
+    {{ func_decl }} CompletableFuture<{% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|type_name(ci, config) }}{%- when None %}Void{%- endmatch %}> {{ callable.name()|fn_name }}(
         {%- call arg_list(callable, !callable.takes_self()) -%}
     ){
         return {% call call_async(callable) %};
     }
     {%- else -%}
-    {{ func_decl }} {% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|type_name(ci) }}{%- when None %}void{%- endmatch %} {{ callable.name()|fn_name }}(
+    {{ func_decl }} {% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|type_name(ci, config) }}{%- when None %}void{%- endmatch %} {{ callable.name()|fn_name }}(
         {%- call arg_list(callable, !callable.takes_self()) -%}
     ) {% match callable.throws_type() -%}
         {%-     when Some(throwable) -%}
-        throws {{ throwable|type_name(ci) }}
+        throws {{ throwable|type_name(ci, config) }}
         {%-     else -%}
         {%- endmatch %} {
             try {
-                {% match callable.return_type() -%}{%- when Some with (return_type) -%}return {{ return_type|lift_fn }}({% call to_ffi_call(callable) %}){%- when None %}{% call to_ffi_call(callable) %}{%- endmatch %};
+                {% match callable.return_type() -%}{%- when Some with (return_type) -%}return {{ return_type|lift_fn(config) }}({% call to_ffi_call(callable) %}){%- when None %}{% call to_ffi_call(callable) %}{%- endmatch %};
             } catch (RuntimeException _e) {
                 {% match callable.throws_type() %}
                 {% when Some(throwable) %}
-                if ({{ throwable|type_name(ci) }}.class.isInstance(_e.getCause())) {
-                    throw ({{ throwable|type_name(ci) }})_e.getCause();
+                if ({{ throwable|type_name(ci, config) }}.class.isInstance(_e.getCause())) {
+                    throw ({{ throwable|type_name(ci, config) }})_e.getCause();
                 }
                 {% else %}
                 {% endmatch %}
@@ -92,14 +92,14 @@
         // lift function
         {%- match callable.return_type() %}
         {%- when Some(return_type) %}
-        (it) -> {{ return_type|lift_fn }}(it),
+        (it) -> {{ return_type|lift_fn(config) }}(it),
         {%- when None %}
         () -> {},
         {%- endmatch %}
         // Error FFI converter
         {%- match callable.throws_type() %}
         {%- when Some(e) %}
-        new {{ e|type_name(ci) }}ErrorHandler()
+        new {{ e|type_name(ci, config) }}ErrorHandler()
         {%- when None %}
         new UniffiNullRustCallStatusErrorHandler()
         {%- endmatch %}
@@ -108,7 +108,7 @@
 
 {%- macro arg_list_lowered(func) %}
     {%- for arg in func.arguments() %}
-        {{- arg|lower_fn }}({{ arg.name()|var_name }})
+        {{- arg|lower_fn(config) }}({{ arg.name()|var_name }})
     {%- if !loop.last %}, {% endif -%}
     {%- endfor %}
 {%- endmacro -%}
@@ -121,7 +121,7 @@
 
 {% macro arg_list(func, is_decl) %}
 {%- for arg in func.arguments() -%}
-        {{ arg|type_name(ci) }} {{ arg.name()|var_name }}
+        {{ arg|type_name(ci, config) }} {{ arg.name()|var_name }}
 {%-     if !loop.last %}, {% endif -%}
 {%- endfor %}
 {%- endmacro %}
@@ -132,7 +132,7 @@
 -#}
 {%- macro arg_list_ffi_decl(func) %}
     {%- for arg in func.arguments() %}
-        {{- arg.type_().borrow()|ffi_type_name_by_value }} {{arg.name()|var_name -}}{%- if !loop.last %}, {% endif -%}
+        {{- arg.type_().borrow()|ffi_type_name_by_value(config) }} {{arg.name()|var_name -}}{%- if !loop.last %}, {% endif -%}
     {%- endfor %}
     {%- if func.has_rust_call_status_arg() %}{% if func.arguments().len() != 0 %}, {% endif %}UniffiRustCallStatus uniffi_out_errmk{% endif %}
 {%- endmacro -%}

@@ -12,7 +12,7 @@ import java.util.Objects;
 public record {{ type_name }}(
     {%- for field in rec.fields() %}
     {%- call java::docstring(field, 4) %}
-    {{ field|type_name(ci) }} {{ field.name()|var_name -}}
+    {{ field|type_name(ci, config) }} {{ field.name()|var_name -}}
     {% if !loop.last %}, {% endif %}
     {%- endfor %}
 ) {% if contains_object_references %}implements AutoCloseable {% endif %}{
@@ -27,12 +27,12 @@ public record {{ type_name }}(
 public class {{ type_name }} {% if contains_object_references %}implements AutoCloseable {% endif %}{
     {%- for field in rec.fields() %}
     {%- call java::docstring(field, 4) %}
-    private {{ field|type_name(ci) }} {{ field.name()|var_name -}};
+    private {{ field|type_name(ci, config) }} {{ field.name()|var_name -}};
     {%- endfor %}
 
     public {{ type_name }}(
         {%- for field in rec.fields() %}
-        {{ field|type_name(ci) }} {{ field.name()|var_name -}}
+        {{ field|type_name(ci, config) }} {{ field.name()|var_name -}}
         {% if !loop.last %}, {% endif %}
         {%- endfor %}
     ) {
@@ -44,14 +44,14 @@ public class {{ type_name }} {% if contains_object_references %}implements AutoC
 
     {%- for field in rec.fields() %}
     {% let field_var_name = field.name()|var_name %}
-    public {{ field|type_name(ci) }} {{ field_var_name }}() {
+    public {{ field|type_name(ci, config) }} {{ field_var_name }}() {
         return this.{{ field_var_name }};
     }
     {%- endfor %}
 
     {%- for field in rec.fields() %}
     {%- let field_var_name = field.name()|var_name %}
-    public void {{ field.name()|setter}}({{ field|type_name(ci) }} {{ field_var_name }}) {
+    public void {{ field.name()|setter}}({{ field|type_name(ci, config) }} {{ field_var_name }}) {
         this.{{ field_var_name }} = {{ field_var_name }};
     }
     {%- endfor %}
@@ -108,7 +108,7 @@ public enum {{ rec|ffi_converter_name }} implements FfiConverterRustBuffer<{{ ty
     {%- if rec.has_fields() %}
     return new {{ type_name }}(
     {%- for field in rec.fields() %}
-      {{ field|read_fn }}(buf){% if !loop.last %},{% else %}{% endif %}
+      {{ field|read_fn(config) }}(buf){% if !loop.last %},{% else %}{% endif %}
     {%- endfor %}
     );
     {%- else %}
@@ -121,7 +121,7 @@ public enum {{ rec|ffi_converter_name }} implements FfiConverterRustBuffer<{{ ty
       {%- if rec.has_fields() %}
       return (
         {%- for field in rec.fields() %}
-            {{ field|allocation_size_fn }}(value.{{ field.name()|var_name }}()){% if !loop.last %} +{% endif %}
+            {{ field|allocation_size_fn(config) }}(value.{{ field.name()|var_name }}()){% if !loop.last %} +{% endif %}
         {%- endfor %}
       ); 
       {%- else %}
@@ -132,7 +132,7 @@ public enum {{ rec|ffi_converter_name }} implements FfiConverterRustBuffer<{{ ty
   @Override
   public void write({{ type_name }} value, ByteBuffer buf) {
     {%- for field in rec.fields() %}
-      {{ field|write_fn }}(value.{{ field.name()|var_name }}(), buf);
+      {{ field|write_fn(config) }}(value.{{ field.name()|var_name }}(), buf);
     {%- endfor %}
   }
 }

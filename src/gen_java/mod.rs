@@ -28,7 +28,7 @@ mod variant;
 trait CodeType: Debug {
     /// The language specific label used to reference this type. This will be used in
     /// method signatures and property declarations.
-    fn type_label(&self, ci: &ComponentInterface) -> String;
+    fn type_label(&self, ci: &ComponentInterface, config: &Config) -> String;
 
     /// A representation of this type label that can be used as part of another
     /// identifier. e.g. `read_foo()`, or `FooInternals`.
@@ -37,8 +37,8 @@ trait CodeType: Debug {
     /// with this type only.
     fn canonical_name(&self) -> String;
 
-    fn literal(&self, _literal: &Literal, ci: &ComponentInterface) -> String {
-        unimplemented!("Unimplemented for {}", self.type_label(ci))
+    fn literal(&self, _literal: &Literal, ci: &ComponentInterface, config: &Config) -> String {
+        unimplemented!("Unimplemented for {}", self.type_label(ci, config))
     }
 
     /// Instance of the FfiConverter
@@ -59,7 +59,7 @@ trait CodeType: Debug {
     ///
     /// This is the newer way of handling these methods and replaces the lower, write, lift, and
     /// read CodeType methods.
-    fn ffi_converter_instance(&self) -> String {
+    fn ffi_converter_instance(&self, _config: &Config) -> String {
         format!("{}.INSTANCE", self.ffi_converter_name())
     }
 
@@ -176,6 +176,17 @@ impl Config {
     pub fn generate_immutable_records(&self) -> bool {
         self.generate_immutable_records.unwrap_or(false)
     }
+
+    // Get the package name for an external type
+    fn external_type_package_name(&self, module_path: &str, namespace: &str) -> String {
+        // config overrides are keyed by the crate name, default fallback is the namespace.
+        let crate_name = module_path.split("::").next().unwrap();
+        match self.external_packages.get(crate_name) {
+            Some(name) => name.clone(),
+            // unreachable in library mode - all deps are in our config with correct namespace.
+            None => format!("uniffi.{namespace}"),
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -198,8 +209,6 @@ pub fn generate_bindings(config: &Config, ci: &ComponentInterface) -> Result<Str
 pub enum ImportRequirement {
     /// The name we are importing.
     Import { name: String },
-    /// Import the name with the specified local name (not supported in Java right now).
-    ImportAs { name: String, as_name: String },
 }
 
 impl ImportRequirement {
@@ -207,11 +216,6 @@ impl ImportRequirement {
     fn render(&self) -> String {
         match &self {
             ImportRequirement::Import { name } => format!("import {name};"),
-            ImportRequirement::ImportAs { .. } => {
-                unimplemented!(
-                    "Java doesn't support import aliases, use fully qualified values instead if possible."
-                )
-            }
         }
     }
 }
@@ -278,13 +282,8 @@ impl<'a> TypeRenderer<'a> {
 
     // Get the package name for an external type
     fn external_type_package_name(&self, module_path: &str, namespace: &str) -> String {
-        // config overrides are keyed by the crate name, default fallback is the namespace.
-        let crate_name = module_path.split("::").next().unwrap();
-        match self.config.external_packages.get(crate_name) {
-            Some(name) => name.clone(),
-            // unreachable in library mode - all deps are in our config with correct namespace.
-            None => format!("uniffi.{namespace}"),
-        }
+        self.config
+            .external_type_package_name(module_path, namespace)
     }
 
     // The following methods are used by the `Types.java` macros.
@@ -394,12 +393,17 @@ impl JavaCodeOracle {
         format!("Uniffi{}", nm.to_upper_camel_case())
     }
 
-    fn ffi_type_label_by_value(&self, ffi_type: &FfiType, prefer_primitive: bool) -> String {
+    fn ffi_type_label_by_value(
+        &self,
+        ffi_type: &FfiType,
+        prefer_primitive: bool,
+        config: &Config,
+    ) -> String {
         match ffi_type {
-            FfiType::RustBuffer(_) => format!("{}.ByValue", self.ffi_type_label(ffi_type)),
+            FfiType::RustBuffer(_) => format!("{}.ByValue", self.ffi_type_label(ffi_type, config)),
             FfiType::Struct(name) => format!("{}.UniffiByValue", self.ffi_struct_name(name)),
-            _ if prefer_primitive => self.ffi_type_primitive(ffi_type),
-            _ => self.ffi_type_label(ffi_type),
+            _ if prefer_primitive => self.ffi_type_primitive(ffi_type, config),
+            _ => self.ffi_type_label(ffi_type, config),
         }
     }
 
@@ -407,13 +411,13 @@ impl JavaCodeOracle {
     ///
     /// The main requirement here is that all types must have default values or else the struct
     /// won't work in some JNA contexts.
-    fn ffi_type_label_for_ffi_struct(&self, ffi_type: &FfiType) -> String {
+    fn ffi_type_label_for_ffi_struct(&self, ffi_type: &FfiType, config: &Config) -> String {
         match ffi_type {
             // Make callbacks function pointers nullable. This matches the semantics of a C
             // function pointer better and allows for `null` as a default value.
             // Everything is nullable in Java by default.
             FfiType::Callback(name) => self.ffi_callback_name(name).to_string(),
-            _ => self.ffi_type_label_by_value(ffi_type, true),
+            _ => self.ffi_type_label_by_value(ffi_type, true, config),
         }
     }
 
@@ -438,7 +442,7 @@ impl JavaCodeOracle {
         }
     }
 
-    fn ffi_type_label_by_reference(&self, ffi_type: &FfiType) -> String {
+    fn ffi_type_label_by_reference(&self, ffi_type: &FfiType, config: &Config) -> String {
         match ffi_type {
             FfiType::Int32 | FfiType::UInt32 => "IntByReference".to_string(),
             FfiType::Int8
@@ -448,15 +452,15 @@ impl JavaCodeOracle {
             | FfiType::Int64
             | FfiType::UInt64
             | FfiType::Float32
-            | FfiType::Float64 => format!("{}ByReference", self.ffi_type_label(ffi_type)),
+            | FfiType::Float64 => format!("{}ByReference", self.ffi_type_label(ffi_type, config)),
             FfiType::RustArcPtr(_) => "PointerByReference".to_owned(),
             // JNA structs default to ByReference
-            FfiType::RustBuffer(_) | FfiType::Struct(_) => self.ffi_type_label(ffi_type),
+            FfiType::RustBuffer(_) | FfiType::Struct(_) => self.ffi_type_label(ffi_type, config),
             _ => panic!("{ffi_type:?} by reference is not implemented"),
         }
     }
 
-    fn ffi_type_label(&self, ffi_type: &FfiType) -> String {
+    fn ffi_type_label(&self, ffi_type: &FfiType, config: &Config) -> String {
         match ffi_type {
             // Note that unsigned integers in Java are currently experimental, but java.nio.ByteBuffer does not
             // support them yet. Thus, we use the signed variants to represent both signed and unsigned
@@ -469,21 +473,29 @@ impl JavaCodeOracle {
             FfiType::Float64 => "Double".to_string(),
             FfiType::Handle => "Long".to_string(),
             FfiType::RustArcPtr(_) => "Pointer".to_string(),
-            FfiType::RustBuffer(maybe_suffix) => match maybe_suffix {
-                Some(suffix) => format!("uniffi.{}.RustBuffer", suffix),
+            FfiType::RustBuffer(maybe_external) => match maybe_external {
+                Some(external_meta) => {
+                    format!(
+                        "{}.RustBuffer",
+                        config.external_type_package_name(
+                            &external_meta.module_path,
+                            &external_meta.namespace
+                        )
+                    )
+                }
                 None => "RustBuffer".to_string(),
             },
             FfiType::RustCallStatus => "UniffiRustCallStatus.ByValue".to_string(),
             FfiType::ForeignBytes => "ForeignBytes.ByValue".to_string(),
             FfiType::Callback(name) => self.ffi_callback_name(name),
             FfiType::Struct(name) => self.ffi_struct_name(name),
-            FfiType::Reference(inner) => self.ffi_type_label_by_reference(inner),
+            FfiType::Reference(inner) => self.ffi_type_label_by_reference(inner, config),
             FfiType::VoidPointer => "Pointer".to_string(),
         }
     }
 
     /// Generate primitive types where possible. Useful where we don't need or can't have boxed versions (ie structs).
-    fn ffi_type_primitive(&self, ffi_type: &FfiType) -> String {
+    fn ffi_type_primitive(&self, ffi_type: &FfiType, config: &Config) -> String {
         match ffi_type {
             // Note that unsigned integers in Java are currently experimental, but java.nio.ByteBuffer does not
             // support them yet. Thus, we use the signed variants to represent both signed and unsigned
@@ -496,15 +508,23 @@ impl JavaCodeOracle {
             FfiType::Float64 => "double".to_string(),
             FfiType::Handle => "long".to_string(),
             FfiType::RustArcPtr(_) => "Pointer".to_string(),
-            FfiType::RustBuffer(maybe_suffix) => match maybe_suffix {
-                Some(suffix) => format!("uniffi.{}.RustBuffer", suffix),
+            FfiType::RustBuffer(maybe_external) => match maybe_external {
+                Some(external_meta) => {
+                    format!(
+                        "{}.RustBuffer",
+                        config.external_type_package_name(
+                            &external_meta.module_path,
+                            &external_meta.namespace
+                        )
+                    )
+                }
                 None => "RustBuffer".to_string(),
             },
             FfiType::RustCallStatus => "UniffiRustCallStatus.ByValue".to_string(),
             FfiType::ForeignBytes => "ForeignBytes.ByValue".to_string(),
             FfiType::Callback(name) => self.ffi_callback_name(name),
             FfiType::Struct(name) => self.ffi_struct_name(name),
-            FfiType::Reference(inner) => self.ffi_type_label_by_reference(inner),
+            FfiType::Reference(inner) => self.ffi_type_label_by_reference(inner, config),
             FfiType::VoidPointer => "Pointer".to_string(),
         }
     }
@@ -646,54 +666,73 @@ mod filters {
     pub(super) fn type_name(
         as_ct: &impl AsCodeType,
         ci: &ComponentInterface,
+        config: &Config,
     ) -> Result<String, askama::Error> {
-        Ok(as_ct.as_codetype().type_label(ci))
+        Ok(as_ct.as_codetype().type_label(ci, config))
     }
 
     pub(super) fn canonical_name(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
         Ok(as_ct.as_codetype().canonical_name())
     }
 
-    pub(super) fn ffi_converter_instance(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
-        Ok(as_ct.as_codetype().ffi_converter_instance())
+    pub(super) fn ffi_converter_instance(
+        as_ct: &impl AsCodeType,
+        config: &Config,
+    ) -> Result<String, askama::Error> {
+        Ok(as_ct.as_codetype().ffi_converter_instance(config))
     }
 
     pub(super) fn ffi_converter_name(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
         Ok(as_ct.as_codetype().ffi_converter_name())
     }
 
-    pub(super) fn lower_fn(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
+    pub(super) fn lower_fn(
+        as_ct: &impl AsCodeType,
+        config: &Config,
+    ) -> Result<String, askama::Error> {
         Ok(format!(
             "{}.lower",
-            as_ct.as_codetype().ffi_converter_instance()
+            as_ct.as_codetype().ffi_converter_instance(config)
         ))
     }
 
-    pub(super) fn allocation_size_fn(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
+    pub(super) fn allocation_size_fn(
+        as_ct: &impl AsCodeType,
+        config: &Config,
+    ) -> Result<String, askama::Error> {
         Ok(format!(
             "{}.allocationSize",
-            as_ct.as_codetype().ffi_converter_instance()
+            as_ct.as_codetype().ffi_converter_instance(config)
         ))
     }
 
-    pub(super) fn write_fn(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
+    pub(super) fn write_fn(
+        as_ct: &impl AsCodeType,
+        config: &Config,
+    ) -> Result<String, askama::Error> {
         Ok(format!(
             "{}.write",
-            as_ct.as_codetype().ffi_converter_instance()
+            as_ct.as_codetype().ffi_converter_instance(config)
         ))
     }
 
-    pub(super) fn lift_fn(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
+    pub(super) fn lift_fn(
+        as_ct: &impl AsCodeType,
+        config: &Config,
+    ) -> Result<String, askama::Error> {
         Ok(format!(
             "{}.lift",
-            as_ct.as_codetype().ffi_converter_instance()
+            as_ct.as_codetype().ffi_converter_instance(config)
         ))
     }
 
-    pub(super) fn read_fn(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
+    pub(super) fn read_fn(
+        as_ct: &impl AsCodeType,
+        config: &Config,
+    ) -> Result<String, askama::Error> {
         Ok(format!(
             "{}.read",
-            as_ct.as_codetype().ffi_converter_instance()
+            as_ct.as_codetype().ffi_converter_instance(config)
         ))
     }
 
@@ -701,8 +740,9 @@ mod filters {
         literal: &Literal,
         as_ct: &impl AsCodeType,
         ci: &ComponentInterface,
+        config: &Config,
     ) -> Result<String, askama::Error> {
-        Ok(as_ct.as_codetype().literal(literal, ci))
+        Ok(as_ct.as_codetype().literal(literal, ci, config))
     }
 
     // Get the idiomatic Java rendering of an integer.
@@ -736,12 +776,18 @@ mod filters {
         }
     }
 
-    pub fn ffi_type_name_by_value(type_: &FfiType) -> Result<String, askama::Error> {
-        Ok(JavaCodeOracle.ffi_type_label_by_value(type_, false))
+    pub fn ffi_type_name_by_value(
+        type_: &FfiType,
+        config: &Config,
+    ) -> Result<String, askama::Error> {
+        Ok(JavaCodeOracle.ffi_type_label_by_value(type_, false, config))
     }
 
-    pub fn ffi_type_name_for_ffi_struct(type_: &FfiType) -> Result<String, askama::Error> {
-        Ok(JavaCodeOracle.ffi_type_label_for_ffi_struct(type_))
+    pub fn ffi_type_name_for_ffi_struct(
+        type_: &FfiType,
+        config: &Config,
+    ) -> Result<String, askama::Error> {
+        Ok(JavaCodeOracle.ffi_type_label_for_ffi_struct(type_, config))
     }
 
     pub fn ffi_default_value(type_: FfiType) -> Result<String, askama::Error> {
@@ -803,18 +849,20 @@ mod filters {
     pub fn async_inner_return_type(
         callable: impl Callable,
         ci: &ComponentInterface,
+        config: &Config,
     ) -> Result<String, askama::Error> {
         callable
             .return_type()
-            .map_or(Ok("Void".to_string()), |t| type_name(&t, ci))
+            .map_or(Ok("Void".to_string()), |t| type_name(&t, ci, config))
     }
 
     pub fn async_return_type(
         callable: impl Callable,
         ci: &ComponentInterface,
+        config: &Config,
     ) -> Result<String, askama::Error> {
         let is_async = callable.is_async();
-        let inner_type = async_inner_return_type(callable, ci)?;
+        let inner_type = async_inner_return_type(callable, ci, config)?;
         if is_async {
             Ok(format!("CompletableFuture<{inner_type}>"))
         } else {

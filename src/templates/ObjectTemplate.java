@@ -152,7 +152,7 @@ public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }
   // Note no constructor generated for this object as it is async.
   {%-     else %}
   {%- call java::docstring(cons, 4) %}
-  public {{ impl_class_name }}({% call java::arg_list(cons, true) -%}) {% match cons.throws_type() %}{% when Some(throwable) %}throws {{ throwable|type_name(ci) }}{% else %}{% endmatch %}{
+  public {{ impl_class_name }}({% call java::arg_list(cons, true) -%}) {% match cons.throws_type() %}{% when Some(throwable) %}throws {{ throwable|type_name(ci, config) }}{% else %}{% endmatch %}{
     this((Pointer){%- call java::to_ffi_call(cons) -%});
   }
   {%-     endif %}
@@ -238,7 +238,7 @@ public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }
   {%         when UniffiTrait::Display { fmt } %}
   @Override
   public String toString() {
-      return {{ fmt.return_type().unwrap()|lift_fn }}({% call java::to_ffi_call(fmt) %});
+      return {{ fmt.return_type().unwrap()|lift_fn(config) }}({% call java::to_ffi_call(fmt) %});
   }
   {%         when UniffiTrait::Eq { eq, ne } %}
   {# only equals used #}
@@ -250,12 +250,12 @@ public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }
       if (!(other instanceof {{ impl_class_name}})) {
         return false;
       }
-      return {{ eq.return_type().unwrap()|lift_fn }}({% call java::to_ffi_call(eq) %});
+      return {{ eq.return_type().unwrap()|lift_fn(config) }}({% call java::to_ffi_call(eq) %});
   }
   {%         when UniffiTrait::Hash { hash } %}
   @Override
   public Integer hashCode() {
-      return {{ hash.return_type().unwrap()|lift_fn }}({%- call java::to_ffi_call(hash) %}).toInt();
+      return {{ hash.return_type().unwrap()|lift_fn(config) }}({%- call java::to_ffi_call(hash) %}).toInt();
   }
   {%-         else %}
   {%-     endmatch %}

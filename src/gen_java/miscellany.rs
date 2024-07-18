@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use super::CodeType;
+use super::{CodeType, Config};
 use crate::ComponentInterface;
 use paste::paste;
 
@@ -13,7 +13,7 @@ macro_rules! impl_code_type_for_miscellany {
             pub struct $T;
 
             impl CodeType for $T  {
-                fn type_label(&self, _ci: &ComponentInterface) -> String {
+                fn type_label(&self, _ci: &ComponentInterface, _config: &Config) -> String {
                     $class_name.into()
                 }
 

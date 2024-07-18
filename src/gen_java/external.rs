@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use super::CodeType;
+use super::{CodeType, Config};
 use crate::ComponentInterface;
 
 #[derive(Debug)]
@@ -23,24 +23,19 @@ impl ExternalCodeType {
 }
 
 impl CodeType for ExternalCodeType {
-    fn type_label(&self, ci: &ComponentInterface) -> String {
-        // TODO(murph): need config here to see if theres a specific set name
-        // not sure how to get it, or pass just that info down
+    fn type_label(&self, ci: &ComponentInterface, config: &Config) -> String {
         format!(
-            "uniffi.{}.{}",
-            // TODO
-            //external_type_package_name(self.module_path, self.namespace),
-            // self.module_path,
-            self.namespace,
+            "{}.{}",
+            config.external_type_package_name(&self.module_path, &self.namespace),
             super::JavaCodeOracle.class_name(ci, &self.name)
         )
     }
 
     // Override to make references to external FfiConverters fully qualified always.
-    fn ffi_converter_instance(&self) -> String {
+    fn ffi_converter_instance(&self, config: &Config) -> String {
         format!(
-            "uniffi.{}.{}.INSTANCE",
-            self.namespace,
+            "{}.{}.INSTANCE",
+            config.external_type_package_name(&self.module_path, &self.namespace),
             self.ffi_converter_name()
         )
     }

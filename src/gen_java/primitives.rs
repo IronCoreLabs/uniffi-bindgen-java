@@ -1,9 +1,9 @@
-use super::CodeType;
+use super::{CodeType, Config};
 use paste::paste;
 use uniffi_bindgen::backend::Literal;
 use uniffi_bindgen::interface::{ComponentInterface, Radix, Type};
 
-fn render_literal(literal: &Literal, _ci: &ComponentInterface) -> String {
+fn render_literal(literal: &Literal, _ci: &ComponentInterface, _config: &Config) -> String {
     fn typed_number(type_: &Type, num_str: String) -> String {
         let unwrapped_type = match type_ {
             Type::Optional { inner_type } => inner_type,
@@ -59,7 +59,7 @@ macro_rules! impl_code_type_for_primitive {
             pub struct $T;
 
             impl CodeType for $T  {
-                fn type_label(&self, _ci: &ComponentInterface) -> String {
+                fn type_label(&self, _ci: &ComponentInterface, _config: &Config) -> String {
                     format!("{}", $class_name)
                 }
 
@@ -67,8 +67,8 @@ macro_rules! impl_code_type_for_primitive {
                     $class_name.into()
                 }
 
-                fn literal(&self, literal: &Literal, ci: &ComponentInterface) -> String {
-                    render_literal(&literal, ci)
+                fn literal(&self, literal: &Literal, ci: &ComponentInterface, config: &Config) -> String {
+                    render_literal(&literal, ci, config)
                 }
             }
         }
@@ -78,7 +78,7 @@ macro_rules! impl_code_type_for_primitive {
 #[derive(Debug)]
 pub struct BytesCodeType;
 impl CodeType for BytesCodeType {
-    fn type_label(&self, _ci: &ComponentInterface) -> String {
+    fn type_label(&self, _ci: &ComponentInterface, _config: &Config) -> String {
         "byte[]".to_string()
     }
 
@@ -86,8 +86,8 @@ impl CodeType for BytesCodeType {
         "ByteArray".to_string()
     }
 
-    fn literal(&self, literal: &Literal, ci: &ComponentInterface) -> String {
-        render_literal(&literal, ci)
+    fn literal(&self, literal: &Literal, ci: &ComponentInterface, config: &Config) -> String {
+        render_literal(&literal, ci, config)
     }
 }
 
