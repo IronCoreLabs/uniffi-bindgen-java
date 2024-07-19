@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     borrow::Borrow,
     cell::RefCell,
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{HashMap, HashSet},
 };
 use uniffi_bindgen::{
     backend::{Literal, TemplateExpression},
@@ -204,41 +204,22 @@ pub fn generate_bindings(config: &Config, ci: &ComponentInterface) -> Result<Str
         .context("failed to render java bindings")
 }
 
-/// A struct to record a Java import statement.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum ImportRequirement {
-    /// The name we are importing.
-    Import { name: String },
-}
-
-impl ImportRequirement {
-    /// Render the Java import statement.
-    fn render(&self) -> String {
-        match &self {
-            ImportRequirement::Import { name } => format!("import {name};"),
-        }
-    }
-}
-
 #[derive(Template)]
 #[template(syntax = "java", escape = "none", path = "wrapper.java")]
 pub struct JavaWrapper<'a> {
     config: Config,
     ci: &'a ComponentInterface,
     type_helper_code: String,
-    type_imports: BTreeSet<ImportRequirement>,
 }
 
 impl<'a> JavaWrapper<'a> {
     pub fn new(config: Config, ci: &'a ComponentInterface) -> Self {
         let type_renderer = TypeRenderer::new(&config, ci);
         let type_helper_code = type_renderer.render().unwrap();
-        let type_imports = type_renderer.imports.into_inner();
         Self {
             config,
             ci,
             type_helper_code,
-            type_imports,
         }
     }
 
@@ -248,10 +229,6 @@ impl<'a> JavaWrapper<'a> {
             .map(|t| JavaCodeOracle.find(t))
             .filter_map(|ct| ct.initialization_fn())
             .collect()
-    }
-
-    pub fn imports(&self) -> Vec<ImportRequirement> {
-        self.type_imports.iter().cloned().collect()
     }
 }
 
@@ -266,8 +243,6 @@ pub struct TypeRenderer<'a> {
     ci: &'a ComponentInterface,
     // Track included modules for the `include_once()` macro
     include_once_names: RefCell<HashSet<String>>,
-    // Track imports added with the `add_import()` macro
-    imports: RefCell<BTreeSet<ImportRequirement>>,
 }
 
 impl<'a> TypeRenderer<'a> {
@@ -276,14 +251,7 @@ impl<'a> TypeRenderer<'a> {
             config,
             ci,
             include_once_names: RefCell::new(HashSet::new()),
-            imports: RefCell::new(BTreeSet::new()),
         }
-    }
-
-    // Get the package name for an external type
-    fn external_type_package_name(&self, module_path: &str, namespace: &str) -> String {
-        self.config
-            .external_type_package_name(module_path, namespace)
     }
 
     // The following methods are used by the `Types.java` macros.
@@ -297,31 +265,6 @@ impl<'a> TypeRenderer<'a> {
             .borrow_mut()
             .insert(name.to_string())
     }
-
-    // Helper to add an import statement
-    //
-    // Call this inside your template to cause an import statement to be added at the top of every
-    // file.
-    //
-    // Returns an empty string so that it can be used inside an askama `{{ }}` block.
-    fn add_import(&self, name: &str) -> &str {
-        self.imports.borrow_mut().insert(ImportRequirement::Import {
-            name: name.to_owned(),
-        });
-        ""
-    }
-
-    // Like add_import, but arranges for `import name as as_name`
-    // TODO(murph): java doesn't support import aliases
-    // fn add_import_as(&self, name: &str, as_name: &str) -> &str {
-    //     self.imports
-    //         .borrow_mut()
-    //         .insert(ImportRequirement::ImportAs {
-    //             name: name.to_owned(),
-    //             as_name: as_name.to_owned(),
-    //         });
-    //     ""
-    // }
 }
 
 fn fixup_keyword(name: String) -> String {
@@ -734,15 +677,6 @@ mod filters {
             "{}.read",
             as_ct.as_codetype().ffi_converter_instance(config)
         ))
-    }
-
-    pub fn render_literal(
-        literal: &Literal,
-        as_ct: &impl AsCodeType,
-        ci: &ComponentInterface,
-        config: &Config,
-    ) -> Result<String, askama::Error> {
-        Ok(as_ct.as_codetype().literal(literal, ci, config))
     }
 
     // Get the idiomatic Java rendering of an integer.

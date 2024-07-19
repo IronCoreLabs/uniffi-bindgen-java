@@ -36,14 +36,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
-{%- for req in self.imports() %}
-{{ req.render() }}
-{%- endfor %}
-
 {%- call java::docstring_value(ci.namespace_docstring(), 0) %}
 public class {{ ci.namespace()|class_name(ci) }} {
   {%- for func in ci.function_definitions() %}
-  {%- call java::func_decl("public static", "", func, 4) %}
+  {% call java::func_decl("public static", "", func, 4) %}
   {%- endfor %}
 }
 

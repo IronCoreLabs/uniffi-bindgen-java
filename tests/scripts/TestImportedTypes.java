@@ -2,59 +2,60 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import uniffi.imported_types_lib.*
-import uniffi.imported_types_sublib.*
-import uniffi.uniffi_one_ns.*
-import uniffi.ext_types_custom.*
+import uniffi.imported_types_lib.*;
+import uniffi.imported_types_sublib.*;
+import uniffi.uniffi_one_ns.*;
+import uniffi.ext_types_custom.*;
+import java.util.List;
 
-public class TestFutures {
+public class TestImportedTypes {
   public static void main(String[] args) throws Exception {
-    var ct = ???.getCombinedType(null);
+    var ct = ImportedTypesLib.getCombinedType(null);
     assert ct.uot().sval().equals("hello");
-    asert ct.guid().equals("a-guid");
+    assert ct.guid().equals("a-guid");
     assert ct.url().equals(new java.net.URL("http://example.com/"));
 
-    var ct2 = ???.getCombinedType(null);
+    var ct2 = ImportedTypesLib.getCombinedType(null);
     assert ct.equals(ct2);
 
-    assert ???.getObjectsType(null).maybeInterface() == null;
-    assert ???.getObjectsType(null).maybeTrait() == null;
-    assert ???.getUniffiOneTrait(null) == null;
+    assert ImportedTypesLib.getObjectsType(null).maybeInterface() == null;
+    assert ImportedTypesLib.getObjectsType(null).maybeTrait() == null;
+    assert ImportedTypesLib.getUniffiOneTrait(null) == null;
 
-    assert ???.getSubType(null).maybeInterface() == null;
-    assert ???.getTraitImpl().hello().equals("sub-lib trait impl says hello");
+    assert ImportedTypesSublib.getSubType(null).maybeInterface() == null;
+    assert ImportedTypesSublib.getTraitImpl().hello().equals("sub-lib trait impl says hello");
 
     var url = new java.net.URL("http://example.com/");
-    assert ???.getUrl(url).equals(url);
-    assert ???.getMaybeUrl(url).equals(url);
-    assert ???.getMaybeUrl(null) == null;
-    assert ???.getUrls(List.of(url)).equals(List.of(url));
-    assert ???.getMaybeUrls(List.of(url, null)).equals(List.of(url, null));
+    assert ImportedTypesLib.getUrl(url).equals(url);
+    assert ImportedTypesLib.getMaybeUrl(url).equals(url);
+    assert ImportedTypesLib.getMaybeUrl(null) == null;
+    assert ImportedTypesLib.getUrls(List.of(url)).equals(List.of(url));
+    assert ImportedTypesLib.getMaybeUrls(List.of(url, null)).equals(List.of(url, null));
 
-    assert ???.getGuid("guid").equals("guid");
-    assert ???.getOuid("ouid").equals("ouid");
+    assert ExtTypesCustom.getGuid(new Guid("guid")).equals(new Guid("guid"));
+    assert ExtTypesCustom.getOuid(new Ouid("ouid")).equals(new Ouid("ouid"));
     //assert(getImportedGuid("guid") == "guid")
-    assert ???.getImportedOuid("ouid").equals("ouid");
+    assert ImportedTypesLib.getImportedOuid(new Ouid("ouid")).equals(new Ouid("ouid"));
 
     var uot = new UniffiOneType("hello");
-    assert ???.getUniffiOneType(uot).equals(uot);
-    assert ???.getMaybeUniffiOneType(uot).equals(uot);
-    assert ???.getMaybeUniffiOneType(null) == null;
-    assert ???.getUniffiOneTypes(List.of(uot)).equals(List.of(uot));
-    assert ???.getMaybeUniffiOneTypes(List.of(uot, null)).equals(List.of(uot, null));
+    assert ImportedTypesLib.getUniffiOneType(uot).equals(uot);
+    assert ImportedTypesLib.getMaybeUniffiOneType(uot).equals(uot);
+    assert ImportedTypesLib.getMaybeUniffiOneType(null) == null;
+    assert ImportedTypesLib.getUniffiOneTypes(List.of(uot)).equals(List.of(uot));
+    assert ImportedTypesLib.getMaybeUniffiOneTypes(List.of(uot, null)).equals(List.of(uot, null));
 
     var uopmt = new UniffiOneProcMacroType("hello from proc-macro world");
-    assert ???.getUniffiOneProcMacroType(uopmt).equals(uopmt);
-    assert ???.getMyProcMacroType(uopmt).equals(uopmt);
+    assert ImportedTypesLib.getUniffiOneProcMacroType(uopmt).equals(uopmt);
+    assert UniffiOneNs.getMyProcMacroType(uopmt).equals(uopmt);
 
     var uoe = UniffiOneEnum.ONE;
-    assert ???.getUniffeOneEnum(uoe).equals(uoe);
-    assert ???.getMaybeUniffiOneEnum(uoe).equals(uoe);
-    assert ???.getMaybeUniffiOneEnum(null).equals(null);
-    assert ???.getUniffiOneEnums(List.of(uoe)).equals(List.of(uoe));
-    assert ???.getMaybeUniffiOneEnums(List.of(uoe, null)).equals(List.of(uoe, null));
+    assert ImportedTypesLib.getUniffiOneEnum(uoe).equals(uoe);
+    assert ImportedTypesLib.getMaybeUniffiOneEnum(uoe).equals(uoe);
+    assert ImportedTypesLib.getMaybeUniffiOneEnum(null).equals(null);
+    assert ImportedTypesLib.getUniffiOneEnums(List.of(uoe)).equals(List.of(uoe));
+    assert ImportedTypesLib.getMaybeUniffiOneEnums(List.of(uoe, null)).equals(List.of(uoe, null));
 
     assert ct.ecd().sval().equals("ecd");
-    assert ???.getExternalCrateInterface("foo").value().equals("foo");
+    assert ImportedTypesLib.getExternalCrateInterface("foo").value().equals("foo");
   }
 }

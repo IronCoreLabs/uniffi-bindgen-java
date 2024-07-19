@@ -82,9 +82,6 @@ public class NoPointer {
 {%- when Type::Int32 or Type::UInt32 %}
 {%- include "Int32Helper.java" %}
 
-{%- when Type::External { module_path, name, namespace, kind, tagged } %}
-{% include "ExternalTypeTemplate.java" %}
-
 {%- when Type::Float32 %}
 {%- include "Float32Helper.java" %}
 
