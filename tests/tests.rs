@@ -4,10 +4,13 @@ License, v. 2.0. If a copy of the MPL was not distributed with this
 
 use anyhow::{bail, Context, Result};
 use camino::{Utf8Path, Utf8PathBuf};
-use cargo_metadata::{MetadataCommand, Package, Target};
+use cargo_metadata::{Message, MetadataCommand, Package, Target};
+use glob::glob;
+use std::collections::HashMap;
 use std::env::consts::ARCH;
 use std::io::{Read, Write};
-use std::process::Command;
+use std::path::Path;
+use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, fs};
 use uniffi_bindgen::library_mode::generate_bindings;
@@ -27,7 +30,7 @@ fn run_test(fixture_name: &str, test_file: &str) -> Result<()> {
         let maybe_base_uniffi_toml_string =
             find_uniffi_toml(fixture_name)?.and_then(read_file_contents);
         let maybe_extra_uniffi_toml_string =
-            read_file_contents(test_path.with_file_name("uniffi-extras.toml"));
+            read_file_contents(test_path.with_file_name("uniffi-extras.toml").to_path_buf());
 
         // final_string will be "" if there aren't any toml files to read.
         let final_string: String = itertools::Itertools::intersperse(
@@ -56,6 +59,102 @@ fn run_test(fixture_name: &str, test_file: &str) -> Result<()> {
             Some(new_filename)
         }
     };
+
+    // TODO: pull out into function
+    // check the file struct for `uniffi-extras.toml` files and store them by crate
+    let mut extras_map = HashMap::new();
+    for extra in glob(
+        test_path
+            .parent()
+            .unwrap()
+            .join("uniffi-config-extensions/**/uniffi-extras.toml")
+            .as_str(),
+    )
+    .expect("Failed to read glob pattern")
+    {
+        match extra {
+            Ok(extra_path) => match read_file_contents(&extra_path) {
+                Some(contents) => {
+                    extras_map.insert(
+                        extra_path
+                            .parent()
+                            .unwrap()
+                            .iter()
+                            .last()
+                            .unwrap()
+                            .to_string_lossy()
+                            .into_owned(),
+                        contents,
+                    );
+                }
+                None => println!(
+                    "Failed to read uniffi config extension extras file: {}",
+                    extra_path.into_os_string().into_string().unwrap()
+                ),
+            },
+            Err(e) => println!("Failed to read uniffi config extension path: {}", e),
+        }
+    }
+
+    // run a faux compile to get a list of all dependencies
+    let mut check_compile = Command::new(env!("CARGO"))
+        .arg("test")
+        .arg("--no-run")
+        .arg("--message-format=json")
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("Error running 'cargo test --no-run'");
+    let output = std::io::BufReader::new(check_compile.stdout.take().unwrap());
+    let metadata_messages: Vec<_> = Message::parse_stream(output)
+        .map(|m| m.expect("Error parsing cargo messages"))
+        .collect();
+    // run through the messages looking for any dependencies we have overrides for
+    let artifacts = metadata_messages
+        .iter()
+        .filter_map(|message| match message {
+            Message::CompilerArtifact(artifact) => Some(artifact.clone()),
+            _ => None,
+        });
+
+    artifacts.for_each(|artifact| {
+        if extras_map.contains_key(artifact.target.name.as_str()) {
+            let uniffi_toml_path = artifact.manifest_path.with_file_name("uniffi.toml");
+            // read the file if it exists
+            let uniffi_toml =
+                read_file_contents(&uniffi_toml_path).unwrap_or_else(|| "".to_string());
+            // add the extras either way (unless they already exist)
+            let extras = extras_map
+                .get(artifact.target.name.as_str())
+                .unwrap()
+                .clone();
+            if !uniffi_toml.contains(&extras) {
+                let replacement_uniffi_toml: String = itertools::Itertools::intersperse(
+                    vec![
+                        uniffi_toml,
+                        extras_map
+                            .get(artifact.target.name.as_str())
+                            .unwrap()
+                            .clone(),
+                    ]
+                    .into_iter(),
+                    "\n".to_string(),
+                )
+                .collect();
+                // write to the same place
+                let res = write_file_contents(&uniffi_toml_path, &replacement_uniffi_toml);
+                match res {
+                    Ok(()) => {
+                        println!("wrote updated toml for {:?} successfully", uniffi_toml_path)
+                    }
+                    Err(e) => println!(
+                        "failed to write updated toml for {:?}: {}",
+                        uniffi_toml_path, e
+                    ),
+                }
+            }
+        }
+    });
+    // ENDTODO
 
     // generate the fixture bindings
     generate_bindings(
@@ -132,7 +231,7 @@ fn find_uniffi_toml(name: &str) -> Result<Option<Utf8PathBuf>> {
         .collect();
     let package = match matching.len() {
         1 => matching[0].clone(),
-        n => bail!("cargo metadata return {n} packages named {name}"),
+        n => bail!("cargo metadata returned {n} packages named {name}"),
     };
     let cdylib_targets: Vec<&Target> = package
         .targets
@@ -208,7 +307,7 @@ fn calc_classpath(extra_paths: Vec<&Utf8PathBuf>) -> String {
 }
 
 /// Read the contents of the file. Any errors will be turned into None.
-fn read_file_contents(path: Utf8PathBuf) -> Option<String> {
+fn read_file_contents<P: AsRef<Path>>(path: P) -> Option<String> {
     if let Ok(metadata) = fs::metadata(&path) {
         if metadata.is_file() {
             let mut content = String::new();
@@ -253,7 +352,7 @@ fixture_tests! {
     (test_chronological, "uniffi-fixture-time", "scripts/TestChronological.java"),
     (test_custom_types, "uniffi-example-custom-types", "scripts/TestCustomTypes/TestCustomTypes.java"),
     // (test_callbacks, "uniffi-fixture-callbacks", "scripts/test_callbacks.java"),
-    (test_external_types, "uniffi-fixture-ext-types", "scripts/TestImportedTypes.java"),
+    (test_external_types, "uniffi-fixture-ext-types", "scripts/TestImportedTypes/TestImportedTypes.java"),
     (test_futures, "uniffi-example-futures", "scripts/TestFutures.java"),
     (test_futures_fixtures, "uniffi-fixture-futures", "scripts/TestFixtureFutures/TestFixtureFutures.java"),
 }
