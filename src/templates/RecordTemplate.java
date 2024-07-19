@@ -68,8 +68,8 @@ public class {{ type_name }} {% if contains_object_references %}implements AutoC
         if (other instanceof {{ type_name }}) {
             {{ type_name }} t = ({{ type_name }}) other;
             return ({% for field in rec.fields() %}{% let field_var_name = field.name()|var_name %}
-              {#- currently all primitive are already referenced by their boxed values in generated code, so `.equals` works for everything #}
-              ({{ field_var_name }}.equals(t.{{ field_var_name }})){% if !loop.last%} && {% endif %}
+              {#- currently all primitives are already referenced by their boxed values in generated code, so `.equals` works for everything #}
+              Objects.equals({{ field_var_name }}, t.{{ field_var_name }}){% if !loop.last%} && {% endif %}
               {% endfor %}
             );
         };
