@@ -30,9 +30,9 @@ public class NoPointer {
 }
 
 {%- for type_ in ci.iter_types() %}
-{%- let type_name = type_|type_name(ci) %}
+{%- let type_name = type_|type_name(ci, config) %}
 {%- let ffi_converter_name = type_|ffi_converter_name %}
-{%- let ffi_converter_instance = type_|ffi_converter_instance %}
+{%- let ffi_converter_instance = type_|ffi_converter_instance(config) %}
 {%- let canonical_type_name = type_|canonical_name %}
 {%- let contains_object_references = ci.item_contains_object_references(type_) %}
 
@@ -109,11 +109,6 @@ public class NoPointer {
 {%- when Type::Timestamp %}
 {% include "TimestampHelper.java" %}
 
-{# TODO(murph): implement the rest of the types
-
-{%- when Type::External { module_path, name, namespace, kind, tagged } %}
-{% include "ExternalTypeTemplate.kt" %}
-#}
 {%- else %}
 {%- endmatch %}
 {%- endfor %}

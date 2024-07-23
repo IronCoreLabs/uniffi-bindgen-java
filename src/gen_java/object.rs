@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use super::CodeType;
+use super::{CodeType, Config};
 use uniffi_bindgen::{interface::ObjectImpl, ComponentInterface};
 
 #[derive(Debug)]
@@ -18,7 +18,7 @@ impl ObjectCodeType {
 }
 
 impl CodeType for ObjectCodeType {
-    fn type_label(&self, ci: &ComponentInterface) -> String {
+    fn type_label(&self, ci: &ComponentInterface, _config: &Config) -> String {
         super::JavaCodeOracle.class_name(ci, &self.name)
     }
 

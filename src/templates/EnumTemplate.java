@@ -20,8 +20,8 @@ public enum {{ type_name }} {
   {{ variant|variant_name}}({{ e|variant_discr_literal(loop.index0)}}){% if loop.last %};{% else %},{% endif %}}
   {%- endfor %}
 
-  private final {{ variant_discr_type|type_name(ci) }} value;
-  {{type_name}}({{ variant_discr_type|type_name(ci) }} value) {
+  private final {{ variant_discr_type|type_name(ci, config) }} value;
+  {{type_name}}({{ variant_discr_type|type_name(ci, config) }} value) {
     this.value = value;
   }
 }
@@ -61,7 +61,7 @@ public sealed interface {{ type_name }}{% if contains_object_references %} exten
   {% for variant in e.variants() -%}
   {%- call java::docstring(variant, 4) %}
   {% if !variant.has_fields() -%}
-  record {{ variant|type_name(ci)}}() implements {{ type_name }} {
+  record {{ variant|type_name(ci, config)}}() implements {{ type_name }} {
     {% if contains_object_references %}
     @Override
     public void close() {
@@ -70,10 +70,10 @@ public sealed interface {{ type_name }}{% if contains_object_references %} exten
     {% endif %}
   }
   {% else -%}
-  record {{ variant|type_name(ci)}}(
+  record {{ variant|type_name(ci, config)}}(
     {%- for field in variant.fields()  -%}
     {%- call java::docstring(field, 8) %}
-    {{ field|type_name(ci)}} {% call java::field_name(field, loop.index) %}{% if loop.last %}{% else %}, {% endif %}
+    {{ field|type_name(ci, config)}} {% call java::field_name(field, loop.index) %}{% if loop.last %}{% else %}, {% endif %}
     {%- endfor -%}
   ) implements {{ type_name }} {
     {% if contains_object_references %}
@@ -98,10 +98,10 @@ public enum {{ e|ffi_converter_name}} implements FfiConverterRustBuffer<{{ type_
     public {{ type_name }} read(ByteBuffer buf) {
       return switch (buf.getInt()) {
         {%- for variant in e.variants() %}
-        case {{ loop.index }} -> new {{ type_name }}.{{variant|type_name(ci)}}(
+        case {{ loop.index }} -> new {{ type_name }}.{{variant|type_name(ci, config)}}(
           {%- if variant.has_fields() -%}
           {% for field in variant.fields() -%}
-          {{ field|read_fn }}(buf){% if loop.last %}{% else %},{% endif %}
+          {{ field|read_fn(config) }}(buf){% if loop.last %}{% else %},{% endif %}
           {% endfor -%}
           {%- endif %});
         {%- endfor %}
@@ -114,10 +114,10 @@ public enum {{ e|ffi_converter_name}} implements FfiConverterRustBuffer<{{ type_
     public long allocationSize({{ type_name }} value) {
         return switch (value) {
           {%- for variant in e.variants() %}
-          case {{ type_name }}.{{ variant|type_name(ci) }}({%- for field in variant.fields() %}var {% call java::field_name(field, loop.index) -%}{% if !loop.last%}, {% endif %}{% endfor %}) ->
+          case {{ type_name }}.{{ variant|type_name(ci, config) }}({%- for field in variant.fields() %}var {% call java::field_name(field, loop.index) -%}{% if !loop.last%}, {% endif %}{% endfor %}) ->
             (4L
             {%- for field in variant.fields() %}
-            + {{ field|allocation_size_fn }}({%- call java::field_name(field, loop.index) -%})
+            + {{ field|allocation_size_fn(config) }}({%- call java::field_name(field, loop.index) -%})
             {%- endfor %});
           {%- endfor %}
         };
@@ -127,10 +127,10 @@ public enum {{ e|ffi_converter_name}} implements FfiConverterRustBuffer<{{ type_
     public void write({{ type_name }} value, ByteBuffer buf) {
       switch (value) {
         {%- for variant in e.variants() %}
-        case {{ type_name }}.{{ variant|type_name(ci) }}({%- for field in variant.fields() %}var {% call java::field_name(field, loop.index) -%}{% if !loop.last%}, {% endif %}{% endfor %}) -> {
+        case {{ type_name }}.{{ variant|type_name(ci, config) }}({%- for field in variant.fields() %}var {% call java::field_name(field, loop.index) -%}{% if !loop.last%}, {% endif %}{% endfor %}) -> {
           buf.putInt({{ loop.index }});
           {%- for field in variant.fields() %}
-          {{ field|write_fn }}({%- call java::field_name(field, loop.index) -%}, buf);
+          {{ field|write_fn(config) }}({%- call java::field_name(field, loop.index) -%}, buf);
           {%- endfor %}
         }
         {%- endfor %}

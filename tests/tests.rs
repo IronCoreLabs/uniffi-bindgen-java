@@ -4,10 +4,10 @@ License, v. 2.0. If a copy of the MPL was not distributed with this
 
 use anyhow::{bail, Context, Result};
 use camino::{Utf8Path, Utf8PathBuf};
-use cargo_metadata::{Message, MetadataCommand, Package, Target};
-use std::env::consts::{ARCH, DLL_EXTENSION};
+use cargo_metadata::{MetadataCommand, Package, Target};
+use std::env::consts::ARCH;
 use std::io::{Read, Write};
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, fs};
 use uniffi_bindgen::library_mode::generate_bindings;
@@ -19,7 +19,7 @@ fn run_test(fixture_name: &str, test_file: &str) -> Result<()> {
     let test_path = Utf8Path::new(".").join("tests").join(test_file);
     let test_helper = UniFFITestHelper::new(fixture_name)?;
     let out_dir = test_helper.create_out_dir(env!("CARGO_TARGET_TMPDIR"), &test_path)?;
-    let cdylib_path = find_cdylib_path(fixture_name)?;
+    let cdylib_path = test_helper.cdylib_path()?;
 
     // This whole block in designed to create a new TOML file if there is one in the fixture or a uniffi-extras.toml as a sibling of the test. The extras
     // will be concatenated to the end of the base with extra if available.
@@ -27,7 +27,7 @@ fn run_test(fixture_name: &str, test_file: &str) -> Result<()> {
         let maybe_base_uniffi_toml_string =
             find_uniffi_toml(fixture_name)?.and_then(read_file_contents);
         let maybe_extra_uniffi_toml_string =
-            read_file_contents(dbg!(test_path.with_file_name("uniffi-extras.toml")));
+            read_file_contents(test_path.with_file_name("uniffi-extras.toml"));
 
         // final_string will be "" if there aren't any toml files to read.
         let final_string: String = itertools::Itertools::intersperse(
@@ -107,7 +107,7 @@ fn run_test(fixture_name: &str, test_file: &str) -> Result<()> {
             &jar_file,
             &test_path.parent().unwrap().to_path_buf(),
         ]))
-        .arg(dbg!(compiled_path))
+        .arg(compiled_path)
         .spawn()
         .context("Failed to spawn `java` to run Java test")?
         .wait()
@@ -148,68 +148,6 @@ fn find_uniffi_toml(name: &str) -> Result<Option<Utf8PathBuf>> {
         .parent()
         .map(|uniffi_toml_dir| uniffi_toml_dir.with_file_name("uniffi.toml"));
     Ok(maybe_uniffi_toml)
-}
-
-// REPRODUCTION of UniFFITestHelper::find_cdylib_path because it runs `cargo build` of this project
-// to try to get the fixture cdylib, but that doesn't build dev dependencies
-fn find_cdylib_path(name: &str) -> Result<Utf8PathBuf> {
-    let metadata = MetadataCommand::new()
-        .exec()
-        .expect("error running cargo metadata");
-    let matching: Vec<&Package> = metadata
-        .packages
-        .iter()
-        .filter(|p| p.name == name)
-        .collect();
-    let package = match matching.len() {
-        1 => matching[0].clone(),
-        n => bail!("cargo metadata return {n} packages named {name}"),
-    };
-    let cdylib_targets: Vec<&Target> = package
-        .targets
-        .iter()
-        .filter(|t| t.crate_types.iter().any(|t| t == "cdylib"))
-        .collect();
-    let target = match cdylib_targets.len() {
-        1 => cdylib_targets[0],
-        n => bail!("Found {n} cdylib targets for {}", package.name),
-    };
-    let mut child = Command::new(env!("CARGO"))
-        .arg("test")
-        .arg("--no-run")
-        .arg("--message-format=json")
-        .stdout(Stdio::piped())
-        .spawn()
-        .expect("Error running cargo build");
-    let output = std::io::BufReader::new(child.stdout.take().unwrap());
-    let artifacts = Message::parse_stream(output)
-        .map(|m| m.expect("Error parsing cargo build messages"))
-        .filter_map(|message| match message {
-            Message::CompilerArtifact(artifact) => {
-                if artifact.target.clone() == *target {
-                    Some(artifact.clone())
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-    let cdylib_files: Vec<Utf8PathBuf> = artifacts
-        .into_iter()
-        .flat_map(|artifact| {
-            artifact
-                .filenames
-                .into_iter()
-                .filter(|nm| matches!(nm.extension(), Some(DLL_EXTENSION)))
-                .collect::<Vec<Utf8PathBuf>>()
-        })
-        .collect();
-
-    match cdylib_files.len() {
-        1 => Ok(cdylib_files[0].to_owned()),
-        n => bail!("Found {n} cdylib files for {}", package.name),
-    }
 }
 
 /// Generate java bindings for the given namespace, then use the Java
@@ -315,7 +253,7 @@ fixture_tests! {
     (test_chronological, "uniffi-fixture-time", "scripts/TestChronological.java"),
     (test_custom_types, "uniffi-example-custom-types", "scripts/TestCustomTypes/TestCustomTypes.java"),
     // (test_callbacks, "uniffi-fixture-callbacks", "scripts/test_callbacks.java"),
-    // (test_external_types, "uniffi-fixture-ext-types", "scripts/test_imported_types.java"),
+    (test_external_types, "uniffi-fixture-ext-types", "scripts/TestImportedTypes.java"),
     (test_futures, "uniffi-example-futures", "scripts/TestFutures.java"),
     (test_futures_fixtures, "uniffi-fixture-futures", "scripts/TestFixtureFutures/TestFixtureFutures.java"),
 }
