@@ -8,6 +8,7 @@
 ## Notes
 
 - failures in CompletableFutures will cause them to `completeExceptionally`. The error that caused the failure can be checked with `e.getCause()`. When implementing an async Rust trait in Java, you'll need to `completeExceptionally` instead of throwing. See `TestFixtureFutures.java` for an example trait implementation with errors.
+- all primitives are signed in Java by default. Rust correctly interprets the same signed max as an unsigned max when told to. We have to mask the value we expect on the comparison side for Java, or else it will toString them as signed values. Callers of Uniffi functions need to be aware when making comparisons (`compareUnsigned`) or printing when a value is actually unsigned to code around footguns on this side.
 
 ## Unsupported features
 
@@ -22,5 +23,4 @@ Note that if you need additional toml entries for your test, you can put a `unif
 ## TODO
 
 - optimize when primitive and boxed types are used. Boxed types are needed when referencing builtins as generics, but we could be using primitives in a lot more function arguments, return types, and value definitions.
-- methods that return `Result<T, SpecificError>` in Rust should probably `T blah() throws SpecificException` in Java. As is, there are a lot of hard to handle `RuntimeException`s and the same thing needs to be done when someone implements a trait in Java (see `TestFixtureFutures.java`).
-- our use case almost certainly requires older Java versions than 20/21. Investigate supporting back to Java 8, which seems to be the common library target.
+- Investigate supporting back to Java 8, which seems to be the common library target.

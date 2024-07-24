@@ -17,6 +17,7 @@ askama = { version = "0.12", default-features = false, features = ["config"] }
 camino = "1.1.6"
 clap = { version = "4", default-features = false, features = [
   "derive",
+  "help",
   "std",
   "cargo",
 ] }

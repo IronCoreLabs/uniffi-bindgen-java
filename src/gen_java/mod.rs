@@ -817,23 +817,32 @@ mod filters {
     pub fn async_complete(
         callable: impl Callable,
         ci: &ComponentInterface,
+        config: &Config,
     ) -> Result<String, askama::Error> {
         let ffi_func = callable.ffi_rust_future_complete(ci);
         let call = format!("UniffiLib.INSTANCE.{ffi_func}(future, continuation)");
         let call = match callable.return_type() {
             Some(Type::External {
                 kind: ExternalKind::DataClass,
-                name,
+                module_path,
+                namespace,
                 ..
             }) => {
                 // Need to convert the RustBuffer from our package to the RustBuffer of the external package
-                let suffix = JavaCodeOracle.class_name(ci, &name);
-                // TODO(murph): make this Java
-                format!("{call}.let {{ RustBuffer{suffix}.create(it.capacity.toULong(), it.len.toULong(), it.data) }}")
+                let rust_buffer = format!(
+                    "{}.RustBuffer",
+                    config.external_type_package_name(&module_path, &namespace)
+                );
+                format!(
+                    "(future, continuation) -> {{
+                    var result = {call};
+                    return {rust_buffer}.create(result.capacity, result.len, result.data);
+                }}"
+                )
             }
-            _ => call,
+            _ => format!("(future, continuation) -> {call}"),
         };
-        Ok(format!("(future, continuation) -> {call}"))
+        Ok(call)
     }
 
     pub fn async_free(
