@@ -405,9 +405,10 @@ impl JavaCodeOracle {
 
     fn ffi_type_label(&self, ffi_type: &FfiType, config: &Config) -> String {
         match ffi_type {
-            // Note that unsigned integers in Java are currently experimental, but java.nio.ByteBuffer does not
-            // support them yet. Thus, we use the signed variants to represent both signed and unsigned
-            // types from the component API.
+            // Note that unsigned values in Java don't have true native support. Signed primitives
+            // can contain unsigned values and there are methods like `Integer.compareUnsigned`
+            // that respect the unsigned value, but knowledge outside the type system is required.
+            // TODO(java): improve callers knowledge of what contains an unsigned value
             FfiType::Int8 | FfiType::UInt8 => "Byte".to_string(),
             FfiType::Int16 | FfiType::UInt16 => "Short".to_string(),
             FfiType::Int32 | FfiType::UInt32 => "Integer".to_string(),

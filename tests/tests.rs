@@ -253,7 +253,7 @@ fixture_tests! {
     (test_chronological, "uniffi-fixture-time", "scripts/TestChronological.java"),
     (test_custom_types, "uniffi-example-custom-types", "scripts/TestCustomTypes/TestCustomTypes.java"),
     // (test_callbacks, "uniffi-fixture-callbacks", "scripts/test_callbacks.java"),
-    (test_external_types, "uniffi-fixture-ext-types", "scripts/TestImportedTypes.java"),
+    (test_external_types, "uniffi-fixture-ext-types", "scripts/TestImportedTypes/TestImportedTypes.java"),
     (test_futures, "uniffi-example-futures", "scripts/TestFutures.java"),
     (test_futures_fixtures, "uniffi-fixture-futures", "scripts/TestFixtureFutures/TestFixtureFutures.java"),
 }

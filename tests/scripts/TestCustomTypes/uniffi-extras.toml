@@ -2,7 +2,7 @@
 package_name = "customtypes"
 
 [bindings.java.custom_types.Url]
-# Name of the type in the Kotlin code
+# Name of the type in the Java code
 type_name = "URL"
 # Classes that need to be imported
 imports = ["java.net.URI", "java.net.URL"]
