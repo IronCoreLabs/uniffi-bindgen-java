@@ -174,11 +174,6 @@ We pull down the pinned examples directly from Uniffi and run Java tests using t
 
 Note that if you need additional toml entries for your test, you can put a `uniffi-extras.toml` as a sibling of the test and it will be read in addition to the base `uniffi.toml` for the example. See [CustomTypes](./tests/scripts/TestCustomTypes/) for an example. Settings in `uniffi-extras.toml` apply across all namespaces.
 
-## TODO
-
-- optimize when primitive and boxed types are used. Boxed types are needed when referencing builtins as generics, but we could be using primitives in a lot more function arguments, return types, and value definitions.
-- Investigate supporting back to Java 8, which seems to be the common library target.
-
 ## Versioning
 
 `uniffi-bindgen-java` is versioned separately from `uniffi-rs`. We follow the [Cargo SemVer rules](https://doc.rust-lang.org/cargo/reference/resolver.html#semver-compatibility), so versions are compatible if their left-most non-zero major/minor/patch component is the same. Any modification to the generator that causes either a consumer of the generated code to need to make changes is considered breaking.
