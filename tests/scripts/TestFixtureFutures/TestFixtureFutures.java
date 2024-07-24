@@ -36,7 +36,7 @@ public class TestFixtureFutures {
   }
 
   public static void assertReturnsImmediately(long actualTime, String testName) {
-    // TODO(murph): 4ms limit in Kotlin
+    // TODO(java): 4ms limit in Kotlin
     assert actualTime <= 15 : MessageFormat.format("unexpected {0} time: {1}ms", testName, actualTime);
   }
   

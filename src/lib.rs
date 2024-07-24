@@ -104,7 +104,7 @@ impl BindingGenerator for JavaBindingGenerator {
 #[clap(name = "uniffi-bindgen-java")]
 #[clap(version = clap::crate_version!())]
 #[clap(propagate_version = true, disable_help_subcommand = true)]
-/// Scaffolding and bindings generator for Rust
+/// Java scaffolding and bindings generator for Rust
 struct Cli {
     #[clap(subcommand)]
     command: Commands,
