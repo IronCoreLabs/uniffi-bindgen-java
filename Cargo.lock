@@ -1449,6 +1449,7 @@ checksum = "0336d538f7abc86d282a4189614dfaa90810dfc2c6f6427eaf88e16311dd225d"
 [[package]]
 name = "uniffi"
 version = "0.28.0"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=thread-external-type-metadata-rustbuffer#f75fc4718d4bda51fd3fcc70e36cfdc621a8e379"
 dependencies = [
  "anyhow",
  "camino",
@@ -1494,6 +1495,7 @@ dependencies = [
 [[package]]
 name = "uniffi-example-arithmetic"
 version = "0.22.0"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=thread-external-type-metadata-rustbuffer#f75fc4718d4bda51fd3fcc70e36cfdc621a8e379"
 dependencies = [
  "thiserror",
  "uniffi",
@@ -1502,6 +1504,7 @@ dependencies = [
 [[package]]
 name = "uniffi-example-custom-types"
 version = "0.22.0"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=thread-external-type-metadata-rustbuffer#f75fc4718d4bda51fd3fcc70e36cfdc621a8e379"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1512,6 +1515,7 @@ dependencies = [
 [[package]]
 name = "uniffi-example-futures"
 version = "0.22.0"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=thread-external-type-metadata-rustbuffer#f75fc4718d4bda51fd3fcc70e36cfdc621a8e379"
 dependencies = [
  "async-std",
  "thiserror",
@@ -1521,6 +1525,7 @@ dependencies = [
 [[package]]
 name = "uniffi-example-geometry"
 version = "0.22.0"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=thread-external-type-metadata-rustbuffer#f75fc4718d4bda51fd3fcc70e36cfdc621a8e379"
 dependencies = [
  "uniffi",
 ]
@@ -1528,6 +1533,7 @@ dependencies = [
 [[package]]
 name = "uniffi-example-rondpoint"
 version = "0.22.0"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=thread-external-type-metadata-rustbuffer#f75fc4718d4bda51fd3fcc70e36cfdc621a8e379"
 dependencies = [
  "uniffi",
 ]
@@ -1535,6 +1541,7 @@ dependencies = [
 [[package]]
 name = "uniffi-fixture-coverall"
 version = "0.22.0"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=thread-external-type-metadata-rustbuffer#f75fc4718d4bda51fd3fcc70e36cfdc621a8e379"
 dependencies = [
  "once_cell",
  "thiserror",
@@ -1544,6 +1551,7 @@ dependencies = [
 [[package]]
 name = "uniffi-fixture-ext-types"
 version = "0.22.0"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=thread-external-type-metadata-rustbuffer#f75fc4718d4bda51fd3fcc70e36cfdc621a8e379"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1559,6 +1567,7 @@ dependencies = [
 [[package]]
 name = "uniffi-fixture-ext-types-custom-types"
 version = "0.22.0"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=thread-external-type-metadata-rustbuffer#f75fc4718d4bda51fd3fcc70e36cfdc621a8e379"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1569,10 +1578,12 @@ dependencies = [
 [[package]]
 name = "uniffi-fixture-ext-types-external-crate"
 version = "0.22.0"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=thread-external-type-metadata-rustbuffer#f75fc4718d4bda51fd3fcc70e36cfdc621a8e379"
 
 [[package]]
 name = "uniffi-fixture-ext-types-lib-one"
 version = "0.22.0"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=thread-external-type-metadata-rustbuffer#f75fc4718d4bda51fd3fcc70e36cfdc621a8e379"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1582,6 +1593,7 @@ dependencies = [
 [[package]]
 name = "uniffi-fixture-ext-types-sub-lib"
 version = "0.22.0"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=thread-external-type-metadata-rustbuffer#f75fc4718d4bda51fd3fcc70e36cfdc621a8e379"
 dependencies = [
  "anyhow",
  "uniffi",
@@ -1591,6 +1603,7 @@ dependencies = [
 [[package]]
 name = "uniffi-fixture-futures"
 version = "0.21.0"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=thread-external-type-metadata-rustbuffer#f75fc4718d4bda51fd3fcc70e36cfdc621a8e379"
 dependencies = [
  "async-trait",
  "futures",
@@ -1603,6 +1616,7 @@ dependencies = [
 [[package]]
 name = "uniffi-fixture-time"
 version = "0.22.0"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=thread-external-type-metadata-rustbuffer#f75fc4718d4bda51fd3fcc70e36cfdc621a8e379"
 dependencies = [
  "chrono",
  "thiserror",
@@ -1612,6 +1626,7 @@ dependencies = [
 [[package]]
 name = "uniffi_bindgen"
 version = "0.28.0"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=thread-external-type-metadata-rustbuffer#f75fc4718d4bda51fd3fcc70e36cfdc621a8e379"
 dependencies = [
  "anyhow",
  "askama",
@@ -1634,6 +1649,7 @@ dependencies = [
 [[package]]
 name = "uniffi_build"
 version = "0.28.0"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=thread-external-type-metadata-rustbuffer#f75fc4718d4bda51fd3fcc70e36cfdc621a8e379"
 dependencies = [
  "anyhow",
  "camino",
@@ -1643,6 +1659,7 @@ dependencies = [
 [[package]]
 name = "uniffi_checksum_derive"
 version = "0.28.0"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=thread-external-type-metadata-rustbuffer#f75fc4718d4bda51fd3fcc70e36cfdc621a8e379"
 dependencies = [
  "quote",
  "syn",
@@ -1651,6 +1668,7 @@ dependencies = [
 [[package]]
 name = "uniffi_core"
 version = "0.28.0"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=thread-external-type-metadata-rustbuffer#f75fc4718d4bda51fd3fcc70e36cfdc621a8e379"
 dependencies = [
  "anyhow",
  "async-compat",
@@ -1665,6 +1683,7 @@ dependencies = [
 [[package]]
 name = "uniffi_macros"
 version = "0.28.0"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=thread-external-type-metadata-rustbuffer#f75fc4718d4bda51fd3fcc70e36cfdc621a8e379"
 dependencies = [
  "bincode",
  "camino",
@@ -1681,6 +1700,7 @@ dependencies = [
 [[package]]
 name = "uniffi_meta"
 version = "0.28.0"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=thread-external-type-metadata-rustbuffer#f75fc4718d4bda51fd3fcc70e36cfdc621a8e379"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1691,6 +1711,7 @@ dependencies = [
 [[package]]
 name = "uniffi_testing"
 version = "0.28.0"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=thread-external-type-metadata-rustbuffer#f75fc4718d4bda51fd3fcc70e36cfdc621a8e379"
 dependencies = [
  "anyhow",
  "camino",
@@ -1702,6 +1723,7 @@ dependencies = [
 [[package]]
 name = "uniffi_udl"
 version = "0.28.0"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=thread-external-type-metadata-rustbuffer#f75fc4718d4bda51fd3fcc70e36cfdc621a8e379"
 dependencies = [
  "anyhow",
  "textwrap",
@@ -1836,6 +1858,7 @@ dependencies = [
 [[package]]
 name = "weedle2"
 version = "5.0.0"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=thread-external-type-metadata-rustbuffer#f75fc4718d4bda51fd3fcc70e36cfdc621a8e379"
 dependencies = [
  "nom",
 ]
