@@ -188,6 +188,7 @@ pub fn run_main() -> Result<()> {
                     config.as_deref(),
                     &out_dir,
                     !no_format,
+                    true,
                 )?;
             } else {
                 use uniffi_bindgen::generate_bindings;

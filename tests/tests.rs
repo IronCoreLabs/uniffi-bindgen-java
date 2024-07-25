@@ -65,6 +65,7 @@ fn run_test(fixture_name: &str, test_file: &str) -> Result<()> {
         maybe_new_uniffi_toml_filename.as_deref(),
         &out_dir,
         true,
+        false,
     )?;
 
     // jna requires a specific resources path inside the jar by default, create that folder
