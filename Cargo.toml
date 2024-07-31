@@ -15,6 +15,7 @@ path = "src/main.rs"
 anyhow = "1"
 askama = { version = "0.12", default-features = false, features = ["config"] }
 camino = "1.1.6"
+cargo_metadata = "0.15"
 clap = { version = "4", default-features = false, features = [
   "derive",
   "help",
@@ -32,7 +33,6 @@ uniffi_bindgen = { git = "https://github.com/skeet70/uniffi-rs.git", branch = "t
 uniffi_meta = { git = "https://github.com/skeet70/uniffi-rs.git", branch = "thread-external-type-metadata-rustbuffer" }
 
 [dev-dependencies]
-cargo_metadata = "0.18.1"
 glob = "0.3"
 itertools = "0.13.0"
 uniffi-example-arithmetic = { git = "https://github.com/skeet70/uniffi-rs.git", branch = "thread-external-type-metadata-rustbuffer" }
