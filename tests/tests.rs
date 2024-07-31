@@ -57,15 +57,22 @@ fn run_test(fixture_name: &str, test_file: &str) -> Result<()> {
         }
     };
 
+    let config_supplier = {
+        use uniffi_bindgen::cargo_metadata::CrateConfigSupplier;
+        let cmd = cargo_metadata::MetadataCommand::new();
+        let metadata = cmd.exec()?;
+        CrateConfigSupplier::from(metadata)
+    };
+
     // generate the fixture bindings
     generate_bindings(
         &cdylib_path,
         None,
         &JavaBindingGenerator,
+        &config_supplier,
         maybe_new_uniffi_toml_filename.as_deref(),
         &out_dir,
         true,
-        false,
     )?;
 
     // jna requires a specific resources path inside the jar by default, create that folder
