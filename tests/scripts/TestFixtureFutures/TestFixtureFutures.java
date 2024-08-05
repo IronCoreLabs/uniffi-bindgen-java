@@ -271,6 +271,7 @@ public class TestFixtureFutures {
 
         // Test that all handles were cleaned up
         // TODO(murph): this is inconsistently failing in CI, touch
+        System.gc();
         var endingHandleCount = UniffiAsyncHelpers.uniffiForeignFutureHandleCount();
         assert endingHandleCount == 0 : MessageFormat.format("{0} current handle count != 0", endingHandleCount);
       }
