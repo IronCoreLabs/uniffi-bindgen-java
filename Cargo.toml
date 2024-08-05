@@ -35,6 +35,7 @@ uniffi_meta = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main
 [dev-dependencies]
 glob = "0.3"
 itertools = "0.13.0"
+serial_test = "3.1.1"
 uniffi-example-arithmetic = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main" }
 uniffi-example-custom-types = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main" }
 uniffi-example-futures = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "main" }

@@ -244,6 +244,7 @@ macro_rules! fixture_tests {
     } => {
     $(
         #[test]
+        #[serial_test::serial]
         fn $test_name() -> Result<()> {
             run_test($fixture_name, $test_script)
         }
