@@ -18,4 +18,4 @@ jobs:
       minimum_coverage: "0"
       additional_system_deps: "libjna-java"
       cargo_command_env_vars: "PATH=$JAVA_HOME_21_X64/bin:$PATH CLASSPATH=/usr/share/java/jna.jar"
-    secrets: inherit
+    # secrets: inherit
