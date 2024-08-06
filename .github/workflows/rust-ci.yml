@@ -9,8 +9,7 @@ name: Rust CI
   - cron: 0 14 * * 1
 jobs:
   rust-ci:
-    # uses: IronCoreLabs/workflows/.github/workflows/rust-ci.yaml@rust-ci-v2
-    uses: IronCoreLabs/workflows/.github/workflows/rust-ci.yaml@testing-future-ci-issue
+    uses: IronCoreLabs/workflows/.github/workflows/rust-ci.yaml@rust-ci-v2
     with:
       # enable once initial implementation is done
       run_clippy: false
