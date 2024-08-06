@@ -122,7 +122,6 @@ public class TestFixtureCancelDelay {
         var completedDelaysBefore = traitObj.completedDelays;
         System.out.println("Calling for cancel_delay from Java: " + System.nanoTime());
         Futures.cancelDelayUsingTrait(traitObj, 10).get();
-        System.gc();
         // sleep long enough so that the `delay()` call would finish if it wasn't cancelled.
         TestFixtureCancelDelay.delay(100).get();
         // If the task was cancelled, then completedDelays won't have increased
@@ -130,7 +129,6 @@ public class TestFixtureCancelDelay {
 
         // Test that all handles were cleaned up
         // TODO(murph): this is inconsistently failing in CI, touch
-        System.gc();
         var endingHandleCount = UniffiAsyncHelpers.uniffiForeignFutureHandleCount();
         assert endingHandleCount == 0 : MessageFormat.format("{0} current handle count != 0", endingHandleCount);
       }
