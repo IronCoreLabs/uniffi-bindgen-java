@@ -209,7 +209,7 @@ public class TestFixtureFutures {
           @Override
           public CompletableFuture<Void> delay(Integer delayMs) {
             System.out.println("Delay in Java trait impl called: " + System.nanoTime());
-            return TestFixtureCancelDelay.delay((long)delayMs).thenRun(() -> {
+            return TestFixtureFutures.delay((long)delayMs).thenRun(() -> {
               System.out.println("Delay in Java trait impl finished executing: " + System.nanoTime());
               completedDelays += 1;
             });
