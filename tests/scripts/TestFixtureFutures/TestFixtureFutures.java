@@ -22,6 +22,7 @@ public class TestFixtureFutures {
     void run() throws InterruptedException, ExecutionException;
   }
   
+  static long nano_to_millis = 1_000_000;
   public static long measureTimeMillis(FutureRunnable r) {
     long startTimeNanos = System.nanoTime();
     try {
@@ -30,7 +31,7 @@ public class TestFixtureFutures {
       assert false : "unexpected future run failure";
     }
     long endTimeNanos = System.nanoTime();
-    long elapsedTimeMillis = (endTimeNanos - startTimeNanos) / 1_000_000;
+    long elapsedTimeMillis = (endTimeNanos - startTimeNanos) / nano_to_millis;
 
     return elapsedTimeMillis;
   }
@@ -208,9 +209,9 @@ public class TestFixtureFutures {
 
           @Override
           public CompletableFuture<Void> delay(Integer delayMs) {
-            System.out.println("Delay in Java trait impl called: " + System.nanoTime());
+            System.out.println("Delay in Java trait impl called: " + java.time.Instant.now().toEpochMilli());
             return TestFixtureFutures.delay((long)delayMs).thenRun(() -> {
-              System.out.println("Delay in Java trait impl finished executing: " + System.nanoTime());
+              System.out.println("Delay in Java trait impl finished executing: " + java.time.Instant.now().toEpochMilli());
               completedDelays += 1;
             });
           }
@@ -265,11 +266,11 @@ public class TestFixtureFutures {
           }
         }
         var completedDelaysBefore = traitObj.completedDelays;
-        System.out.println("Calling for cancel_delay from Java: " + System.nanoTime());
+        System.out.println("Calling for cancel_delay from Java: " + java.time.Instant.now().toEpochMilli());
         Futures.cancelDelayUsingTrait(traitObj, 200).get();
         // sleep long enough so that the `delay()` call would finish if it wasn't cancelled.
         TestFixtureFutures.delay(500).get();
-        System.out.println("After local 500 ms delay: " + System.nanoTime());
+        System.out.println("After local 500 ms delay: " + java.time.Instant.now().toEpochMilli());
         // If the task was cancelled, then completedDelays won't have increased
         assert traitObj.completedDelays == completedDelaysBefore : MessageFormat.format("{0} current delays != {1} delays before", traitObj.completedDelays, completedDelaysBefore);
 
@@ -278,7 +279,7 @@ public class TestFixtureFutures {
         var endingHandleCount = UniffiAsyncHelpers.uniffiForeignFutureHandleCount();
         assert endingHandleCount == 0 : MessageFormat.format("{0} current handle count != 0", endingHandleCount);
       }
-      System.out.println("After test scope: " + System.nanoTime());
+      System.out.println("After test scope: " + java.time.Instant.now().toEpochMilli());
 
       // Test with the Tokio runtime.
       {
