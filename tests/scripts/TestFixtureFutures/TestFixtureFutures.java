@@ -269,6 +269,7 @@ public class TestFixtureFutures {
         Futures.cancelDelayUsingTrait(traitObj, 100).get();
         // sleep long enough so that the `delay()` call would finish if it wasn't cancelled.
         TestFixtureFutures.delay(500).get();
+        System.out.println("After local 500 ms delay: " + System.nanoTime());
         // If the task was cancelled, then completedDelays won't have increased
         assert traitObj.completedDelays == completedDelaysBefore : MessageFormat.format("{0} current delays != {1} delays before", traitObj.completedDelays, completedDelaysBefore);
 
@@ -277,6 +278,7 @@ public class TestFixtureFutures {
         var endingHandleCount = UniffiAsyncHelpers.uniffiForeignFutureHandleCount();
         assert endingHandleCount == 0 : MessageFormat.format("{0} current handle count != 0", endingHandleCount);
       }
+      System.out.println("After test scope: " + System.nanoTime());
 
       // Test with the Tokio runtime.
       {
