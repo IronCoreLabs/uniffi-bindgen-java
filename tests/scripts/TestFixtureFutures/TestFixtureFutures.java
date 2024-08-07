@@ -263,9 +263,9 @@ public class TestFixtureFutures {
           }
         }
         var completedDelaysBefore = traitObj.completedDelays;
-        Futures.cancelDelayUsingTrait(traitObj, 10).get();
+        Futures.cancelDelayUsingTrait(traitObj, 50).get();
         // sleep long enough so that the `delay()` call would finish if it wasn't cancelled.
-        TestFixtureFutures.delay(100).get();
+        TestFixtureFutures.delay(500).get();
         // If the task was cancelled, then completedDelays won't have increased
         assert traitObj.completedDelays == completedDelaysBefore : MessageFormat.format("{0} current delays != {1} delays before", traitObj.completedDelays, completedDelaysBefore);
 
