@@ -98,9 +98,6 @@ public final class UniffiAsyncHelpers {
     ){
         CompletableFuture<Void> future = new UniffiFreeingFuture<>(rustFuture, freeFunc);
         
-        // TODO(murph): may want an overload that takes an executor to run on.
-        //   That may be misleading though, since the actual work is running in Rust's
-        //   async runtime, not the provided executor.
         CompletableFuture.runAsync(() -> {
             try {
                 byte pollResult;
@@ -221,6 +218,7 @@ public final class UniffiAsyncHelpers {
 
         @Override
         public void callback(long handle) {
+            System.out.println("ForeignFutureFreeImpl called from test: " + java.time.Instant.now().toEpochMilli());
             var job = uniffiForeignFutureHandleMap.remove(handle);
             var successfullyCancelled = job.cancel(true);
             if(successfullyCancelled) {
