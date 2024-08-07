@@ -121,9 +121,9 @@ public class TestFixtureCancelDelay {
         var traitObj = new JavaAsyncParser();
         var completedDelaysBefore = traitObj.completedDelays;
         System.out.println("Calling for cancel_delay from Java: " + System.nanoTime());
-        Futures.cancelDelayUsingTrait(traitObj, 10).get();
+        Futures.cancelDelayUsingTrait(traitObj, 10);
         // sleep long enough so that the `delay()` call would finish if it wasn't cancelled.
-        TestFixtureCancelDelay.delay(100).get();
+        TestFixtureCancelDelay.delay(500).get();
         // If the task was cancelled, then completedDelays won't have increased
         assert traitObj.completedDelays == completedDelaysBefore : MessageFormat.format("{0} current delays != {1} delays before", traitObj.completedDelays, completedDelaysBefore);
 
