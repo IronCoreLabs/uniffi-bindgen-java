@@ -266,7 +266,7 @@ public class TestFixtureFutures {
         }
         var completedDelaysBefore = traitObj.completedDelays;
         System.out.println("Calling for cancel_delay from Java: " + System.nanoTime());
-        Futures.cancelDelayUsingTrait(traitObj, 100).get();
+        Futures.cancelDelayUsingTrait(traitObj, 200).get();
         // sleep long enough so that the `delay()` call would finish if it wasn't cancelled.
         TestFixtureFutures.delay(500).get();
         System.out.println("After local 500 ms delay: " + System.nanoTime());
