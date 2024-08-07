@@ -208,7 +208,9 @@ public class TestFixtureFutures {
 
           @Override
           public CompletableFuture<Void> delay(Integer delayMs) {
-            return TestFixtureFutures.delay((long)delayMs).thenRun(() -> {
+            System.out.println("Delay in Java trait impl called: " + System.nanoTime());
+            return TestFixtureCancelDelay.delay((long)delayMs).thenRun(() -> {
+              System.out.println("Delay in Java trait impl finished executing: " + System.nanoTime());
               completedDelays += 1;
             });
           }
@@ -263,6 +265,7 @@ public class TestFixtureFutures {
           }
         }
         var completedDelaysBefore = traitObj.completedDelays;
+        System.out.println("Calling for cancel_delay from Java: " + System.nanoTime());
         Futures.cancelDelayUsingTrait(traitObj, 50).get();
         // sleep long enough so that the `delay()` call would finish if it wasn't cancelled.
         TestFixtureFutures.delay(500).get();
