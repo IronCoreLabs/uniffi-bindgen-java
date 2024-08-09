@@ -4,6 +4,7 @@ package {{ config.package_name() }};
 
 import java.nio.ByteBuffer;
 import java.util.Map;
+import java.util.List;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import java.util.stream.Collectors;

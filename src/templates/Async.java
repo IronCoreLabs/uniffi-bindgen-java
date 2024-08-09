@@ -21,7 +21,9 @@ public final class UniffiAsyncHelpers {
 
         @Override
         public void callback(long data, byte pollResult) {
+            System.out.println("Rust Future Java callback called for continuationHandle " + data + ": " + java.time.Instant.now().toEpochMilli());
             uniffiContinuationHandleMap.remove(data).complete(pollResult);
+            System.out.println("Rust Future Java callback for continuationHandle " + data + " completed: " + java.time.Instant.now().toEpochMilli());
         }
     }
 
@@ -63,7 +65,9 @@ public final class UniffiAsyncHelpers {
             try {
                 byte pollResult;
                 do {
+                    System.out.println("Polling Rust Future " + rustFuture + " from Java: " + java.time.Instant.now().toEpochMilli());
                     pollResult = poll(rustFuture, pollFunc);
+                    System.out.println("Finished polling Rust Future " + rustFuture + " from Java: " + java.time.Instant.now().toEpochMilli());
                 } while (pollResult != UNIFFI_RUST_FUTURE_POLL_READY);
 
                 if (!future.isCancelled()) {
@@ -98,14 +102,13 @@ public final class UniffiAsyncHelpers {
     ){
         CompletableFuture<Void> future = new UniffiFreeingFuture<>(rustFuture, freeFunc);
         
-        // TODO(murph): may want an overload that takes an executor to run on.
-        //   That may be misleading though, since the actual work is running in Rust's
-        //   async runtime, not the provided executor.
         CompletableFuture.runAsync(() -> {
             try {
                 byte pollResult;
                 do {
+                    System.out.println("Polling Rust Future " + rustFuture + " from Java: " + java.time.Instant.now().toEpochMilli());
                     pollResult = poll(rustFuture, pollFunc);
+                    System.out.println("Finished polling Rust Future " + rustFuture + " from Java: " + java.time.Instant.now().toEpochMilli());
                 } while (pollResult != UNIFFI_RUST_FUTURE_POLL_READY);
 
                 // even though the outer `future` has been cancelled, this inner `runAsync` is unsupervised
@@ -133,6 +136,7 @@ public final class UniffiAsyncHelpers {
     private static byte poll(long rustFuture, PollingFunction pollFunc) throws InterruptedException, ExecutionException {
         CompletableFuture<Byte> pollFuture = new CompletableFuture<>();
         var handle = uniffiContinuationHandleMap.insert(pollFuture);
+        System.out.println("Calling extern poll function for RustFuture handle " + rustFuture + ", continuationHandle " + handle + " from Java: " + java.time.Instant.now().toEpochMilli());
         pollFunc.apply(rustFuture, UniffiRustFutureContinuationCallbackImpl.INSTANCE, handle);
 
         // block until the poll completes
@@ -221,6 +225,7 @@ public final class UniffiAsyncHelpers {
 
         @Override
         public void callback(long handle) {
+            System.out.println("ForeignFutureFreeImpl called from test: " + java.time.Instant.now().toEpochMilli());
             var job = uniffiForeignFutureHandleMap.remove(handle);
             var successfullyCancelled = job.cancel(true);
             if(successfullyCancelled) {
