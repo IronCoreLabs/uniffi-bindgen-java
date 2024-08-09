@@ -209,9 +209,9 @@ public class TestFixtureFutures {
 
           @Override
           public CompletableFuture<Void> delay(Integer delayMs) {
-            System.out.println("Delay in Java trait impl called: " + java.time.Instant.now().toEpochMilli());
+            System.out.println("Delay in Java trait impl called: " + java.time.Instant.now().toEpochMilli() + "\n    thread name: " + Thread.currentThread().getName());
             return TestFixtureFutures.delay((long)delayMs).thenRun(() -> {
-              System.out.println("Delay in Java trait impl finished executing: " + java.time.Instant.now().toEpochMilli());
+              System.out.println("Delay in Java trait impl finished executing: " + java.time.Instant.now().toEpochMilli() + "\n    thread name: " + Thread.currentThread().getName());
               completedDelays += 1;
             });
           }

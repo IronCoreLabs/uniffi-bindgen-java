@@ -21,9 +21,9 @@ public final class UniffiAsyncHelpers {
 
         @Override
         public void callback(long data, byte pollResult) {
-            System.out.println("Rust Future Java callback called for continuationHandle " + data + ": " + java.time.Instant.now().toEpochMilli());
+            System.out.println("Rust Future Java callback called for continuationHandle " + data + ": " + java.time.Instant.now().toEpochMilli() + "\n" + "    thread name: " + Thread.currentThread().getName());
             uniffiContinuationHandleMap.remove(data).complete(pollResult);
-            System.out.println("Rust Future Java callback for continuationHandle " + data + " completed: " + java.time.Instant.now().toEpochMilli());
+            System.out.println("Rust Future Java callback for continuationHandle " + data + " completed: " + java.time.Instant.now().toEpochMilli() + "\n" + "    thread name: " + Thread.currentThread().getName());
         }
     }
 
@@ -65,9 +65,9 @@ public final class UniffiAsyncHelpers {
             try {
                 byte pollResult;
                 do {
-                    System.out.println("Polling Rust Future " + rustFuture + " from Java: " + java.time.Instant.now().toEpochMilli());
+                    System.out.println("Polling Rust Future " + rustFuture + " from Java: " + java.time.Instant.now().toEpochMilli() + "\n" + "    thread name: " + Thread.currentThread().getName());
                     pollResult = poll(rustFuture, pollFunc);
-                    System.out.println("Finished polling Rust Future " + rustFuture + " from Java: " + java.time.Instant.now().toEpochMilli());
+                    System.out.println("Finished polling Rust Future " + rustFuture + " from Java: " + java.time.Instant.now().toEpochMilli() + "\n" + "    thread name: " + Thread.currentThread().getName());
                 } while (pollResult != UNIFFI_RUST_FUTURE_POLL_READY);
 
                 if (!future.isCancelled()) {
@@ -106,9 +106,9 @@ public final class UniffiAsyncHelpers {
             try {
                 byte pollResult;
                 do {
-                    System.out.println("Polling Rust Future " + rustFuture + " from Java: " + java.time.Instant.now().toEpochMilli());
+                    System.out.println("Polling Rust Future " + rustFuture + " from Java: " + java.time.Instant.now().toEpochMilli() + "\n" + "    thread name: " + Thread.currentThread().getName());
                     pollResult = poll(rustFuture, pollFunc);
-                    System.out.println("Finished polling Rust Future " + rustFuture + " from Java: " + java.time.Instant.now().toEpochMilli());
+                    System.out.println("Finished polling Rust Future " + rustFuture + " from Java: " + java.time.Instant.now().toEpochMilli() + "\n" + "    thread name: " + Thread.currentThread().getName());
                 } while (pollResult != UNIFFI_RUST_FUTURE_POLL_READY);
 
                 // even though the outer `future` has been cancelled, this inner `runAsync` is unsupervised
