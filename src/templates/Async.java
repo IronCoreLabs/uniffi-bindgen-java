@@ -139,8 +139,11 @@ public final class UniffiAsyncHelpers {
         var handle = uniffiContinuationHandleMap.insert(pollFuture);
         System.out.println("Calling extern poll function from Java:\n    RustFuture handle: " + rustFuture + "\n    continuationHandle " + handle + "\n    CompletableFuture hashcode: " + pollFuture + "\n    time:" + java.time.Instant.now().toEpochMilli() + "\n    thread name: " + Thread.currentThread().getName());
         pollFunc.apply(rustFuture, UniffiRustFutureContinuationCallbackImpl.INSTANCE, handle);
-
         // block until the poll completes
+        do {
+            //
+        } while (!pollFuture.isDone());
+        System.out.println("pollFuture is done!");
         return pollFuture.get();
     }
     
