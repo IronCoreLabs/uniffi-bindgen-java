@@ -254,17 +254,17 @@ public class TestFixtureFutures {
         //      throw e;
         //   }
         // }
-        // Futures.delayUsingTrait(traitObj, 1).get();
-        // try {
-        //   Futures.tryDelayUsingTrait(traitObj, "one").get();
-        //   throw new RuntimeException("Expected last statement to throw");
-        // } catch (ExecutionException e) {
-        //   if (e.getCause() instanceof ParserException.NotAnInt) {
-        //     // Expected
-        //   } else {
-        //     throw e;
-        //   }
-        // }
+        Futures.delayUsingTrait(traitObj, 1).get();
+        try {
+          Futures.tryDelayUsingTrait(traitObj, "one").get();
+          throw new RuntimeException("Expected last statement to throw");
+        } catch (ExecutionException e) {
+          if (e.getCause() instanceof ParserException.NotAnInt) {
+            // Expected
+          } else {
+            throw e;
+          }
+        }
         var completedDelaysBefore = traitObj.completedDelays;
         System.out.println("Calling for cancel_delay from Java: " + java.time.Instant.now().toEpochMilli());
         Futures.cancelDelayUsingTrait(traitObj, 200).get();
