@@ -8,7 +8,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 public class TestFixtureFutures {
-  private static final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
+  private static final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 
   // emulating Kotlin's `delay` non-blocking sleep
   public static CompletableFuture<Void> delay(long milliseconds) {
