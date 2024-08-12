@@ -4,7 +4,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.ConcurrentHashMap;
 
 // This is used pass an opaque 64-bit handle representing a foreign object to the Rust code.
-class UniffiHandleMap<T extends Object> {
+public class UniffiHandleMap<T extends Object> {
     private final ConcurrentHashMap<Long, T> map = new ConcurrentHashMap<>();
     private final AtomicLong counter = new AtomicLong(0);
 
@@ -35,5 +35,9 @@ class UniffiHandleMap<T extends Object> {
             throw new InternalException("UniffiHandleMap: Invalid handle");
         }
         return obj;
+    }
+
+    public String toString() {
+        return map.toString();
     }
 }
