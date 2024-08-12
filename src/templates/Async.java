@@ -13,7 +13,7 @@ public final class UniffiAsyncHelpers {
     static final byte UNIFFI_RUST_FUTURE_POLL_READY = (byte) 0;
     static final byte UNIFFI_RUST_FUTURE_POLL_MAYBE_READY = (byte) 1;
     static final UniffiHandleMap<CompletableFuture<Byte>> uniffiContinuationHandleMap = new UniffiHandleMap<>();
-    public static final UniffiHandleMap<CompletableFuture<Void>> uniffiForeignFutureHandleMap = new UniffiHandleMap<>();
+    static final UniffiHandleMap<CompletableFuture<Void>> uniffiForeignFutureHandleMap = new UniffiHandleMap<>();
 
     // FFI type for Rust future continuations
     enum UniffiRustFutureContinuationCallbackImpl implements UniffiRustFutureContinuationCallback {
