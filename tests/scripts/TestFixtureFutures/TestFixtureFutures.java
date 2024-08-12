@@ -209,9 +209,7 @@ public class TestFixtureFutures {
 
           @Override
           public CompletableFuture<Void> delay(Integer delayMs) {
-            System.out.println("Delay in Java trait impl called: " + java.time.Instant.now().toEpochMilli());
             return TestFixtureFutures.delay((long)delayMs).thenRun(() -> {
-              System.out.println("Delay in Java trait impl finished executing: " + java.time.Instant.now().toEpochMilli());
               completedDelays += 1;
             });
           }
@@ -266,20 +264,16 @@ public class TestFixtureFutures {
           }
         }
         var completedDelaysBefore = traitObj.completedDelays;
-        System.out.println("Calling for cancel_delay from Java: " + java.time.Instant.now().toEpochMilli());
-        Futures.cancelDelayUsingTrait(traitObj, 200).get();
+        Futures.cancelDelayUsingTrait(traitObj, 10).get();
         // sleep long enough so that the `delay()` call would finish if it wasn't cancelled.
-        TestFixtureFutures.delay(500).get();
-        System.out.println("After local 500 ms delay: " + java.time.Instant.now().toEpochMilli());
+        TestFixtureFutures.delay(100).get();
         // If the task was cancelled, then completedDelays won't have increased
         assert traitObj.completedDelays == completedDelaysBefore : MessageFormat.format("{0} current delays != {1} delays before", traitObj.completedDelays, completedDelaysBefore);
 
         // Test that all handles were cleaned up
-        // TODO(murph): this is inconsistently failing in CI, touch
         var endingHandleCount = UniffiAsyncHelpers.uniffiForeignFutureHandleCount();
         assert endingHandleCount == 0 : MessageFormat.format("{0} current handle count != 0", endingHandleCount);
       }
-      System.out.println("After test scope: " + java.time.Instant.now().toEpochMilli());
 
       // Test with the Tokio runtime.
       {

@@ -132,7 +132,10 @@ public final class UniffiAsyncHelpers {
         var handle = uniffiContinuationHandleMap.insert(pollFuture);
         pollFunc.apply(rustFuture, UniffiRustFutureContinuationCallbackImpl.INSTANCE, handle);
 
-        // block until the poll completes
+        // busy-wait until the poll completes
+        // TODO(java): may be more efficient to use a CountdownLatch here instead of a CF we end up busy-waiting
+        //     because of Java bugs.
+        do {} while (!pollFuture.isDone());
         return pollFuture.get();
     }
     
@@ -218,7 +221,6 @@ public final class UniffiAsyncHelpers {
 
         @Override
         public void callback(long handle) {
-            System.out.println("ForeignFutureFreeImpl called from test: " + java.time.Instant.now().toEpochMilli());
             var job = uniffiForeignFutureHandleMap.remove(handle);
             var successfullyCancelled = job.cancel(true);
             if(successfullyCancelled) {
