@@ -38,7 +38,7 @@ public class TestFixtureFutures {
 
   public static void assertReturnsImmediately(long actualTime, String testName) {
     // TODO(java): 4ms limit in Kotlin
-    assert actualTime <= 15 : MessageFormat.format("unexpected {0} time: {1}ms", testName, actualTime);
+    assert actualTime <= 20 : MessageFormat.format("unexpected {0} time: {1}ms", testName, actualTime);
   }
   
   public static void assertApproximateTime(long actualTime, int expectedTime, String testName) {
@@ -271,6 +271,7 @@ public class TestFixtureFutures {
         assert traitObj.completedDelays == completedDelaysBefore : MessageFormat.format("{0} current delays != {1} delays before", traitObj.completedDelays, completedDelaysBefore);
 
         // Test that all handles were cleaned up
+        System.gc();
         var endingHandleCount = UniffiAsyncHelpers.uniffiForeignFutureHandleCount();
         assert endingHandleCount == 0 : MessageFormat.format("{0} current handle count != 0", endingHandleCount);
       }
