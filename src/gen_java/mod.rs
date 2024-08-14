@@ -405,9 +405,10 @@ impl JavaCodeOracle {
 
     fn ffi_type_label(&self, ffi_type: &FfiType, config: &Config) -> String {
         match ffi_type {
-            // Note that unsigned integers in Java are currently experimental, but java.nio.ByteBuffer does not
-            // support them yet. Thus, we use the signed variants to represent both signed and unsigned
-            // types from the component API.
+            // Note that unsigned values in Java don't have true native support. Signed primitives
+            // can contain unsigned values and there are methods like `Integer.compareUnsigned`
+            // that respect the unsigned value, but knowledge outside the type system is required.
+            // TODO(java): improve callers knowledge of what contains an unsigned value
             FfiType::Int8 | FfiType::UInt8 => "Byte".to_string(),
             FfiType::Int16 | FfiType::UInt16 => "Short".to_string(),
             FfiType::Int32 | FfiType::UInt32 => "Integer".to_string(),
@@ -817,23 +818,32 @@ mod filters {
     pub fn async_complete(
         callable: impl Callable,
         ci: &ComponentInterface,
+        config: &Config,
     ) -> Result<String, askama::Error> {
         let ffi_func = callable.ffi_rust_future_complete(ci);
         let call = format!("UniffiLib.INSTANCE.{ffi_func}(future, continuation)");
         let call = match callable.return_type() {
             Some(Type::External {
                 kind: ExternalKind::DataClass,
-                name,
+                module_path,
+                namespace,
                 ..
             }) => {
                 // Need to convert the RustBuffer from our package to the RustBuffer of the external package
-                let suffix = JavaCodeOracle.class_name(ci, &name);
-                // TODO(murph): make this Java
-                format!("{call}.let {{ RustBuffer{suffix}.create(it.capacity.toULong(), it.len.toULong(), it.data) }}")
+                let rust_buffer = format!(
+                    "{}.RustBuffer",
+                    config.external_type_package_name(&module_path, &namespace)
+                );
+                format!(
+                    "(future, continuation) -> {{
+                    var result = {call};
+                    return {rust_buffer}.create(result.capacity, result.len, result.data);
+                }}"
+                )
             }
-            _ => call,
+            _ => format!("(future, continuation) -> {call}"),
         };
-        Ok(format!("(future, continuation) -> {call}"))
+        Ok(call)
     }
 
     pub fn async_free(

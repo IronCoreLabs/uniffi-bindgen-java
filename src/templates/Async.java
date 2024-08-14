@@ -98,9 +98,6 @@ public final class UniffiAsyncHelpers {
     ){
         CompletableFuture<Void> future = new UniffiFreeingFuture<>(rustFuture, freeFunc);
         
-        // TODO(murph): may want an overload that takes an executor to run on.
-        //   That may be misleading though, since the actual work is running in Rust's
-        //   async runtime, not the provided executor.
         CompletableFuture.runAsync(() -> {
             try {
                 byte pollResult;
@@ -135,7 +132,10 @@ public final class UniffiAsyncHelpers {
         var handle = uniffiContinuationHandleMap.insert(pollFuture);
         pollFunc.apply(rustFuture, UniffiRustFutureContinuationCallbackImpl.INSTANCE, handle);
 
-        // block until the poll completes
+        // busy-wait until the poll completes
+        // TODO(java): may be more efficient to use a CountdownLatch here instead of a CF we end up busy-waiting
+        //     because of Java bugs.
+        do {} while (!pollFuture.isDone());
         return pollFuture.get();
     }
     
@@ -168,7 +168,7 @@ public final class UniffiAsyncHelpers {
         });
         
         long handle = uniffiForeignFutureHandleMap.insert(job);
-        return new UniffiForeignFuture(handle, new UniffiForeignFutureFreeImpl(foreignFutureCf));
+        return new UniffiForeignFuture(handle, new UniffiForeignFutureFreeImpl<T>(foreignFutureCf));
     }
 
     @SuppressWarnings("unchecked")
@@ -209,7 +209,7 @@ public final class UniffiAsyncHelpers {
         });
 
         long handle = uniffiForeignFutureHandleMap.insert(job);
-        return new UniffiForeignFuture(handle, new UniffiForeignFutureFreeImpl(foreignFutureCf));
+        return new UniffiForeignFuture(handle, new UniffiForeignFutureFreeImpl<T>(foreignFutureCf));
     }
 
     static class UniffiForeignFutureFreeImpl<T> implements UniffiForeignFutureFree {

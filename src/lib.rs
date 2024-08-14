@@ -100,13 +100,11 @@ impl BindingGenerator for JavaBindingGenerator {
     }
 }
 
-// TODO(murph): --help and -h still aren't working
-/// Scaffolding and bindings generator for Rust
 #[derive(Parser)]
 #[clap(name = "uniffi-bindgen-java")]
 #[clap(version = clap::crate_version!())]
-#[clap(propagate_version = true)]
-#[command(version, about, long_about = None)]
+#[clap(propagate_version = true, disable_help_subcommand = true)]
+/// Java scaffolding and bindings generator for Rust
 struct Cli {
     #[clap(subcommand)]
     command: Commands,
@@ -144,6 +142,14 @@ enum Commands {
 
         /// Path to the UDL file, or cdylib if `library-mode` is specified
         source: Utf8PathBuf,
+
+        /// Whether we should exclude dependencies when running "cargo metadata".
+        /// This will mean external types may not be resolved if they are implemented in crates
+        /// outside of this workspace.
+        /// This can be used in environments when all types are in the namespace and fetching
+        /// all sub-dependencies causes obscure platform specific problems.
+        #[clap(long)]
+        metadata_no_deps: bool,
     },
     /// Generate Rust scaffolding code
     Scaffolding {
@@ -176,6 +182,7 @@ pub fn run_main() -> Result<()> {
             library_mode,
             crate_name,
             source,
+            metadata_no_deps,
         } => {
             if library_mode {
                 use uniffi_bindgen::library_mode::generate_bindings;
@@ -183,10 +190,22 @@ pub fn run_main() -> Result<()> {
                     panic!("--lib-file is not compatible with --library.")
                 }
                 let out_dir = out_dir.expect("--out-dir is required when using --library");
+
+                let config_supplier = {
+                    use uniffi_bindgen::cargo_metadata::CrateConfigSupplier;
+                    let mut cmd = cargo_metadata::MetadataCommand::new();
+                    if metadata_no_deps {
+                        cmd.no_deps();
+                    }
+                    let metadata = cmd.exec()?;
+                    CrateConfigSupplier::from(metadata)
+                };
+
                 generate_bindings(
                     &source,
                     crate_name,
                     &JavaBindingGenerator,
+                    &config_supplier,
                     config.as_deref(),
                     &out_dir,
                     !no_format,

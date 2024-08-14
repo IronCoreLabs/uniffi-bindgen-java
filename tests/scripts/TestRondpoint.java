@@ -99,7 +99,6 @@ public class TestRondpoint {
     // Booleans
     affirmEnchaine(List.of(true, false), st::toStringBoolean, TestRondpoint::defaultStringyEquals);
   
-    // TODO(murph): make this more clear to Java callers on methods
     // All primitives are signed in Java by default. Rust correctly interprets the same signed max as an unsigned max
     // when told to. We have to mask the value we expect on the comparison side for Java, or else it will toString them
     // as signed values. Callers of Uniffi functions need to be aware when making comparisons (`compareUnsigned`) or

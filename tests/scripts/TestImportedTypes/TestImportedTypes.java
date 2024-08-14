@@ -15,7 +15,7 @@ public class TestImportedTypes {
     var ct = ImportedTypesLib.getCombinedType(null);
     assert ct.uot().sval().equals("hello");
     assert ct.guid().equals(new Guid("a-guid"));
-    assert ct.url().equals(new Url("http://example.com/"));
+    assert ct.url().equals(new Url(new java.net.URL("http://example.com/")));
 
     var ct2 = ImportedTypesLib.getCombinedType(null);
     assert ct.equals(ct2);
@@ -27,9 +27,7 @@ public class TestImportedTypes {
     assert ImportedTypesSublib.getSubType(null).maybeInterface() == null;
     assert ImportedTypesSublib.getTraitImpl().hello().equals("sub-lib trait impl says hello");
 
-    // TODO(uniffi): support adding uniffi.toml values to dependency crates 
-    // var url = new java.net.URL("http://example.com/");
-    var url = new Url("http://example.com/");
+    var url = new Url(new java.net.URL("http://example.com/"));
     assert ImportedTypesLib.getUrl(url).equals(url);
     assert ImportedTypesLib.getMaybeUrl(url).equals(url);
     assert ImportedTypesLib.getMaybeUrl(null) == null;

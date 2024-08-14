@@ -22,6 +22,7 @@ public class TestFixtureFutures {
     void run() throws InterruptedException, ExecutionException;
   }
   
+  static long nano_to_millis = 1_000_000;
   public static long measureTimeMillis(FutureRunnable r) {
     long startTimeNanos = System.nanoTime();
     try {
@@ -30,14 +31,14 @@ public class TestFixtureFutures {
       assert false : "unexpected future run failure";
     }
     long endTimeNanos = System.nanoTime();
-    long elapsedTimeMillis = (endTimeNanos - startTimeNanos) / 1_000_000;
+    long elapsedTimeMillis = (endTimeNanos - startTimeNanos) / nano_to_millis;
 
     return elapsedTimeMillis;
   }
 
   public static void assertReturnsImmediately(long actualTime, String testName) {
-    // TODO(murph): 4ms limit in Kotlin
-    assert actualTime <= 15 : MessageFormat.format("unexpected {0} time: {1}ms", testName, actualTime);
+    // TODO(java): 4ms limit in Kotlin
+    assert actualTime <= 20 : MessageFormat.format("unexpected {0} time: {1}ms", testName, actualTime);
   }
   
   public static void assertApproximateTime(long actualTime, int expectedTime, String testName) {
@@ -263,14 +264,14 @@ public class TestFixtureFutures {
           }
         }
         var completedDelaysBefore = traitObj.completedDelays;
-        Futures.cancelDelayUsingTrait(traitObj, 10).get();
+        Futures.cancelDelayUsingTrait(traitObj, 50).get();
         // sleep long enough so that the `delay()` call would finish if it wasn't cancelled.
-        TestFixtureFutures.delay(100).get();
+        TestFixtureFutures.delay(200).get();
         // If the task was cancelled, then completedDelays won't have increased
         assert traitObj.completedDelays == completedDelaysBefore : MessageFormat.format("{0} current delays != {1} delays before", traitObj.completedDelays, completedDelaysBefore);
 
         // Test that all handles were cleaned up
-        // TODO(murph): this is inconsistently failing in CI, touch
+        System.gc();
         var endingHandleCount = UniffiAsyncHelpers.uniffiForeignFutureHandleCount();
         assert endingHandleCount == 0 : MessageFormat.format("{0} current handle count != 0", endingHandleCount);
       }

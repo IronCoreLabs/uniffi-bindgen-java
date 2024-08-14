@@ -87,7 +87,7 @@
         UniffiLib.INSTANCE.{{ callable.ffi_func().name() }}({% call arg_list_lowered(callable) %}),
 {%- endif %}
         {{ callable|async_poll(ci) }},
-        {{ callable|async_complete(ci) }},
+        {{ callable|async_complete(ci, config) }},
         {{ callable|async_free(ci) }},
         // lift function
         {%- match callable.return_type() %}

@@ -57,11 +57,19 @@ fn run_test(fixture_name: &str, test_file: &str) -> Result<()> {
         }
     };
 
+    let config_supplier = {
+        use uniffi_bindgen::cargo_metadata::CrateConfigSupplier;
+        let cmd = cargo_metadata::MetadataCommand::new();
+        let metadata = cmd.exec()?;
+        CrateConfigSupplier::from(metadata)
+    };
+
     // generate the fixture bindings
     generate_bindings(
         &cdylib_path,
         None,
         &JavaBindingGenerator,
+        &config_supplier,
         maybe_new_uniffi_toml_filename.as_deref(),
         &out_dir,
         true,
@@ -253,7 +261,7 @@ fixture_tests! {
     (test_chronological, "uniffi-fixture-time", "scripts/TestChronological.java"),
     (test_custom_types, "uniffi-example-custom-types", "scripts/TestCustomTypes/TestCustomTypes.java"),
     // (test_callbacks, "uniffi-fixture-callbacks", "scripts/test_callbacks.java"),
-    (test_external_types, "uniffi-fixture-ext-types", "scripts/TestImportedTypes.java"),
+    (test_external_types, "uniffi-fixture-ext-types", "scripts/TestImportedTypes/TestImportedTypes.java"),
     (test_futures, "uniffi-example-futures", "scripts/TestFutures.java"),
     (test_futures_fixtures, "uniffi-fixture-futures", "scripts/TestFixtureFutures/TestFixtureFutures.java"),
 }
