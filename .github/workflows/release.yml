@@ -1,0 +1,9 @@
+name: Rust Release
+
+on:
+  workflow_dispatch: null
+
+jobs:
+  rust-release:
+    uses: IronCoreLabs/workflows/.github/workflows/rust-release.yaml@rust-release-v1
+    secrets: inherit
