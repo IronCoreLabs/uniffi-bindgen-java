@@ -1,6 +1,24 @@
 [package]
 name = "uniffi-bindgen-java"
 version = "0.1.0"
+authors = ["IronCore Labs <info@ironcorelabs.com>"]
+readme = "README.md"
+license = "mpl-2.0"
+repository = "https://github.com/IronCoreLabs/uniffi-bindgen-java"
+documentation = "https://docs.rs/uniffi-bindgen-java"
+keywords = [
+  "bindgen",
+  "ffi",
+  "java"
+]
+description = "a java bindings generator for uniffi rust"
+exclude = [
+  ".github/*",
+  ".envrc",
+  "flake.nix",
+  "flake.lock",
+  "RELEASING.md"
+]
 edition = "2021"
 
 [lib]
