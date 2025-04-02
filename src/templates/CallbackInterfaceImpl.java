@@ -16,10 +16,10 @@ import com.sun.jna.ptr.*;
 // Put the implementation in an object so we don't pollute the top-level namespace
 public class {{ trait_impl }} {
     public static final {{ trait_impl }} INSTANCE = new {{ trait_impl }}();
-    {{ vtable|ffi_type_name_by_value(config) }} vtable;
+    {{ vtable|ffi_type_name_by_value(config, ci) }} vtable;
     
     {{ trait_impl }}() {
-        vtable = new {{ vtable|ffi_type_name_by_value(config) }}(
+        vtable = new {{ vtable|ffi_type_name_by_value(config, ci) }}(
             {%- for (ffi_callback, meth) in vtable_methods.iter() %}
             {{ meth.name()|var_name }}.INSTANCE,
             {%- endfor %}
@@ -40,9 +40,9 @@ public class {{ trait_impl }} {
         private {{ inner_method_class }}() {}
 
         @Override
-        public {% match ffi_callback.return_type() %}{% when Some(return_type) %}{{ return_type|ffi_type_name_for_ffi_struct(config) }}{% when None %}void{% endmatch %} callback(
+        public {% match ffi_callback.return_type() %}{% when Some(return_type) %}{{ return_type|ffi_type_name_for_ffi_struct(config, ci) }}{% when None %}void{% endmatch %} callback(
             {%- for arg in ffi_callback.arguments() -%}
-            {{ arg.type_().borrow()|ffi_type_name_for_ffi_struct(config) }} {{ arg.name().borrow()|var_name }}{% if !loop.last || (loop.last && ffi_callback.has_rust_call_status_arg()) %},{% endif %}
+            {{ arg.type_().borrow()|ffi_type_name_for_ffi_struct(config, ci) }} {{ arg.name().borrow()|var_name }}{% if !loop.last || (loop.last && ffi_callback.has_rust_call_status_arg()) %},{% endif %}
             {%- endfor -%}
             {%- if ffi_callback.has_rust_call_status_arg() -%}
             UniffiRustCallStatus uniffiCallStatus

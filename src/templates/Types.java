@@ -29,7 +29,7 @@ public class NoPointer {
     public static final NoPointer INSTANCE = new NoPointer();
 }
 
-{%- for type_ in ci.iter_types() %}
+{%- for type_ in ci.iter_local_types() %}
 {%- let type_name = type_|type_name(ci, config) %}
 {%- let ffi_converter_name = type_|ffi_converter_name %}
 {%- let ffi_converter_instance = type_|ffi_converter_instance(config) %}
@@ -57,7 +57,13 @@ public class NoPointer {
 {% include "CallbackInterfaceTemplate.java" %}
 
 {%- when Type::Custom { module_path, name, builtin } %}
+{%- if ci.is_external(type_) %}
+{# may not need this in Java? We don't import since we're not in a monofile, we refer to everything fully qualified
+ # {% include "ExternalTypeTemplate.java" %}
+ #}
+{%- else %}
 {% include "CustomTypeTemplate.java" %}
+{%- endif %}
 
 {%- when Type::Duration %}
 {% include "DurationHelper.java" %}

@@ -1,24 +1,20 @@
 use anyhow::{Context, Result};
-use askama::Template;
 use core::fmt::Debug;
 use heck::{ToLowerCamelCase, ToShoutySnakeCase, ToUpperCamelCase};
 use once_cell::sync::Lazy;
+use rinja::Template;
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::Borrow,
     cell::RefCell,
     collections::{HashMap, HashSet},
 };
-use uniffi_bindgen::{
-    backend::{Literal, TemplateExpression},
-    interface::*,
-};
+use uniffi_bindgen::{backend::Literal, interface::*};
 
 mod callback_interface;
 mod compounds;
 mod custom;
 mod enum_;
-mod external;
 mod miscellany;
 mod object;
 mod primitives;
@@ -193,8 +189,30 @@ impl Config {
 pub struct CustomTypeConfig {
     imports: Option<Vec<String>>,
     type_name: Option<String>,
-    into_custom: TemplateExpression,
-    from_custom: TemplateExpression,
+    into_custom: String, // backcompat alias for lift
+    lift: String,
+    from_custom: String, // backcompat alias for lower
+    lower: String,
+}
+
+// functions replace literal "{}" in strings with a specified value.
+impl CustomTypeConfig {
+    fn lift(&self, name: &str) -> String {
+        let converter = if self.lift.is_empty() {
+            &self.into_custom
+        } else {
+            &self.lift
+        };
+        converter.replace("{}", name)
+    }
+    fn lower(&self, name: &str) -> String {
+        let converter = if self.lower.is_empty() {
+            &self.from_custom
+        } else {
+            &self.lower
+        };
+        converter.replace("{}", name)
+    }
 }
 
 // Generate Java bindings for the given ComponentInterface, as a string.
@@ -225,7 +243,7 @@ impl<'a> JavaWrapper<'a> {
 
     pub fn initialization_fns(&self) -> Vec<String> {
         self.ci
-            .iter_types()
+            .iter_local_types()
             .map(|t| JavaCodeOracle.find(t))
             .filter_map(|ct| ct.initialization_fn())
             .collect()
@@ -341,12 +359,15 @@ impl JavaCodeOracle {
         ffi_type: &FfiType,
         prefer_primitive: bool,
         config: &Config,
+        ci: &ComponentInterface,
     ) -> String {
         match ffi_type {
-            FfiType::RustBuffer(_) => format!("{}.ByValue", self.ffi_type_label(ffi_type, config)),
+            FfiType::RustBuffer(_) => {
+                format!("{}.ByValue", self.ffi_type_label(ffi_type, config, ci))
+            }
             FfiType::Struct(name) => format!("{}.UniffiByValue", self.ffi_struct_name(name)),
-            _ if prefer_primitive => self.ffi_type_primitive(ffi_type, config),
-            _ => self.ffi_type_label(ffi_type, config),
+            _ if prefer_primitive => self.ffi_type_primitive(ffi_type, config, ci),
+            _ => self.ffi_type_label(ffi_type, config, ci),
         }
     }
 
@@ -354,13 +375,18 @@ impl JavaCodeOracle {
     ///
     /// The main requirement here is that all types must have default values or else the struct
     /// won't work in some JNA contexts.
-    fn ffi_type_label_for_ffi_struct(&self, ffi_type: &FfiType, config: &Config) -> String {
+    fn ffi_type_label_for_ffi_struct(
+        &self,
+        ffi_type: &FfiType,
+        config: &Config,
+        ci: &ComponentInterface,
+    ) -> String {
         match ffi_type {
             // Make callbacks function pointers nullable. This matches the semantics of a C
             // function pointer better and allows for `null` as a default value.
             // Everything is nullable in Java by default.
             FfiType::Callback(name) => self.ffi_callback_name(name).to_string(),
-            _ => self.ffi_type_label_by_value(ffi_type, true, config),
+            _ => self.ffi_type_label_by_value(ffi_type, true, config, ci),
         }
     }
 
@@ -385,7 +411,12 @@ impl JavaCodeOracle {
         }
     }
 
-    fn ffi_type_label_by_reference(&self, ffi_type: &FfiType, config: &Config) -> String {
+    fn ffi_type_label_by_reference(
+        &self,
+        ffi_type: &FfiType,
+        config: &Config,
+        ci: &ComponentInterface,
+    ) -> String {
         match ffi_type {
             FfiType::Int32 | FfiType::UInt32 => "IntByReference".to_string(),
             FfiType::Int8
@@ -395,15 +426,24 @@ impl JavaCodeOracle {
             | FfiType::Int64
             | FfiType::UInt64
             | FfiType::Float32
-            | FfiType::Float64 => format!("{}ByReference", self.ffi_type_label(ffi_type, config)),
+            | FfiType::Float64 => {
+                format!("{}ByReference", self.ffi_type_label(ffi_type, config, ci))
+            }
             FfiType::RustArcPtr(_) => "PointerByReference".to_owned(),
             // JNA structs default to ByReference
-            FfiType::RustBuffer(_) | FfiType::Struct(_) => self.ffi_type_label(ffi_type, config),
+            FfiType::RustBuffer(_) | FfiType::Struct(_) => {
+                self.ffi_type_label(ffi_type, config, ci)
+            }
             _ => panic!("{ffi_type:?} by reference is not implemented"),
         }
     }
 
-    fn ffi_type_label(&self, ffi_type: &FfiType, config: &Config) -> String {
+    fn ffi_type_label(
+        &self,
+        ffi_type: &FfiType,
+        config: &Config,
+        ci: &ComponentInterface,
+    ) -> String {
         match ffi_type {
             // Note that unsigned values in Java don't have true native support. Signed primitives
             // can contain unsigned values and there are methods like `Integer.compareUnsigned`
@@ -418,28 +458,35 @@ impl JavaCodeOracle {
             FfiType::Handle => "Long".to_string(),
             FfiType::RustArcPtr(_) => "Pointer".to_string(),
             FfiType::RustBuffer(maybe_external) => match maybe_external {
-                Some(external_meta) => {
+                Some(external_meta) if external_meta.module_path != ci.crate_name() => {
                     format!(
                         "{}.RustBuffer",
                         config.external_type_package_name(
                             &external_meta.module_path,
-                            &external_meta.namespace
+                            &external_meta.name
                         )
                     )
                 }
-                None => "RustBuffer".to_string(),
+                _ => "RustBuffer".to_string(),
             },
             FfiType::RustCallStatus => "UniffiRustCallStatus.ByValue".to_string(),
             FfiType::ForeignBytes => "ForeignBytes.ByValue".to_string(),
             FfiType::Callback(name) => self.ffi_callback_name(name),
             FfiType::Struct(name) => self.ffi_struct_name(name),
-            FfiType::Reference(inner) => self.ffi_type_label_by_reference(inner, config),
+            FfiType::Reference(inner) | FfiType::MutReference(inner) => {
+                self.ffi_type_label_by_reference(inner, config, ci)
+            }
             FfiType::VoidPointer => "Pointer".to_string(),
         }
     }
 
     /// Generate primitive types where possible. Useful where we don't need or can't have boxed versions (ie structs).
-    fn ffi_type_primitive(&self, ffi_type: &FfiType, config: &Config) -> String {
+    fn ffi_type_primitive(
+        &self,
+        ffi_type: &FfiType,
+        config: &Config,
+        ci: &ComponentInterface,
+    ) -> String {
         match ffi_type {
             // Note that unsigned integers in Java are currently experimental, but java.nio.ByteBuffer does not
             // support them yet. Thus, we use the signed variants to represent both signed and unsigned
@@ -458,7 +505,7 @@ impl JavaCodeOracle {
                         "{}.RustBuffer",
                         config.external_type_package_name(
                             &external_meta.module_path,
-                            &external_meta.namespace
+                            &external_meta.name
                         )
                     )
                 }
@@ -468,7 +515,9 @@ impl JavaCodeOracle {
             FfiType::ForeignBytes => "ForeignBytes.ByValue".to_string(),
             FfiType::Callback(name) => self.ffi_callback_name(name),
             FfiType::Struct(name) => self.ffi_struct_name(name),
-            FfiType::Reference(inner) => self.ffi_type_label_by_reference(inner, config),
+            FfiType::Reference(inner) | FfiType::MutReference(inner) => {
+                self.ffi_type_label_by_reference(inner, config, ci)
+            }
             FfiType::VoidPointer => "Pointer".to_string(),
         }
     }
@@ -507,7 +556,7 @@ impl AsCodeType for Type {
         //
         //   - When adding additional types here, make sure to also add a match arm to the `Types.java` template.
         //   - To keep things manageable, let's try to limit ourselves to these 2 mega-matches
-        match self {
+        match self.as_type() {
             Type::UInt8 | Type::Int8 => Box::new(primitives::Int8CodeType),
             Type::UInt16 | Type::Int16 => Box::new(primitives::Int16CodeType),
             Type::UInt32 | Type::Int32 => Box::new(primitives::Int32CodeType),
@@ -523,34 +572,24 @@ impl AsCodeType for Type {
 
             Type::Enum { name, .. } => Box::new(enum_::EnumCodeType::new(name.clone())),
             Type::Object { name, imp, .. } => {
-                Box::new(object::ObjectCodeType::new(name.clone(), *imp))
+                Box::new(object::ObjectCodeType::new(name.clone(), imp))
             }
             Type::Record { name, .. } => Box::new(record::RecordCodeType::new(name.clone())),
             Type::CallbackInterface { name, .. } => Box::new(
                 callback_interface::CallbackInterfaceCodeType::new(name.clone()),
             ),
             Type::Optional { inner_type } => {
-                Box::new(compounds::OptionalCodeType::new((**inner_type).clone()))
+                Box::new(compounds::OptionalCodeType::new((*inner_type).clone()))
             }
             Type::Sequence { inner_type } => {
-                Box::new(compounds::SequenceCodeType::new((**inner_type).clone()))
+                Box::new(compounds::SequenceCodeType::new((*inner_type).clone()))
             }
             Type::Map {
                 key_type,
                 value_type,
             } => Box::new(compounds::MapCodeType::new(
-                (**key_type).clone(),
-                (**value_type).clone(),
-            )),
-            Type::External {
-                name,
-                module_path,
-                namespace,
-                ..
-            } => Box::new(external::ExternalCodeType::new(
-                name.clone(),
-                module_path.clone(),
-                namespace.clone(),
+                (*key_type).clone(),
+                (*value_type).clone(),
             )),
             Type::Custom { name, .. } => Box::new(custom::CustomCodeType::new(name.clone())),
         }
@@ -605,35 +644,36 @@ impl AsCodeType for &'_ uniffi_bindgen::interface::CallbackInterface {
 mod filters {
     use super::*;
     pub use uniffi_bindgen::backend::filters::*;
+    use uniffi_bindgen::interface::ffi::ExternalFfiMetadata;
     use uniffi_meta::LiteralMetadata;
 
     pub(super) fn type_name(
         as_ct: &impl AsCodeType,
         ci: &ComponentInterface,
         config: &Config,
-    ) -> Result<String, askama::Error> {
+    ) -> Result<String, rinja::Error> {
         Ok(as_ct.as_codetype().type_label(ci, config))
     }
 
-    pub(super) fn canonical_name(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
+    pub(super) fn canonical_name(as_ct: &impl AsCodeType) -> Result<String, rinja::Error> {
         Ok(as_ct.as_codetype().canonical_name())
     }
 
     pub(super) fn ffi_converter_instance(
         as_ct: &impl AsCodeType,
         config: &Config,
-    ) -> Result<String, askama::Error> {
+    ) -> Result<String, rinja::Error> {
         Ok(as_ct.as_codetype().ffi_converter_instance(config))
     }
 
-    pub(super) fn ffi_converter_name(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
+    pub(super) fn ffi_converter_name(as_ct: &impl AsCodeType) -> Result<String, rinja::Error> {
         Ok(as_ct.as_codetype().ffi_converter_name())
     }
 
     pub(super) fn lower_fn(
         as_ct: &impl AsCodeType,
         config: &Config,
-    ) -> Result<String, askama::Error> {
+    ) -> Result<String, rinja::Error> {
         Ok(format!(
             "{}.lower",
             as_ct.as_codetype().ffi_converter_instance(config)
@@ -643,7 +683,7 @@ mod filters {
     pub(super) fn allocation_size_fn(
         as_ct: &impl AsCodeType,
         config: &Config,
-    ) -> Result<String, askama::Error> {
+    ) -> Result<String, rinja::Error> {
         Ok(format!(
             "{}.allocationSize",
             as_ct.as_codetype().ffi_converter_instance(config)
@@ -653,7 +693,7 @@ mod filters {
     pub(super) fn write_fn(
         as_ct: &impl AsCodeType,
         config: &Config,
-    ) -> Result<String, askama::Error> {
+    ) -> Result<String, rinja::Error> {
         Ok(format!(
             "{}.write",
             as_ct.as_codetype().ffi_converter_instance(config)
@@ -663,7 +703,7 @@ mod filters {
     pub(super) fn lift_fn(
         as_ct: &impl AsCodeType,
         config: &Config,
-    ) -> Result<String, askama::Error> {
+    ) -> Result<String, rinja::Error> {
         Ok(format!(
             "{}.lift",
             as_ct.as_codetype().ffi_converter_instance(config)
@@ -673,7 +713,7 @@ mod filters {
     pub(super) fn read_fn(
         as_ct: &impl AsCodeType,
         config: &Config,
-    ) -> Result<String, askama::Error> {
+    ) -> Result<String, rinja::Error> {
         Ok(format!(
             "{}.read",
             as_ct.as_codetype().ffi_converter_instance(config)
@@ -681,103 +721,99 @@ mod filters {
     }
 
     // Get the idiomatic Java rendering of an integer.
-    fn int_literal(t: &Option<Type>, base10: String) -> Result<String, askama::Error> {
+    fn int_literal(t: &Option<Type>, base10: String) -> Result<String, rinja::Error> {
         if let Some(t) = t {
             match t {
                 Type::Int8 | Type::Int16 | Type::Int32 | Type::Int64 => Ok(base10),
                 Type::UInt8 | Type::UInt16 | Type::UInt32 | Type::UInt64 => Ok(base10 + "u"),
-                _ => Err(askama::Error::Custom(Box::new(UniFFIError::new(
-                    "Only ints are supported.".to_string(),
-                )))),
+                _ => Err(to_rinja_error("Only ints are supported.")),
             }
         } else {
-            Err(askama::Error::Custom(Box::new(UniFFIError::new(
-                "Enum hasn't defined a repr".to_string(),
-            ))))
+            Err(to_rinja_error("Enum hasn't defined a repr"))
         }
     }
 
     // Get the idiomatic Java rendering of an individual enum variant's discriminant
-    pub fn variant_discr_literal(e: &Enum, index: &usize) -> Result<String, askama::Error> {
+    pub fn variant_discr_literal(e: &Enum, index: &usize) -> Result<String, rinja::Error> {
         let literal = e.variant_discr(*index).expect("invalid index");
         match literal {
             // Java doesn't convert between signed and unsigned by default
             // so we'll need to make sure we define the type as appropriately
             LiteralMetadata::UInt(v, _, _) => int_literal(e.variant_discr_type(), v.to_string()),
             LiteralMetadata::Int(v, _, _) => int_literal(e.variant_discr_type(), v.to_string()),
-            _ => Err(askama::Error::Custom(Box::new(UniFFIError::new(
-                "Only ints are supported.".to_string(),
-            )))),
+            _ => Err(to_rinja_error("Only ints are supported.")),
         }
     }
 
     pub fn ffi_type_name_by_value(
         type_: &FfiType,
         config: &Config,
-    ) -> Result<String, askama::Error> {
-        Ok(JavaCodeOracle.ffi_type_label_by_value(type_, false, config))
+        ci: &ComponentInterface,
+    ) -> Result<String, rinja::Error> {
+        Ok(JavaCodeOracle.ffi_type_label_by_value(type_, false, config, ci))
     }
 
     pub fn ffi_type_name_for_ffi_struct(
         type_: &FfiType,
         config: &Config,
-    ) -> Result<String, askama::Error> {
-        Ok(JavaCodeOracle.ffi_type_label_for_ffi_struct(type_, config))
+        ci: &ComponentInterface,
+    ) -> Result<String, rinja::Error> {
+        Ok(JavaCodeOracle.ffi_type_label_for_ffi_struct(type_, config, ci))
     }
 
-    pub fn ffi_default_value(type_: FfiType) -> Result<String, askama::Error> {
+    pub fn ffi_default_value(type_: FfiType) -> Result<String, rinja::Error> {
         Ok(JavaCodeOracle.ffi_default_value(&type_))
     }
 
     /// Get the idiomatic Java rendering of a class name.
-    pub fn class_name(nm: &str, ci: &ComponentInterface) -> Result<String, askama::Error> {
+    pub fn class_name(nm: &str, ci: &ComponentInterface) -> Result<String, rinja::Error> {
         Ok(JavaCodeOracle.class_name(ci, nm))
     }
 
     /// Get the idiomatic Java rendering of a function name.
-    pub fn fn_name(nm: &str) -> Result<String, askama::Error> {
+    pub fn fn_name(nm: &str) -> Result<String, rinja::Error> {
         Ok(JavaCodeOracle.fn_name(nm))
     }
 
     /// Get the idiomatic Java rendering of a variable name.
-    pub fn var_name(nm: &str) -> Result<String, askama::Error> {
+    pub fn var_name(nm: &str) -> Result<String, rinja::Error> {
         Ok(JavaCodeOracle.var_name(nm))
     }
 
     /// Get the idiomatic Java rendering of a variable name, without altering reserved words.
-    pub fn var_name_raw(nm: &str) -> Result<String, askama::Error> {
+    pub fn var_name_raw(nm: &str) -> Result<String, rinja::Error> {
         Ok(JavaCodeOracle.var_name_raw(nm))
     }
 
     /// Get the idiomatic Java setter method name.
-    pub fn setter(nm: &str) -> Result<String, askama::Error> {
+    pub fn setter(nm: &str) -> Result<String, rinja::Error> {
         Ok(JavaCodeOracle.setter(nm))
     }
 
     /// Get a String representing the name used for an individual enum variant.
-    pub fn variant_name(v: &Variant) -> Result<String, askama::Error> {
+    pub fn variant_name(v: &Variant) -> Result<String, rinja::Error> {
         Ok(JavaCodeOracle.enum_variant_name(v.name()))
     }
 
-    pub fn error_variant_name(v: &Variant) -> Result<String, askama::Error> {
+    pub fn error_variant_name(v: &Variant) -> Result<String, rinja::Error> {
         let name = v.name().to_string().to_upper_camel_case();
         Ok(JavaCodeOracle.convert_error_suffix(&name))
     }
 
     /// Get the idiomatic Java rendering of an FFI callback function name
-    pub fn ffi_callback_name(nm: &str) -> Result<String, askama::Error> {
+    pub fn ffi_callback_name(nm: &str) -> Result<String, rinja::Error> {
         Ok(JavaCodeOracle.ffi_callback_name(nm))
     }
 
     /// Get the idiomatic Java rendering of an FFI struct name
-    pub fn ffi_struct_name(nm: &str) -> Result<String, askama::Error> {
+    pub fn ffi_struct_name(nm: &str) -> Result<String, rinja::Error> {
         Ok(JavaCodeOracle.ffi_struct_name(nm))
     }
 
     pub fn object_names(
         obj: &Object,
         ci: &ComponentInterface,
-    ) -> Result<(String, String), askama::Error> {
+    ) -> Result<(String, String), rinja::Error> {
         Ok(JavaCodeOracle.object_names(ci, obj))
     }
 
@@ -785,17 +821,17 @@ mod filters {
         callable: impl Callable,
         ci: &ComponentInterface,
         config: &Config,
-    ) -> Result<String, askama::Error> {
+    ) -> Result<String, rinja::Error> {
         callable
             .return_type()
-            .map_or(Ok("Void".to_string()), |t| type_name(&t, ci, config))
+            .map_or(Ok("Void".to_string()), |t| type_name(t, ci, config))
     }
 
     pub fn async_return_type(
         callable: impl Callable,
         ci: &ComponentInterface,
         config: &Config,
-    ) -> Result<String, askama::Error> {
+    ) -> Result<String, rinja::Error> {
         let is_async = callable.is_async();
         let inner_type = async_inner_return_type(callable, ci, config)?;
         if is_async {
@@ -808,7 +844,7 @@ mod filters {
     pub fn async_poll(
         callable: impl Callable,
         ci: &ComponentInterface,
-    ) -> Result<String, askama::Error> {
+    ) -> Result<String, rinja::Error> {
         let ffi_func = callable.ffi_rust_future_poll(ci);
         Ok(format!(
             "(future, callback, continuation) -> UniffiLib.INSTANCE.{ffi_func}(future, callback, continuation)"
@@ -819,27 +855,28 @@ mod filters {
         callable: impl Callable,
         ci: &ComponentInterface,
         config: &Config,
-    ) -> Result<String, askama::Error> {
+    ) -> Result<String, rinja::Error> {
         let ffi_func = callable.ffi_rust_future_complete(ci);
         let call = format!("UniffiLib.INSTANCE.{ffi_func}(future, continuation)");
         let call = match callable.return_type() {
-            Some(Type::External {
-                kind: ExternalKind::DataClass,
-                module_path,
-                namespace,
-                ..
-            }) => {
-                // Need to convert the RustBuffer from our package to the RustBuffer of the external package
-                let rust_buffer = format!(
-                    "{}.RustBuffer",
-                    config.external_type_package_name(&module_path, &namespace)
-                );
-                format!(
-                    "(future, continuation) -> {{
+            Some(return_type) if ci.is_external(return_type) => {
+                let ffi_type = FfiType::from(return_type);
+                match ffi_type {
+                    FfiType::RustBuffer(Some(ExternalFfiMetadata { name, module_path })) => {
+                        // Need to convert the RustBuffer from our package to the RustBuffer of the external package
+                        let rust_buffer = format!(
+                            "{}.RustBuffer",
+                            config.external_type_package_name(&module_path, &name)
+                        );
+                        format!(
+                            "(future, continuation) -> {{
                     var result = {call};
                     return {rust_buffer}.create(result.capacity, result.len, result.data);
                 }}"
-                )
+                        )
+                    }
+                    _ => call,
+                }
             }
             _ => format!("(future, continuation) -> {call}"),
         };
@@ -849,7 +886,7 @@ mod filters {
     pub fn async_free(
         callable: impl Callable,
         ci: &ComponentInterface,
-    ) -> Result<String, askama::Error> {
+    ) -> Result<String, rinja::Error> {
         let ffi_func = callable.ffi_rust_future_free(ci);
         Ok(format!("(future) -> UniffiLib.INSTANCE.{ffi_func}(future)"))
     }
@@ -859,12 +896,12 @@ mod filters {
     /// These are used to avoid name clashes with kotlin identifiers, but sometimes you want to
     /// render the name unquoted.  One example is the message property for errors where we want to
     /// display the name for the user.
-    pub fn unquote(nm: &str) -> Result<String, askama::Error> {
+    pub fn unquote(nm: &str) -> Result<String, rinja::Error> {
         Ok(nm.trim_matches('`').to_string())
     }
 
     /// Get the idiomatic Java rendering of docstring
-    pub fn docstring(docstring: &str, spaces: &i32) -> Result<String, askama::Error> {
+    pub fn docstring(docstring: &str, spaces: &i32) -> Result<String, rinja::Error> {
         let middle = textwrap::indent(&textwrap::dedent(docstring), " * ");
         let wrapped = format!("/**\n{middle}\n */");
 

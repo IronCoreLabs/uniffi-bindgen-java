@@ -99,7 +99,7 @@
   {%- include "ObjectCleanerHelper.java" %}
 {%- endif %}
 
-{%- let obj = ci|get_object_definition(name) %}
+{%- let obj = ci.get_object_definition(name).unwrap() %}
 {%- let (interface_name, impl_class_name) = obj|object_names(ci) %}
 {%- let methods = obj.methods() %}
 {%- let interface_docstring = obj.docstring() %}
