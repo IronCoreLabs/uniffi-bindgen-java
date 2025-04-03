@@ -38,43 +38,43 @@
 
 {%- macro func_decl(func_decl, annotation, callable, indent) %}
     {%- if self::can_render_callable(callable, ci) %}
-        {%- call docstring(callable, indent) %}
-        {%- if annotation != "" %}
-        @{{ annotation }}
-        {% endif %}
-        {%- if callable.is_async() %}
-        {{ func_decl }} CompletableFuture<{% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|type_name(ci, config) }}{%- when None %}Void{%- endmatch %}> {{ callable.name()|fn_name }}(
-            {%- call arg_list(callable, !callable.takes_self()) -%}
-        ){
-            return {% call call_async(callable) %};
-        }
-        {%- else -%}
-        {{ func_decl }} {% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|type_name(ci, config) }}{%- when None %}void{%- endmatch %} {{ callable.name()|fn_name }}(
-            {%- call arg_list(callable, !callable.takes_self()) -%}
-        ) {% match callable.throws_type() -%}
-            {%-     when Some(throwable) -%}
-            throws {{ throwable|type_name(ci, config) }}
-            {%-     else -%}
-            {%- endmatch %} {
-                try {
-                    {% match callable.return_type() -%}{%- when Some with (return_type) -%}return {{ return_type|lift_fn(config, ci) }}({% call to_ffi_call(callable) %}){%- when None %}{% call to_ffi_call(callable) %}{%- endmatch %};
-                } catch (RuntimeException _e) {
-                    {% match callable.throws_type() %}
-                    {% when Some(throwable) %}
-                    if ({{ throwable|type_name(ci, config) }}.class.isInstance(_e.getCause())) {
-                        throw ({{ throwable|type_name(ci, config) }})_e.getCause();
-                    }
-                    {% else %}
-                    {% endmatch %}
-                    if (InternalException.class.isInstance(_e.getCause())) {
-                        throw (InternalException)_e.getCause();
-                    }
-                    throw _e;
+    {%- call docstring(callable, indent) %}
+    {%- if annotation != "" %}
+    @{{ annotation }}
+    {% endif %}
+    {%- if callable.is_async() %}
+    {{ func_decl }} CompletableFuture<{% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|type_name(ci, config) }}{%- when None %}Void{%- endmatch %}> {{ callable.name()|fn_name }}(
+        {%- call arg_list(callable, !callable.takes_self()) -%}
+    ){
+        return {% call call_async(callable) %};
+    }
+    {%- else -%}
+    {{ func_decl }} {% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|type_name(ci, config) }}{%- when None %}void{%- endmatch %} {{ callable.name()|fn_name }}(
+        {%- call arg_list(callable, !callable.takes_self()) -%}
+    ) {% match callable.throws_type() -%}
+        {%-     when Some(throwable) -%}
+        throws {{ throwable|type_name(ci, config) }}
+        {%-     else -%}
+        {%- endmatch %} {
+            try {
+                {% match callable.return_type() -%}{%- when Some with (return_type) -%}return {{ return_type|lift_fn(config, ci) }}({% call to_ffi_call(callable) %}){%- when None %}{% call to_ffi_call(callable) %}{%- endmatch %};
+            } catch (RuntimeException _e) {
+                {% match callable.throws_type() %}
+                {% when Some(throwable) %}
+                if ({{ throwable|type_name(ci, config) }}.class.isInstance(_e.getCause())) {
+                    throw ({{ throwable|type_name(ci, config) }})_e.getCause();
                 }
-        }
-        {% endif %}
+                {% else %}
+                {% endmatch %}
+                if (InternalException.class.isInstance(_e.getCause())) {
+                    throw (InternalException)_e.getCause();
+                }
+                throw _e;
+            }
+    }
+    {% endif %}
     {%- else %}
-// Sorry, the callable "{{ callable.name() }}" isn't supported.
+    // Sorry, the callable "{{ callable.name() }}" isn't supported.
     {%- endif %}
 {% endmacro %}
 
