@@ -4,6 +4,7 @@ package {{ config.package_name() }};
 
 import java.nio.ByteBuffer;
 import java.util.Map;
+import java.util.HashMap;
 import java.util.List;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -15,10 +16,16 @@ public enum {{ ffi_converter_name }} implements FfiConverterRustBuffer<Map<{{ ke
     @Override
     public Map<{{ key_type_name }}, {{ value_type_name }}> read(ByteBuffer buf) {
         int len = buf.getInt();
-        return IntStream.range(0, len).boxed().collect(Collectors.toMap(
-            _x -> {{ key_type|read_fn(config, ci) }}(buf),
-            _x -> {{ value_type|read_fn(config, ci) }}(buf)
-        ));
+        // Collectors.toMap would be preferred here, but theres a bug that doesn't allow
+        // null values in the map, even though that is valid Java
+        return IntStream.range(0, len).boxed().collect(
+            HashMap::new,
+            (m, v) -> m.put(
+                {{ key_type|read_fn(config, ci) }}(buf),
+                {{ value_type|read_fn(config, ci) }}(buf)
+            ),
+            HashMap::putAll
+        );
     }
 
     @Override
