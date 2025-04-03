@@ -766,28 +766,31 @@ mod filters {
     }
 
     /// Get the idiomatic Java rendering of a class name.
-    pub fn class_name(nm: &str, ci: &ComponentInterface) -> Result<String, rinja::Error> {
-        Ok(JavaCodeOracle.class_name(ci, nm))
+    pub fn class_name<S: AsRef<str>>(
+        nm: S,
+        ci: &ComponentInterface,
+    ) -> Result<String, rinja::Error> {
+        Ok(JavaCodeOracle.class_name(ci, nm.as_ref()))
     }
 
     /// Get the idiomatic Java rendering of a function name.
-    pub fn fn_name(nm: &str) -> Result<String, rinja::Error> {
-        Ok(JavaCodeOracle.fn_name(nm))
+    pub fn fn_name<S: AsRef<str>>(nm: S) -> Result<String, rinja::Error> {
+        Ok(JavaCodeOracle.fn_name(nm.as_ref()))
     }
 
     /// Get the idiomatic Java rendering of a variable name.
-    pub fn var_name(nm: &str) -> Result<String, rinja::Error> {
-        Ok(JavaCodeOracle.var_name(nm))
+    pub fn var_name<S: AsRef<str>>(nm: S) -> Result<String, rinja::Error> {
+        Ok(JavaCodeOracle.var_name(nm.as_ref()))
     }
 
     /// Get the idiomatic Java rendering of a variable name, without altering reserved words.
-    pub fn var_name_raw(nm: &str) -> Result<String, rinja::Error> {
-        Ok(JavaCodeOracle.var_name_raw(nm))
+    pub fn var_name_raw<S: AsRef<str>>(nm: S) -> Result<String, rinja::Error> {
+        Ok(JavaCodeOracle.var_name_raw(nm.as_ref()))
     }
 
     /// Get the idiomatic Java setter method name.
-    pub fn setter(nm: &str) -> Result<String, rinja::Error> {
-        Ok(JavaCodeOracle.setter(nm))
+    pub fn setter<S: AsRef<str>>(nm: S) -> Result<String, rinja::Error> {
+        Ok(JavaCodeOracle.setter(nm.as_ref()))
     }
 
     /// Get a String representing the name used for an individual enum variant.
@@ -801,13 +804,13 @@ mod filters {
     }
 
     /// Get the idiomatic Java rendering of an FFI callback function name
-    pub fn ffi_callback_name(nm: &str) -> Result<String, rinja::Error> {
-        Ok(JavaCodeOracle.ffi_callback_name(nm))
+    pub fn ffi_callback_name<S: AsRef<str>>(nm: S) -> Result<String, rinja::Error> {
+        Ok(JavaCodeOracle.ffi_callback_name(nm.as_ref()))
     }
 
     /// Get the idiomatic Java rendering of an FFI struct name
-    pub fn ffi_struct_name(nm: &str) -> Result<String, rinja::Error> {
-        Ok(JavaCodeOracle.ffi_struct_name(nm))
+    pub fn ffi_struct_name<S: AsRef<str>>(nm: S) -> Result<String, rinja::Error> {
+        Ok(JavaCodeOracle.ffi_struct_name(nm.as_ref()))
     }
 
     pub fn object_names(
@@ -896,13 +899,13 @@ mod filters {
     /// These are used to avoid name clashes with java identifiers, but sometimes you want to
     /// render the name unquoted.  One example is the message property for errors where we want to
     /// display the name for the user.
-    pub fn unquote(nm: String) -> Result<String, rinja::Error> {
-        Ok(nm.trim_matches('`').to_string())
+    pub fn unquote<S: AsRef<str>>(nm: S) -> Result<String, rinja::Error> {
+        Ok(nm.as_ref().trim_matches('`').to_string())
     }
 
     /// Get the idiomatic Java rendering of docstring
-    pub fn docstring(docstring: &str, spaces: &i32) -> Result<String, rinja::Error> {
-        let middle = textwrap::indent(&textwrap::dedent(docstring), " * ");
+    pub fn docstring<S: AsRef<str>>(docstring: S, spaces: &i32) -> Result<String, rinja::Error> {
+        let middle = textwrap::indent(&textwrap::dedent(docstring.as_ref()), " * ");
         let wrapped = format!("/**\n{middle}\n */");
 
         let spaces = usize::try_from(*spaces).unwrap_or_default();
