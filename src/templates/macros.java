@@ -56,7 +56,7 @@
         {%-     else -%}
         {%- endmatch %} {
             try {
-                {% match callable.return_type() -%}{%- when Some with (return_type) -%}return {{ return_type|lift_fn(config) }}({% call to_ffi_call(callable) %}){%- when None %}{% call to_ffi_call(callable) %}{%- endmatch %};
+                {% match callable.return_type() -%}{%- when Some with (return_type) -%}return {{ return_type|lift_fn(config, ci) }}({% call to_ffi_call(callable) %}){%- when None %}{% call to_ffi_call(callable) %}{%- endmatch %};
             } catch (RuntimeException _e) {
                 {% match callable.throws_type() %}
                 {% when Some(throwable) %}
@@ -92,7 +92,7 @@
         // lift function
         {%- match callable.return_type() %}
         {%- when Some(return_type) %}
-        (it) -> {{ return_type|lift_fn(config) }}(it),
+        (it) -> {{ return_type|lift_fn(config, ci) }}(it),
         {%- when None %}
         () -> {},
         {%- endmatch %}
@@ -108,7 +108,7 @@
 
 {%- macro arg_list_lowered(func) %}
     {%- for arg in func.arguments() %}
-        {{- arg|lower_fn(config) }}({{ arg.name()|var_name }})
+        {{- arg|lower_fn(config, ci) }}({{ arg.name()|var_name }})
     {%- if !loop.last %}, {% endif -%}
     {%- endfor %}
 {%- endmacro -%}

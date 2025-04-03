@@ -23,28 +23,28 @@ public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, {{
   INSTANCE;
   @Override
   public {{ type_name }} lift({{ ffi_type_name }} value) {
-      var builtinValue = {{ builtin|lift_fn(config) }}(value);
+      var builtinValue = {{ builtin|lift_fn(config, ci) }}(value);
       return new {{ type_name }}(builtinValue);
   }
   @Override
   public {{ ffi_type_name }} lower({{ type_name }} value) {
       var builtinValue = value.value();
-      return {{ builtin|lower_fn(config) }}(builtinValue);
+      return {{ builtin|lower_fn(config, ci) }}(builtinValue);
   }
   @Override
   public {{ type_name }} read(ByteBuffer buf) {
-      var builtinValue = {{ builtin|read_fn(config) }}(buf);
+      var builtinValue = {{ builtin|read_fn(config, ci) }}(buf);
       return new {{ type_name }}(builtinValue);
   }
   @Override
   public long allocationSize({{ type_name }} value) {
       var builtinValue = value.value();
-      return {{ builtin|allocation_size_fn(config) }}(builtinValue);
+      return {{ builtin|allocation_size_fn(config, ci) }}(builtinValue);
   }
   @Override
   public void write({{ type_name }} value, ByteBuffer buf) {
       var builtinValue = value.value();
-      {{ builtin|write_fn(config) }}(builtinValue, buf);
+      {{ builtin|write_fn(config, ci) }}(builtinValue, buf);
   }
 }
 
@@ -93,7 +93,7 @@ public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, {{
     INSTANCE;
     @Override
     public {{ type_name }} lift({{ ffi_type_name }} value) {
-        var builtinValue = {{ builtin|lift_fn(config) }}(value);
+        var builtinValue = {{ builtin|lift_fn(config, ci) }}(value);
         try{
           return new {{ type_name}}({{ custom_type_config.lift("builtinValue") }});
         } catch(Exception e){
@@ -104,7 +104,7 @@ public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, {{
     public {{ ffi_type_name }} lower({{ type_name }} value) {
       try{
         var builtinValue = {{ custom_type_config.lower("value.value()") }};
-        return {{ builtin|lower_fn(config) }}(builtinValue);
+        return {{ builtin|lower_fn(config, ci) }}(builtinValue);
       } catch(Exception e){
         throw new RuntimeException(e);
       }
@@ -112,7 +112,7 @@ public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, {{
     @Override
     public {{ type_name }} read(ByteBuffer buf) {
       try{
-        var builtinValue = {{ builtin|read_fn(config) }}(buf);
+        var builtinValue = {{ builtin|read_fn(config, ci) }}(buf);
         return new {{ type_name }}({{ custom_type_config.lift("builtinValue") }});
       } catch(Exception e){
         throw new RuntimeException(e);
@@ -122,7 +122,7 @@ public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, {{
     public long allocationSize({{ type_name }} value) {
       try {
         var builtinValue = {{ custom_type_config.lower("value.value()") }};
-        return {{ builtin|allocation_size_fn(config) }}(builtinValue);
+        return {{ builtin|allocation_size_fn(config, ci) }}(builtinValue);
       } catch(Exception e){
         throw new RuntimeException(e);
       } 
@@ -131,7 +131,7 @@ public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, {{
     public void write({{ type_name }} value, ByteBuffer buf) {
       try {
         var builtinValue = {{ custom_type_config.lower("value.value()") }};
-        {{ builtin|write_fn(config) }}(builtinValue, buf);
+        {{ builtin|write_fn(config, ci) }}(builtinValue, buf);
       } catch(Exception e){
         throw new RuntimeException(e);
       }

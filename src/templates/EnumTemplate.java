@@ -101,7 +101,7 @@ public enum {{ e|ffi_converter_name}} implements FfiConverterRustBuffer<{{ type_
         case {{ loop.index }} -> new {{ type_name }}.{{variant|type_name(ci, config)}}(
           {%- if variant.has_fields() -%}
           {% for field in variant.fields() -%}
-          {{ field|read_fn(config) }}(buf){% if loop.last %}{% else %},{% endif %}
+          {{ field|read_fn(config, ci) }}(buf){% if loop.last %}{% else %},{% endif %}
           {% endfor -%}
           {%- endif %});
         {%- endfor %}
@@ -117,7 +117,7 @@ public enum {{ e|ffi_converter_name}} implements FfiConverterRustBuffer<{{ type_
           case {{ type_name }}.{{ variant|type_name(ci, config) }}({%- for field in variant.fields() %}var {% call java::field_name(field, loop.index) -%}{% if !loop.last%}, {% endif %}{% endfor %}) ->
             (4L
             {%- for field in variant.fields() %}
-            + {{ field|allocation_size_fn(config) }}({%- call java::field_name(field, loop.index) -%})
+            + {{ field|allocation_size_fn(config, ci) }}({%- call java::field_name(field, loop.index) -%})
             {%- endfor %});
           {%- endfor %}
         };
@@ -130,7 +130,7 @@ public enum {{ e|ffi_converter_name}} implements FfiConverterRustBuffer<{{ type_
         case {{ type_name }}.{{ variant|type_name(ci, config) }}({%- for field in variant.fields() %}var {% call java::field_name(field, loop.index) -%}{% if !loop.last%}, {% endif %}{% endfor %}) -> {
           buf.putInt({{ loop.index }});
           {%- for field in variant.fields() %}
-          {{ field|write_fn(config) }}({%- call java::field_name(field, loop.index) -%}, buf);
+          {{ field|write_fn(config, ci) }}({%- call java::field_name(field, loop.index) -%}, buf);
           {%- endfor %}
         }
         {%- endfor %}

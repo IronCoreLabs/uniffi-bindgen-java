@@ -21,6 +21,28 @@ mod primitives;
 mod record;
 mod variant;
 
+pub fn potentially_add_external_package(
+    config: &Config,
+    ci: &ComponentInterface,
+    type_name: &str,
+    display_name: String,
+) -> String {
+    match ci.get_type(type_name) {
+        Some(typ) => {
+            if ci.is_external(&typ) {
+                format!(
+                    "{}.{}",
+                    config.external_type_package_name(typ.module_path().unwrap(), &display_name),
+                    display_name
+                )
+            } else {
+                display_name
+            }
+        }
+        None => display_name,
+    }
+}
+
 trait CodeType: Debug {
     /// The language specific label used to reference this type. This will be used in
     /// method signatures and property declarations.
@@ -55,7 +77,7 @@ trait CodeType: Debug {
     ///
     /// This is the newer way of handling these methods and replaces the lower, write, lift, and
     /// read CodeType methods.
-    fn ffi_converter_instance(&self, _config: &Config) -> String {
+    fn ffi_converter_instance(&self, config: &Config, ci: &ComponentInterface) -> String {
         format!("{}.INSTANCE", self.ffi_converter_name())
     }
 
@@ -186,6 +208,7 @@ impl Config {
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct CustomTypeConfig {
     imports: Option<Vec<String>>,
     type_name: Option<String>,
@@ -662,8 +685,9 @@ mod filters {
     pub(super) fn ffi_converter_instance(
         as_ct: &impl AsCodeType,
         config: &Config,
+        ci: &ComponentInterface,
     ) -> Result<String, rinja::Error> {
-        Ok(as_ct.as_codetype().ffi_converter_instance(config))
+        Ok(as_ct.as_codetype().ffi_converter_instance(config, ci))
     }
 
     pub(super) fn ffi_converter_name(as_ct: &impl AsCodeType) -> Result<String, rinja::Error> {
@@ -673,50 +697,55 @@ mod filters {
     pub(super) fn lower_fn(
         as_ct: &impl AsCodeType,
         config: &Config,
+        ci: &ComponentInterface,
     ) -> Result<String, rinja::Error> {
         Ok(format!(
             "{}.lower",
-            as_ct.as_codetype().ffi_converter_instance(config)
+            as_ct.as_codetype().ffi_converter_instance(config, ci)
         ))
     }
 
     pub(super) fn allocation_size_fn(
         as_ct: &impl AsCodeType,
         config: &Config,
+        ci: &ComponentInterface,
     ) -> Result<String, rinja::Error> {
         Ok(format!(
             "{}.allocationSize",
-            as_ct.as_codetype().ffi_converter_instance(config)
+            as_ct.as_codetype().ffi_converter_instance(config, ci)
         ))
     }
 
     pub(super) fn write_fn(
         as_ct: &impl AsCodeType,
         config: &Config,
+        ci: &ComponentInterface,
     ) -> Result<String, rinja::Error> {
         Ok(format!(
             "{}.write",
-            as_ct.as_codetype().ffi_converter_instance(config)
+            as_ct.as_codetype().ffi_converter_instance(config, ci)
         ))
     }
 
     pub(super) fn lift_fn(
         as_ct: &impl AsCodeType,
         config: &Config,
+        ci: &ComponentInterface,
     ) -> Result<String, rinja::Error> {
         Ok(format!(
             "{}.lift",
-            as_ct.as_codetype().ffi_converter_instance(config)
+            as_ct.as_codetype().ffi_converter_instance(config, ci)
         ))
     }
 
     pub(super) fn read_fn(
         as_ct: &impl AsCodeType,
         config: &Config,
+        ci: &ComponentInterface,
     ) -> Result<String, rinja::Error> {
         Ok(format!(
             "{}.read",
-            as_ct.as_codetype().ffi_converter_instance(config)
+            as_ct.as_codetype().ffi_converter_instance(config, ci)
         ))
     }
 
