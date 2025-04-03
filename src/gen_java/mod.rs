@@ -893,10 +893,10 @@ mod filters {
 
     /// Remove the "`" chars we put around function/variable names
     ///
-    /// These are used to avoid name clashes with kotlin identifiers, but sometimes you want to
+    /// These are used to avoid name clashes with java identifiers, but sometimes you want to
     /// render the name unquoted.  One example is the message property for errors where we want to
     /// display the name for the user.
-    pub fn unquote(nm: &str) -> Result<String, rinja::Error> {
+    pub fn unquote(nm: String) -> Result<String, rinja::Error> {
         Ok(nm.trim_matches('`').to_string())
     }
 

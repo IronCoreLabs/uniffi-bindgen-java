@@ -45,8 +45,8 @@ public class {{ type_name }} extends Exception {
       ) {
         super(new StringBuilder()
         {%- for field in variant.fields() %}
-        .append("{{ field.name()|var_name|unquote }}=")
-        .append({{field.name()|var_name }})
+        .append("{% call java::field_name_unquoted(field, loop.index) %}=")
+        .append({% call java::field_name(field, loop.index) %})
         {% if !loop.last %}
         .append(", ")
         {% endif %}
@@ -129,7 +129,7 @@ public enum {{ e|ffi_converter_name }} implements FfiConverterRustBuffer<{{ type
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4L
                 {%- for field in variant.fields() %}
-                + {{ field|allocation_size_fn(config) }}(x.{{ field.name()|var_name }})
+                + {{ field|allocation_size_fn(config) }}(x.{% call java::field_name(field, loop.index) %})
                 {%- endfor %}
             );
             {%- endfor %}
@@ -145,7 +145,7 @@ public enum {{ e|ffi_converter_name }} implements FfiConverterRustBuffer<{{ type
             case {{ type_name }}.{{ variant|error_variant_name }} x -> {
                 buf.putInt({{ loop.index }});
                 {%- for field in variant.fields() %}
-                {{ field|write_fn(config) }}(x.{{ field.name()|var_name }}, buf);
+                {{ field|write_fn(config) }}(x.{% call java::field_name(field, loop.index) %}, buf);
                 {%- endfor %}
             }
             {%- endfor %}
@@ -153,5 +153,3 @@ public enum {{ e|ffi_converter_name }} implements FfiConverterRustBuffer<{{ type
         };
     }
 }
-
-

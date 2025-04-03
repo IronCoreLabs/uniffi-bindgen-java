@@ -1,4 +1,5 @@
 [toolchain]
 profile = "default"
-channel = "1.85.1"
+# channel = "1.85.1"
+channel = "nightly"
 components = ["rust-src", "rust-analyzer"]
