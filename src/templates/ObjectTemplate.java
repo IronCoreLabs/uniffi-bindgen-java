@@ -279,7 +279,7 @@ public class {{ impl_class_name }}ErrorHandler implements UniffiRustCallStatusEr
         if (bb == null) {
             throw new InternalException("?");
         }
-        return {{ ffi_converter_name }}.read(bb);
+        return {{ ffi_converter_instance }}.read(bb);
     }
 }
 {% endif %}
