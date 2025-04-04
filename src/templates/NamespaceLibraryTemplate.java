@@ -45,9 +45,9 @@ import com.sun.jna.*;
 import com.sun.jna.ptr.*;
 
 interface {{ callback.name()|ffi_callback_name }} extends Callback {
-    public {% match callback.return_type() %}{%- when Some(return_type) %}{{ return_type|ffi_type_name_for_ffi_struct(config) }}{%- when None %}void{%- endmatch %} callback(
+    public {% match callback.return_type() %}{%- when Some(return_type) %}{{ return_type|ffi_type_name_for_ffi_struct(config, ci) }}{%- when None %}void{%- endmatch %} callback(
         {%- for arg in callback.arguments() -%}
-        {{ arg.type_().borrow()|ffi_type_name_for_ffi_struct(config) }} {{ arg.name().borrow()|var_name }}{% if !loop.last %},{% endif %}
+        {{ arg.type_().borrow()|ffi_type_name_for_ffi_struct(config, ci) }} {{ arg.name().borrow()|var_name }}{% if !loop.last %},{% endif %}
         {%- endfor -%}
         {%- if callback.has_rust_call_status_arg() -%}{% if callback.arguments().len() != 0 %},{% endif %}
         UniffiRustCallStatus uniffiCallStatus
@@ -63,7 +63,7 @@ import com.sun.jna.Pointer;
 @Structure.FieldOrder({ {% for field in ffi_struct.fields() %}"{{ field.name()|var_name_raw }}"{% if !loop.last %}, {% endif %}{% endfor %} })
 public class {{ ffi_struct.name()|ffi_struct_name }} extends Structure {
     {%- for field in ffi_struct.fields() %}
-    public {{ field.type_().borrow()|ffi_type_name_for_ffi_struct(config) }} {{ field.name()|var_name }} = {{ field.type_()|ffi_default_value }};
+    public {{ field.type_().borrow()|ffi_type_name_for_ffi_struct(config, ci) }} {{ field.name()|var_name }} = {{ field.type_()|ffi_default_value }};
     {%- endfor %}
 
     // no-arg constructor required so JNA can instantiate and reflect
@@ -73,7 +73,7 @@ public class {{ ffi_struct.name()|ffi_struct_name }} extends Structure {
     
     public {{ ffi_struct.name()|ffi_struct_name }}(
         {%- for field in ffi_struct.fields() %}
-        {{ field.type_().borrow()|ffi_type_name_for_ffi_struct(config) }} {{ field.name()|var_name }}{% if !loop.last %},{% endif %}
+        {{ field.type_().borrow()|ffi_type_name_for_ffi_struct(config, ci) }} {{ field.name()|var_name }}{% if !loop.last %},{% endif %}
         {%- endfor %}
     ) {
         {%- for field in ffi_struct.fields() %}
@@ -84,7 +84,7 @@ public class {{ ffi_struct.name()|ffi_struct_name }} extends Structure {
     public static class UniffiByValue extends {{ ffi_struct.name()|ffi_struct_name }} implements Structure.ByValue {
         public UniffiByValue(
             {%- for field in ffi_struct.fields() %}
-            {{ field.type_().borrow()|ffi_type_name_for_ffi_struct(config) }} {{ field.name()|var_name }}{% if !loop.last %},{% endif %}
+            {{ field.type_().borrow()|ffi_type_name_for_ffi_struct(config, ci) }} {{ field.name()|var_name }}{% if !loop.last %},{% endif %}
             {%- endfor %}
         ) {
             super({%- for field in ffi_struct.fields() -%}
@@ -121,7 +121,7 @@ interface UniffiLib extends Library {
     {%- endif %}
     
     {% for func in ci.iter_ffi_function_definitions() -%}
-    {% match func.return_type() %}{% when Some with (return_type) %}{{ return_type.borrow()|ffi_type_name_by_value(config) }}{% when None %}void{% endmatch %} {{ func.name() }}({%- call java::arg_list_ffi_decl(func) %});
+    {% match func.return_type() %}{% when Some with (return_type) %}{{ return_type.borrow()|ffi_type_name_by_value(config, ci) }}{% when None %}void{% endmatch %} {{ func.name() }}({%- call java::arg_list_ffi_decl(func) %});
     {% endfor %}
 }
 

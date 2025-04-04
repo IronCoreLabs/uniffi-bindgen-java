@@ -1,7 +1,7 @@
 package {{ config.package_name() }};
 
 {%- let type_name = type_|type_name(ci, config) %}
-{%- let ffi_converter_instance = type_|ffi_converter_instance(config) %}
+{%- let ffi_converter_instance = type_|ffi_converter_instance(config, ci) %}
 {%- let canonical_type_name = type_|canonical_name %}
 
 {% if e.is_flat() %}
@@ -35,31 +35,31 @@ public class {{ type_name }} extends Exception {
     public static class {{ variant_name }} extends {{ type_name }}{% if contains_object_references %}, AutoCloseable{% endif %} {
       {% for field in variant.fields() -%}
       {%- call java::docstring(field, 8) %}
-      {{ field|type_name(ci, config) }} {{ field.name()|var_name }};
+      {{ field|type_name(ci, config) }} {% call java::field_name(field, loop.index) %};
       {% endfor -%}
 
       public {{ variant_name }}(
         {%- for field in variant.fields() -%}
-        {{ field|type_name(ci, config)}} {{ field.name()|var_name }}{% if loop.last %}{% else %}, {% endif %}
+        {{ field|type_name(ci, config)}} {% call java::field_name(field, loop.index) %}{% if loop.last %}{% else %}, {% endif %}
         {%- endfor -%}
       ) {
         super(new StringBuilder()
         {%- for field in variant.fields() %}
-        .append("{{ field.name()|var_name|unquote }}=")
-        .append({{field.name()|var_name }})
+        .append("{% call java::field_name_unquoted(field, loop.index) %}=")
+        .append({% call java::field_name(field, loop.index) %})
         {% if !loop.last %}
         .append(", ")
         {% endif %}
         {% endfor %}
         .toString());
         {% for field in variant.fields() -%}
-        this.{{ field.name()|var_name }} = {{ field.name()|var_name }};
+        this.{% call java::field_name(field, loop.index) %} = {% call java::field_name(field, loop.index) %};
         {% endfor -%}   
       }
 
       {% for field in variant.fields() -%}
-      public {{ field|type_name(ci, config) }} {{ field.name()|var_name}}() {
-        return this.{{ field.name()|var_name }};
+      public {{ field|type_name(ci, config) }} {% call java::field_name(field, loop.index) %}() {
+        return this.{% call java::field_name(field, loop.index) %};
       }
       {% endfor %}
       
@@ -99,7 +99,7 @@ public enum {{ e|ffi_converter_name }} implements FfiConverterRustBuffer<{{ type
         {%- if e.is_flat() %}
         return switch(buf.getInt()) {
             {%- for variant in e.variants() %}
-            case {{ loop.index }} -> new {{ type_name }}.{{ variant|error_variant_name }}({{ Type::String.borrow()|read_fn(config) }}(buf));
+            case {{ loop.index }} -> new {{ type_name }}.{{ variant|error_variant_name }}({{ Type::String.borrow()|read_fn(config, ci) }}(buf));
             {%- endfor %}
             default -> throw new RuntimeException("invalid error enum value, something is very wrong!!");
         };
@@ -109,7 +109,7 @@ public enum {{ e|ffi_converter_name }} implements FfiConverterRustBuffer<{{ type
             {%- for variant in e.variants() %}
             case {{ loop.index }} -> new {{ type_name }}.{{ variant|error_variant_name }}({% if variant.has_fields() %}
                 {% for field in variant.fields() -%}
-                {{ field|read_fn(config) }}(buf){% if loop.last %}{% else %},{% endif %}
+                {{ field|read_fn(config, ci) }}(buf){% if loop.last %}{% else %},{% endif %}
                 {% endfor -%}
             {%- endif -%});
             {%- endfor %}
@@ -129,7 +129,7 @@ public enum {{ e|ffi_converter_name }} implements FfiConverterRustBuffer<{{ type
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4L
                 {%- for field in variant.fields() %}
-                + {{ field|allocation_size_fn(config) }}(x.{{ field.name()|var_name }})
+                + {{ field|allocation_size_fn(config, ci) }}(x.{% call java::field_name(field, loop.index) %})
                 {%- endfor %}
             );
             {%- endfor %}
@@ -145,7 +145,7 @@ public enum {{ e|ffi_converter_name }} implements FfiConverterRustBuffer<{{ type
             case {{ type_name }}.{{ variant|error_variant_name }} x -> {
                 buf.putInt({{ loop.index }});
                 {%- for field in variant.fields() %}
-                {{ field|write_fn(config) }}(x.{{ field.name()|var_name }}, buf);
+                {{ field|write_fn(config, ci) }}(x.{% call java::field_name(field, loop.index) %}, buf);
                 {%- endfor %}
             }
             {%- endfor %}
@@ -153,5 +153,3 @@ public enum {{ e|ffi_converter_name }} implements FfiConverterRustBuffer<{{ type
         };
     }
 }
-
-

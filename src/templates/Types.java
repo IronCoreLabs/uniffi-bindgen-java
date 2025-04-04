@@ -2,23 +2,60 @@
 
 package {{ config.package_name() }};
 
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 
 public interface AutoCloseableHelper {
     static void close(Object... args) {
-        Stream.of(args)
-              .filter(AutoCloseable.class::isInstance)
-              .map(AutoCloseable.class::cast)
-              .forEach(closable -> { 
-                  try {
-                      closable.close();
-                  } catch (Exception e) {
-                      throw new RuntimeException(e);
-                  }
-              });
+        Stream
+            .of(args)
+            .forEach(obj -> {
+                // this is all to avoid the problem reported in uniffi-rs#2467
+                if (obj instanceof AutoCloseable) {
+                    try {
+                        ((AutoCloseable) obj).close();
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+                if (obj instanceof List<?>) {
+                    for (int i = 0; i < ((List) obj).size(); i++) {
+                        Object element = ((List) obj).get(i);
+                        if (element instanceof AutoCloseable) {
+                            try {
+                                ((AutoCloseable) element).close();
+                            } catch (Exception e) {
+                                throw new RuntimeException(e);
+                            }
+                        }
+                    }
+                }
+                if (obj instanceof Map<?, ?>) {
+                    for (var value : ((Map) obj).values()) {
+                        if (value instanceof AutoCloseable) {
+                            try {
+                                ((AutoCloseable) value).close();
+                            } catch (Exception e) {
+                                throw new RuntimeException(e);
+                            }
+                        }
+                    }
+                }
+                if (obj instanceof Iterable<?>) {
+                    for (var value : ((Iterable) obj)) {
+                        if (value instanceof AutoCloseable) {
+                            try {
+                                ((AutoCloseable) value).close();
+                            } catch (Exception e) {
+                                throw new RuntimeException(e);
+                            }
+                        }
+                    }
+                }
+            });
     }
 }
-
 package {{ config.package_name() }};
 
 public class NoPointer {
@@ -29,10 +66,10 @@ public class NoPointer {
     public static final NoPointer INSTANCE = new NoPointer();
 }
 
-{%- for type_ in ci.iter_types() %}
+{%- for type_ in ci.iter_local_types() %}
 {%- let type_name = type_|type_name(ci, config) %}
 {%- let ffi_converter_name = type_|ffi_converter_name %}
-{%- let ffi_converter_instance = type_|ffi_converter_instance(config) %}
+{%- let ffi_converter_instance = type_|ffi_converter_instance(config, ci) %}
 {%- let canonical_type_name = type_|canonical_name %}
 {%- let contains_object_references = ci.item_contains_object_references(type_) %}
 
@@ -57,7 +94,9 @@ public class NoPointer {
 {% include "CallbackInterfaceTemplate.java" %}
 
 {%- when Type::Custom { module_path, name, builtin } %}
+{%- if !ci.is_external(type_) %}
 {% include "CustomTypeTemplate.java" %}
+{%- endif %}
 
 {%- when Type::Duration %}
 {% include "DurationHelper.java" %}

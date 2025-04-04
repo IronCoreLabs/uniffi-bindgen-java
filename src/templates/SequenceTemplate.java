@@ -15,19 +15,19 @@ public enum {{ ffi_converter_name }} implements FfiConverterRustBuffer<List<{{ i
   @Override
   public List<{{ inner_type_name }}> read(ByteBuffer buf) {
     int len = buf.getInt();
-    return IntStream.range(0, len).mapToObj(_i -> {{ inner_type|read_fn(config) }}(buf)).toList();
+    return IntStream.range(0, len).mapToObj(_i -> {{ inner_type|read_fn(config, ci) }}(buf)).toList();
   }
 
   @Override
   public long allocationSize(List<{{ inner_type_name }}> value) {
     long sizeForLength = 4L;
-    long sizeForItems = value.stream().mapToLong(inner -> {{ inner_type|allocation_size_fn(config) }}(inner)).sum();
+    long sizeForItems = value.stream().mapToLong(inner -> {{ inner_type|allocation_size_fn(config, ci) }}(inner)).sum();
     return sizeForLength + sizeForItems;
   }
 
   @Override
   public void write(List<{{ inner_type_name }}> value, ByteBuffer buf) {
     buf.putInt(value.size());
-    value.forEach(inner -> {{ inner_type|write_fn(config) }}(inner, buf));
+    value.forEach(inner -> {{ inner_type|write_fn(config, ci) }}(inner, buf));
   }
 }

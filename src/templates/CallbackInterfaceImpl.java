@@ -16,10 +16,10 @@ import com.sun.jna.ptr.*;
 // Put the implementation in an object so we don't pollute the top-level namespace
 public class {{ trait_impl }} {
     public static final {{ trait_impl }} INSTANCE = new {{ trait_impl }}();
-    {{ vtable|ffi_type_name_by_value(config) }} vtable;
+    {{ vtable|ffi_type_name_by_value(config, ci) }} vtable;
     
     {{ trait_impl }}() {
-        vtable = new {{ vtable|ffi_type_name_by_value(config) }}(
+        vtable = new {{ vtable|ffi_type_name_by_value(config, ci) }}(
             {%- for (ffi_callback, meth) in vtable_methods.iter() %}
             {{ meth.name()|var_name }}.INSTANCE,
             {%- endfor %}
@@ -40,9 +40,9 @@ public class {{ trait_impl }} {
         private {{ inner_method_class }}() {}
 
         @Override
-        public {% match ffi_callback.return_type() %}{% when Some(return_type) %}{{ return_type|ffi_type_name_for_ffi_struct(config) }}{% when None %}void{% endmatch %} callback(
+        public {% match ffi_callback.return_type() %}{% when Some(return_type) %}{{ return_type|ffi_type_name_for_ffi_struct(config, ci) }}{% when None %}void{% endmatch %} callback(
             {%- for arg in ffi_callback.arguments() -%}
-            {{ arg.type_().borrow()|ffi_type_name_for_ffi_struct(config) }} {{ arg.name().borrow()|var_name }}{% if !loop.last || (loop.last && ffi_callback.has_rust_call_status_arg()) %},{% endif %}
+            {{ arg.type_().borrow()|ffi_type_name_for_ffi_struct(config, ci) }} {{ arg.name().borrow()|var_name }}{% if !loop.last || (loop.last && ffi_callback.has_rust_call_status_arg()) %},{% endif %}
             {%- endfor -%}
             {%- if ffi_callback.has_rust_call_status_arg() -%}
             UniffiRustCallStatus uniffiCallStatus
@@ -52,7 +52,7 @@ public class {{ trait_impl }} {
             {% if !meth.is_async() && meth.throws_type().is_some() %}Callable{% else %}Supplier{%endif%}<{% if meth.is_async() %}{{ meth|async_return_type(ci, config) }}{% else %}{% match meth.return_type() %}{% when Some(return_type)%}{{ return_type|type_name(ci, config)}}{% when None %}Void{% endmatch %}{% endif %}> makeCall = () -> {
                 {% if meth.return_type().is_some() || meth.is_async() %}return {% endif %}uniffiObj.{{ meth.name()|fn_name() }}(
                     {%- for arg in meth.arguments() %}
-                    {{ arg|lift_fn(config) }}({{ arg.name()|var_name }}){% if !loop.last %},{% endif %}
+                    {{ arg|lift_fn(config, ci) }}({{ arg.name()|var_name }}){% if !loop.last %},{% endif %}
                     {%- endfor %}
                 );
                 {% if meth.return_type().is_none() && !meth.is_async() %}return null;{% endif %}
@@ -60,7 +60,7 @@ public class {{ trait_impl }} {
             {%- if !meth.is_async() %}
             {%- match meth.return_type() %}
             {%- when Some(return_type) %}
-            Consumer<{{ return_type|type_name(ci, config)}}> writeReturn = ({{ return_type|type_name(ci, config) }} value) -> { uniffiOutReturn.setValue({{ return_type|lower_fn(config) }}(value)); };
+            Consumer<{{ return_type|type_name(ci, config)}}> writeReturn = ({{ return_type|type_name(ci, config) }} value) -> { uniffiOutReturn.setValue({{ return_type|lower_fn(config, ci) }}(value)); };
             {%- when None %}
             Consumer<Void> writeReturn = (nothing) -> {};
             {%- endmatch %}
@@ -73,7 +73,7 @@ public class {{ trait_impl }} {
                 uniffiCallStatus,
                 makeCall,
                 writeReturn,
-                ({{error_type|type_name(ci, config) }} e) -> { return {{ error_type|lower_fn(config) }}(e); },
+                ({{error_type|type_name(ci, config) }} e) -> { return {{ error_type|lower_fn(config, ci) }}(e); },
                 {{error_type|type_name(ci, config)}}.class
             );
             {%- endmatch %}
@@ -83,7 +83,7 @@ public class {{ trait_impl }} {
                 var uniffiResult = new {{ meth.foreign_future_ffi_result_struct().name()|ffi_struct_name }}.UniffiByValue(
                     {%- match meth.return_type() %}
                     {%- when Some(return_type) %}
-                    {{ return_type|lower_fn(config) }}(returnValue),
+                    {{ return_type|lower_fn(config, ci) }}(returnValue),
                     {%- when None %}
                     {%- endmatch %}
                     new UniffiRustCallStatus.ByValue()
@@ -118,7 +118,7 @@ public class {{ trait_impl }} {
                     makeCall,
                     uniffiHandleSuccess,
                     uniffiHandleError,
-                    ({{error_type|type_name(ci, config) }} e) -> {{ error_type|lower_fn(config) }}(e),
+                    ({{error_type|type_name(ci, config) }} e) -> {{ error_type|lower_fn(config, ci) }}(e),
                     {{ error_type|type_name(ci, config)}}.class
                 )
                 {%- endmatch %}

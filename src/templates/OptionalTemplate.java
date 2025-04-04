@@ -19,7 +19,7 @@ public enum {{ ffi_converter_name }} implements FfiConverterRustBuffer<{{ inner_
     if (buf.get() == (byte)0) {
       return null;
     }
-    return {{ inner_type|read_fn(config) }}(buf);
+    return {{ inner_type|read_fn(config, ci) }}(buf);
   }
 
   @Override
@@ -27,7 +27,7 @@ public enum {{ ffi_converter_name }} implements FfiConverterRustBuffer<{{ inner_
     if (value == null) {
       return 1L;
     } else {
-      return 1L + {{ inner_type|allocation_size_fn(config) }}(value);
+      return 1L + {{ inner_type|allocation_size_fn(config, ci) }}(value);
     }
   }
 
@@ -37,7 +37,7 @@ public enum {{ ffi_converter_name }} implements FfiConverterRustBuffer<{{ inner_
       buf.put((byte)0);
     } else {
       buf.put((byte)1);
-      {{ inner_type|write_fn(config) }}(value, buf);
+      {{ inner_type|write_fn(config, ci) }}(value, buf);
     }
   }
 }

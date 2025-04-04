@@ -1,4 +1,4 @@
-{%- let rec = ci|get_record_definition(name) %}
+{%- let rec = ci.get_record_definition(name).unwrap() %}
 package {{ config.package_name() }};
 
 import java.util.List;
@@ -108,7 +108,7 @@ public enum {{ rec|ffi_converter_name }} implements FfiConverterRustBuffer<{{ ty
     {%- if rec.has_fields() %}
     return new {{ type_name }}(
     {%- for field in rec.fields() %}
-      {{ field|read_fn(config) }}(buf){% if !loop.last %},{% else %}{% endif %}
+      {{ field|read_fn(config, ci) }}(buf){% if !loop.last %},{% else %}{% endif %}
     {%- endfor %}
     );
     {%- else %}
@@ -121,7 +121,7 @@ public enum {{ rec|ffi_converter_name }} implements FfiConverterRustBuffer<{{ ty
       {%- if rec.has_fields() %}
       return (
         {%- for field in rec.fields() %}
-            {{ field|allocation_size_fn(config) }}(value.{{ field.name()|var_name }}()){% if !loop.last %} +{% endif %}
+            {{ field|allocation_size_fn(config, ci) }}(value.{{ field.name()|var_name }}()){% if !loop.last %} +{% endif %}
         {%- endfor %}
       ); 
       {%- else %}
@@ -132,7 +132,7 @@ public enum {{ rec|ffi_converter_name }} implements FfiConverterRustBuffer<{{ ty
   @Override
   public void write({{ type_name }} value, ByteBuffer buf) {
     {%- for field in rec.fields() %}
-      {{ field|write_fn(config) }}(value.{{ field.name()|var_name }}(), buf);
+      {{ field|write_fn(config, ci) }}(value.{{ field.name()|var_name }}(), buf);
     {%- endfor %}
   }
 }

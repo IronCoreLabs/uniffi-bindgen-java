@@ -24,7 +24,7 @@
 
 {%- macro to_raw_ffi_call(func) -%}
     {%- match func.throws_type() %}
-    {%- when Some with (e) %}
+    {%- when Some(e) %}
     UniffiHelpers.uniffiRustCallWithError(new {{ e|type_name(ci, config) }}ErrorHandler(), 
     {%- else %}
     UniffiHelpers.uniffiRustCall(
@@ -37,6 +37,7 @@
 {%- endmacro -%}
 
 {%- macro func_decl(func_decl, annotation, callable, indent) %}
+    {%- if self::can_render_callable(callable, ci) %}
     {%- call docstring(callable, indent) %}
     {%- if annotation != "" %}
     @{{ annotation }}
@@ -56,7 +57,7 @@
         {%-     else -%}
         {%- endmatch %} {
             try {
-                {% match callable.return_type() -%}{%- when Some with (return_type) -%}return {{ return_type|lift_fn(config) }}({% call to_ffi_call(callable) %}){%- when None %}{% call to_ffi_call(callable) %}{%- endmatch %};
+                {% match callable.return_type() -%}{%- when Some with (return_type) -%}return {{ return_type|lift_fn(config, ci) }}({% call to_ffi_call(callable) %}){%- when None %}{% call to_ffi_call(callable) %}{%- endmatch %};
             } catch (RuntimeException _e) {
                 {% match callable.throws_type() %}
                 {% when Some(throwable) %}
@@ -72,6 +73,9 @@
             }
     }
     {% endif %}
+    {%- else %}
+    // Sorry, the callable "{{ callable.name() }}" isn't supported.
+    {%- endif %}
 {% endmacro %}
 
 {%- macro call_async(callable) -%}
@@ -92,7 +96,7 @@
         // lift function
         {%- match callable.return_type() %}
         {%- when Some(return_type) %}
-        (it) -> {{ return_type|lift_fn(config) }}(it),
+        (it) -> {{ return_type|lift_fn(config, ci) }}(it),
         {%- when None %}
         () -> {},
         {%- endmatch %}
@@ -108,7 +112,7 @@
 
 {%- macro arg_list_lowered(func) %}
     {%- for arg in func.arguments() %}
-        {{- arg|lower_fn(config) }}({{ arg.name()|var_name }})
+        {{- arg|lower_fn(config, ci) }}({{ arg.name()|var_name }})
     {%- if !loop.last %}, {% endif -%}
     {%- endfor %}
 {%- endmacro -%}
@@ -132,7 +136,7 @@
 -#}
 {%- macro arg_list_ffi_decl(func) %}
     {%- for arg in func.arguments() %}
-        {{- arg.type_().borrow()|ffi_type_name_by_value(config) }} {{arg.name()|var_name -}}{%- if !loop.last %}, {% endif -%}
+        {{- arg.type_().borrow()|ffi_type_name_by_value(config, ci) }} {{arg.name()|var_name -}}{%- if !loop.last %}, {% endif -%}
     {%- endfor %}
     {%- if func.has_rust_call_status_arg() %}{% if func.arguments().len() != 0 %}, {% endif %}UniffiRustCallStatus uniffi_out_errmk{% endif %}
 {%- endmacro -%}
@@ -142,6 +146,14 @@
 v{{- field_num -}}
 {%- else -%}
 {{ field.name()|var_name }}
+{%- endif -%}
+{%- endmacro %}
+
+{% macro field_name_unquoted(field, field_num) %}
+{%- if field.name().is_empty() -%}
+v{{- field_num -}}
+{%- else -%}
+{{ field.name()|var_name|unquote }}
 {%- endif -%}
 {%- endmacro %}
 

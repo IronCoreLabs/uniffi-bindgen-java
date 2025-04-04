@@ -99,7 +99,7 @@
   {%- include "ObjectCleanerHelper.java" %}
 {%- endif %}
 
-{%- let obj = ci|get_object_definition(name) %}
+{%- let obj = ci.get_object_definition(name).unwrap() %}
 {%- let (interface_name, impl_class_name) = obj|object_names(ci) %}
 {%- let methods = obj.methods() %}
 {%- let interface_docstring = obj.docstring() %}
@@ -238,7 +238,7 @@ public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }
   {%         when UniffiTrait::Display { fmt } %}
   @Override
   public String toString() {
-      return {{ fmt.return_type().unwrap()|lift_fn(config) }}({% call java::to_ffi_call(fmt) %});
+      return {{ fmt.return_type().unwrap()|lift_fn(config, ci) }}({% call java::to_ffi_call(fmt) %});
   }
   {%         when UniffiTrait::Eq { eq, ne } %}
   {# only equals used #}
@@ -250,12 +250,12 @@ public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }
       if (!(other instanceof {{ impl_class_name}})) {
         return false;
       }
-      return {{ eq.return_type().unwrap()|lift_fn(config) }}({% call java::to_ffi_call(eq) %});
+      return {{ eq.return_type().unwrap()|lift_fn(config, ci) }}({% call java::to_ffi_call(eq) %});
   }
   {%         when UniffiTrait::Hash { hash } %}
   @Override
   public Integer hashCode() {
-      return {{ hash.return_type().unwrap()|lift_fn(config) }}({%- call java::to_ffi_call(hash) %}).toInt();
+      return {{ hash.return_type().unwrap()|lift_fn(config, ci) }}({%- call java::to_ffi_call(hash) %}).toInt();
   }
   {%-         else %}
   {%-     endmatch %}
@@ -279,7 +279,7 @@ public class {{ impl_class_name }}ErrorHandler implements UniffiRustCallStatusEr
         if (bb == null) {
             throw new InternalException("?");
         }
-        return {{ ffi_converter_name }}.read(bb);
+        return {{ ffi_converter_instance }}.read(bb);
     }
 }
 {% endif %}

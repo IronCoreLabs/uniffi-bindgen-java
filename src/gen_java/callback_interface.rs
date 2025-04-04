@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use super::{CodeType, Config};
+use super::{potentially_add_external_package, CodeType, Config};
 use crate::ComponentInterface;
 
 #[derive(Debug)]
@@ -17,8 +17,13 @@ impl CallbackInterfaceCodeType {
 }
 
 impl CodeType for CallbackInterfaceCodeType {
-    fn type_label(&self, ci: &ComponentInterface, _config: &Config) -> String {
-        super::JavaCodeOracle.class_name(ci, &self.id)
+    fn type_label(&self, ci: &ComponentInterface, config: &Config) -> String {
+        potentially_add_external_package(
+            config,
+            ci,
+            &self.id,
+            super::JavaCodeOracle.class_name(ci, &self.id),
+        )
     }
 
     fn canonical_name(&self) -> String {
@@ -30,5 +35,14 @@ impl CodeType for CallbackInterfaceCodeType {
             "UniffiCallbackInterface{}.INSTANCE.register",
             self.id
         ))
+    }
+
+    fn ffi_converter_instance(&self, config: &Config, ci: &ComponentInterface) -> String {
+        potentially_add_external_package(
+            config,
+            ci,
+            &self.id,
+            format!("{}.INSTANCE", self.ffi_converter_name()),
+        )
     }
 }

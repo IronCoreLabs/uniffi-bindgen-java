@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use super::{CodeType, Config};
+use super::{potentially_add_external_package, CodeType, Config};
 use uniffi_bindgen::{interface::ObjectImpl, ComponentInterface};
 
 #[derive(Debug)]
@@ -18,8 +18,13 @@ impl ObjectCodeType {
 }
 
 impl CodeType for ObjectCodeType {
-    fn type_label(&self, ci: &ComponentInterface, _config: &Config) -> String {
-        super::JavaCodeOracle.class_name(ci, &self.name)
+    fn type_label(&self, ci: &ComponentInterface, config: &Config) -> String {
+        potentially_add_external_package(
+            config,
+            ci,
+            &self.name,
+            super::JavaCodeOracle.class_name(ci, &self.name),
+        )
     }
 
     fn canonical_name(&self) -> String {
@@ -30,5 +35,14 @@ impl CodeType for ObjectCodeType {
         self.imp
             .has_callback_interface()
             .then(|| format!("UniffiCallbackInterface{}.INSTANCE.register", self.name))
+    }
+
+    fn ffi_converter_instance(&self, config: &Config, ci: &ComponentInterface) -> String {
+        potentially_add_external_package(
+            config,
+            ci,
+            &self.name,
+            format!("{}.INSTANCE", self.ffi_converter_name()),
+        )
     }
 }

@@ -41,8 +41,20 @@ public class TestFixtureCoverall {
       assert almostEquals(d.maybeFloat64(), 1.0);
 
       assert d.coveralls().getName().equals("some_dict");
+      assert d.coverallsList().get(0).getName().equals("some_dict_1");
+      assert d.coverallsList().get(1) == null;
+      assert d.coverallsList().get(2).getName().equals("some_dict_2");
+
+      assert d.coverallsMap().get("some_dict_3").getName().equals("some_dict_3");
+      assert d.coverallsMap().get("none") == null;
+      assert d.coverallsMap().get("some_dict_4").getName().equals("some_dict_4");
+
+      assert Coverall.getNumAlive() == Long.parseUnsignedLong("5");
     }
     
+    System.out.println(Coverall.getNumAlive());
+    assert Coverall.getNumAlive() == Long.parseUnsignedLong("0");
+
     try (var d = Coverall.createNoneDict()) {
       assert d.text().equals("text");
       assert d.maybeText() == null;
@@ -68,7 +80,11 @@ public class TestFixtureCoverall {
       assert d.maybeFloat64() == null;
 
       assert d.coveralls() == null;
+      
+      assert Coverall.getNumAlive() == Long.parseUnsignedLong("0");
     }
+
+    assert Coverall.getNumAlive() == Long.parseUnsignedLong("0");
     
     // Test arcs.
     try (var coveralls = new Coveralls("test_arcs")) {

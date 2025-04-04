@@ -146,8 +146,8 @@ type_name = "URL"
 # Classes that need to be imported
 imports = ["java.net.URI", "java.net.URL"]
 # Functions to convert between strings and URLs
-into_custom = "new URI({}).toURL()"
-from_custom = "{}.toString()"
+lift = "new URI({}).toURL()"
+lower = "{}.toString()"
 ```
 
 #### External Types
@@ -176,6 +176,6 @@ Note that if you need additional toml entries for your test, you can put a `unif
 
 ## Versioning
 
-`uniffi-bindgen-java` is versioned separately from `uniffi-rs`. We follow the [Cargo SemVer rules](https://doc.rust-lang.org/cargo/reference/resolver.html#semver-compatibility), so versions are compatible if their left-most non-zero major/minor/patch component is the same. Any modification to the generator that causes either a consumer of the generated code to need to make changes is considered breaking.
+`uniffi-bindgen-java` is versioned separately from `uniffi-rs`. We follow the [Cargo SemVer rules](https://doc.rust-lang.org/cargo/reference/resolver.html#semver-compatibility), so versions are compatible if their left-most non-zero major/minor/patch component is the same. Any modification to the generator that causes a consumer of the generated code to need to make changes is considered breaking.
 
 `uniffi-bindgen-java` is currently unstable and being developed by IronCore Labs to target features required by [`ironcore-alloy`](https://github.com/IronCoreLabs/ironcore-alloy/). The major version is currently 0, and most changes are likely to bump the minor version. 

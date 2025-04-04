@@ -104,7 +104,7 @@ public final class UniffiHelpers {
           // with the message.  but if that code panics, then it just sends back
           // an empty buffer.
           if (status.error_buf.len > 0) {
-              throw new InternalException({{ Type::String.borrow()|lift_fn(config)  }}(status.error_buf));
+              throw new InternalException({{ Type::String.borrow()|lift_fn(config, ci)  }}(status.error_buf));
           } else {
               throw new InternalException("Rust panic");
           }
@@ -132,7 +132,7 @@ public final class UniffiHelpers {
           writeReturn.accept(makeCall.get());
       } catch (Exception e) {
           callStatus.setCode(UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR);
-          callStatus.setErrorBuf({{ Type::String.borrow()|lower_fn(config) }}(e.toString()));
+          callStatus.setErrorBuf({{ Type::String.borrow()|lower_fn(config, ci) }}(e.toString()));
       }
   }
 
@@ -153,7 +153,7 @@ public final class UniffiHelpers {
               callStatus.setErrorBuf(lowerError.apply(castedE));
           } else {
               callStatus.setCode(UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR);
-              callStatus.setErrorBuf({{ Type::String.borrow()|lower_fn(config) }}(e.toString()));
+              callStatus.setErrorBuf({{ Type::String.borrow()|lower_fn(config, ci) }}(e.toString()));
           }
       }
   }
