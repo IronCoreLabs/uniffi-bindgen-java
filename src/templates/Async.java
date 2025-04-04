@@ -222,6 +222,7 @@ public final class UniffiAsyncHelpers {
 
         @Override
         public void callback(long handle) {
+            System.out.println("free called " + System.currentTimeMillis());
             var job = uniffiForeignFutureHandleMap.remove(handle);
             var successfullyCancelled = job.cancel(true);
             if(successfullyCancelled) {
