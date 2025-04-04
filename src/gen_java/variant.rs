@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use super::{potentially_add_external_package, AsCodeType, CodeType, Config, JavaCodeOracle};
+use super::{AsCodeType, CodeType, Config, JavaCodeOracle, potentially_add_external_package};
 use uniffi_bindgen::interface::{ComponentInterface, Variant};
 
 #[derive(Debug)]

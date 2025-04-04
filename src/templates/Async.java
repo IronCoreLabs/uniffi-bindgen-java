@@ -184,6 +184,7 @@ public final class UniffiAsyncHelpers {
             try {
                 foreignFutureCf.thenAcceptAsync(handleSuccess).get();
             } catch (Throwable e) {
+                System.out.println("caught error in call to java trait from rust " + System.currentTimeMillis());
                 // if we errored inside the CF, it's that error we want to send to Rust, not the wrapper
                 if (e instanceof ExecutionException) {
                     e = e.getCause();
@@ -221,6 +222,7 @@ public final class UniffiAsyncHelpers {
 
         @Override
         public void callback(long handle) {
+            System.out.println("free called " + System.currentTimeMillis());
             var job = uniffiForeignFutureHandleMap.remove(handle);
             var successfullyCancelled = job.cancel(true);
             if(successfullyCancelled) {

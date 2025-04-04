@@ -4,8 +4,8 @@
 
 use super::{AsCodeType, CodeType, Config};
 use uniffi_bindgen::{
-    backend::{Literal, Type},
     ComponentInterface,
+    backend::{Literal, Type},
 };
 
 #[derive(Debug)]
