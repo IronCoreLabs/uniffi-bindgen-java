@@ -145,6 +145,7 @@ public final class UniffiAsyncHelpers {
         Consumer<T> handleSuccess,
         Consumer<UniffiRustCallStatus.ByValue> handleError 
     ){
+        System.out.println("Calling trait interface async");
         // Uniffi does its best to support structured concurrency across the FFI.
         // If the Rust future is dropped, `UniffiForeignFutureFreeImpl` is called, which will cancel the Java completable future if it's still running.
         var foreignFutureCf = makeCall.get();
