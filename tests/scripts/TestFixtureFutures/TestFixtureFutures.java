@@ -242,27 +242,27 @@ public class TestFixtureFutures {
         //     throw e;
         //   }
         // }
-        // try {
-        //   Futures.tryFromStringUsingTrait(traitObj, 1, "force-unexpected-exception").get();
-        //   throw new RuntimeException("Expected last statement to throw");
-        // } catch (ExecutionException e) {
-        //   if (e.getCause() instanceof ParserException.UnexpectedException) {
-        //      // Expected
-        //   } else {
-        //      throw e;
-        //   }
-        // }
-        Futures.delayUsingTrait(traitObj, 1).get();
         try {
-          Futures.tryDelayUsingTrait(traitObj, "one").get();
+          Futures.tryFromStringUsingTrait(traitObj, 1, "force-unexpected-exception").get();
           throw new RuntimeException("Expected last statement to throw");
         } catch (ExecutionException e) {
-          if (e.getCause() instanceof ParserException.NotAnInt) {
-            // Expected
+          if (e.getCause() instanceof ParserException.UnexpectedException) {
+             // Expected
           } else {
-            throw e;
+             throw e;
           }
         }
+        // Futures.delayUsingTrait(traitObj, 1).get();
+        // try {
+        //   Futures.tryDelayUsingTrait(traitObj, "one").get();
+        //   throw new RuntimeException("Expected last statement to throw");
+        // } catch (ExecutionException e) {
+        //   if (e.getCause() instanceof ParserException.NotAnInt) {
+        //     // Expected
+        //   } else {
+        //     throw e;
+        //   }
+        // }
         // var completedDelaysBefore = traitObj.completedDelays;
         // Futures.cancelDelayUsingTrait(traitObj, 50).get();
         // // sleep long enough so that the `delay()` call would finish if it wasn't cancelled.
