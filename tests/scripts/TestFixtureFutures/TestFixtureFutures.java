@@ -242,6 +242,7 @@ public class TestFixtureFutures {
         //     throw e;
         //   }
         // }
+        System.out.println("trying exception future " + System.currentTimeMillis());
         try {
           Futures.tryFromStringUsingTrait(traitObj, 1, "force-unexpected-exception").get();
           throw new RuntimeException("Expected last statement to throw");
@@ -252,6 +253,7 @@ public class TestFixtureFutures {
              throw e;
           }
         }
+        System.out.println("finished exception future " + System.currentTimeMillis());
         // Futures.delayUsingTrait(traitObj, 1).get();
         // try {
         //   Futures.tryDelayUsingTrait(traitObj, "one").get();
@@ -273,6 +275,7 @@ public class TestFixtureFutures {
         // Test that all handles were cleaned up
         System.gc();
         var endingHandleCount = UniffiAsyncHelpers.uniffiForeignFutureHandleCount();
+        System.out.println("got handle count " + System.currentTimeMillis());
         assert endingHandleCount == 0 : MessageFormat.format("{0} current handle count != 0", endingHandleCount);
       }
 
