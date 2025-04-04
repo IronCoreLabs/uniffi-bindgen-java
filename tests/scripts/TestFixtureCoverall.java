@@ -52,6 +52,7 @@ public class TestFixtureCoverall {
       assert Coverall.getNumAlive() == Long.parseUnsignedLong("5");
     }
     
+    System.out.println(Coverall.getNumAlive());
     assert Coverall.getNumAlive() == Long.parseUnsignedLong("0");
 
     try (var d = Coverall.createNoneDict()) {
