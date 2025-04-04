@@ -230,8 +230,8 @@ public class TestFixtureFutures {
         }
 
         var traitObj = new JavaAsyncParser();
-        // assert Futures.asStringUsingTrait(traitObj, 1, 42).get().equals("42");
-        // assert Futures.tryFromStringUsingTrait(traitObj, 1, "42").get().equals(42);
+        assert Futures.asStringUsingTrait(traitObj, 1, 42).get().equals("42");
+        assert Futures.tryFromStringUsingTrait(traitObj, 1, "42").get().equals(42);
         // try {
         //   Futures.tryFromStringUsingTrait(traitObj, 1, "fourty-two").get();
         //   throw new RuntimeException("Expected last statement to throw");
@@ -242,19 +242,19 @@ public class TestFixtureFutures {
         //     throw e;
         //   }
         // }
-        System.out.println("trying exception future " + System.currentTimeMillis());
-        try {
-          Futures.tryFromStringUsingTrait(traitObj, 1, "force-unexpected-exception").get();
-          throw new RuntimeException("Expected last statement to throw");
-        } catch (ExecutionException e) {
-          if (e.getCause() instanceof ParserException.UnexpectedException) {
-             // Expected
-          } else {
-             throw e;
-          }
-        }
-        System.out.println("finished exception future " + System.currentTimeMillis());
-        // Futures.delayUsingTrait(traitObj, 1).get();
+        // System.out.println("trying exception future " + System.currentTimeMillis());
+        // try {
+        //   Futures.tryFromStringUsingTrait(traitObj, 1, "force-unexpected-exception").get();
+        //   throw new RuntimeException("Expected last statement to throw");
+        // } catch (ExecutionException e) {
+        //   if (e.getCause() instanceof ParserException.UnexpectedException) {
+        //      // Expected
+        //   } else {
+        //      throw e;
+        //   }
+        // }
+        // System.out.println("finished exception future " + System.currentTimeMillis());
+        Futures.delayUsingTrait(traitObj, 1).get();
         // try {
         //   Futures.tryDelayUsingTrait(traitObj, "one").get();
         //   throw new RuntimeException("Expected last statement to throw");
@@ -265,12 +265,12 @@ public class TestFixtureFutures {
         //     throw e;
         //   }
         // }
-        // var completedDelaysBefore = traitObj.completedDelays;
-        // Futures.cancelDelayUsingTrait(traitObj, 50).get();
-        // // sleep long enough so that the `delay()` call would finish if it wasn't cancelled.
-        // TestFixtureFutures.delay(200).get();
-        // // If the task was cancelled, then completedDelays won't have increased
-        // assert traitObj.completedDelays == completedDelaysBefore : MessageFormat.format("{0} current delays != {1} delays before", traitObj.completedDelays, completedDelaysBefore);
+        var completedDelaysBefore = traitObj.completedDelays;
+        Futures.cancelDelayUsingTrait(traitObj, 50).get();
+        // sleep long enough so that the `delay()` call would finish if it wasn't cancelled.
+        TestFixtureFutures.delay(200).get();
+        // If the task was cancelled, then completedDelays won't have increased
+        assert traitObj.completedDelays == completedDelaysBefore : MessageFormat.format("{0} current delays != {1} delays before", traitObj.completedDelays, completedDelaysBefore);
 
         // Test that all handles were cleaned up
         System.gc();
