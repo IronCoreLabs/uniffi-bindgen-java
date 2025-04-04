@@ -77,7 +77,7 @@ trait CodeType: Debug {
     ///
     /// This is the newer way of handling these methods and replaces the lower, write, lift, and
     /// read CodeType methods.
-    fn ffi_converter_instance(&self, config: &Config, ci: &ComponentInterface) -> String {
+    fn ffi_converter_instance(&self, _config: &Config, _ci: &ComponentInterface) -> String {
         format!("{}.INSTANCE", self.ffi_converter_name())
     }
 
