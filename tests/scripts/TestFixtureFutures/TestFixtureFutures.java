@@ -252,7 +252,6 @@ public class TestFixtureFutures {
              throw e;
           }
         }
-        TestFixtureFutures.delay(5000).get();
         // Futures.delayUsingTrait(traitObj, 1).get();
         // try {
         //   Futures.tryDelayUsingTrait(traitObj, "one").get();
