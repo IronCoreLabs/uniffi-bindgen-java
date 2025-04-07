@@ -22,6 +22,7 @@ public final class UniffiAsyncHelpers {
         @Override
         public void callback(long data, byte pollResult) {
             uniffiContinuationHandleMap.remove(data).complete(pollResult);
+            System.out.println("java completed continuation " + System.currentTimeMillis());
         }
     }
 
@@ -63,6 +64,7 @@ public final class UniffiAsyncHelpers {
             try {
                 byte pollResult;
                 do {
+                    System.out.println("java loop polling rust future " + System.currentTimeMillis());
                     pollResult = poll(rustFuture, pollFunc);
                 } while (pollResult != UNIFFI_RUST_FUTURE_POLL_READY);
 
