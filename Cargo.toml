@@ -48,9 +48,9 @@ serde = "1"
 textwrap = "0.16.1"
 toml = "0.5" # can't be on 8, `Value` is part of public interface
 # uniffi_bindgen = "0.29.1"
-uniffi_bindgen = { git = "https://github.com/skeet70/uniffi-rs.git", branch = "noisy-test"}
+uniffi_bindgen = { git = "https://github.com/skeet70/uniffi-rs.git", branch = "noisy-test" }
 # uniffi_meta = "0.29.1"
-uniffi_meta = { git = "https://github.com/skeet70/uniffi-rs.git", branch = "noisy-test"}
+uniffi_meta = { git = "https://github.com/skeet70/uniffi-rs.git", branch = "noisy-test" }
 
 [dev-dependencies]
 glob = "0.3"
@@ -63,6 +63,6 @@ uniffi-example-rondpoint = { git = "https://github.com/mozilla/uniffi-rs.git", t
 uniffi-fixture-coverall = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.29.1" }
 uniffi-fixture-ext-types = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.29.1" }
 # uniffi-fixture-futures = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.29.1" }
-uniffi-fixture-futures = { git = "https://github.com/skeet70/uniffi-rs.git", branch = "noisy-test"}
+uniffi-fixture-futures = { git = "https://github.com/skeet70/uniffi-rs.git", branch = "noisy-test" }
 uniffi-fixture-time = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.29.1" }
 uniffi_testing = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.29.1" }
