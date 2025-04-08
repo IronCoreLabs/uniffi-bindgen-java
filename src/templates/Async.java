@@ -131,7 +131,7 @@ public final class UniffiAsyncHelpers {
         CompletableFuture<Byte> pollFuture = new CompletableFuture<>();
         var handle = uniffiContinuationHandleMap.insert(pollFuture);
         pollFunc.apply(rustFuture, UniffiRustFutureContinuationCallbackImpl.INSTANCE, handle);
-        // do {} while (!pollFuture.isDone());
+        do {} while (!pollFuture.isDone()); // removing this makes futures not cancel (sometimes)
         return pollFuture.get();
     }
     
