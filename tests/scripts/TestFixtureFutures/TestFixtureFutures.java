@@ -275,7 +275,6 @@ public class TestFixtureFutures {
         // wait until they're gone or we've timed out
         var emptyHandlesFuture = new CompletableFuture<>();
         final ScheduledFuture<?> checkHandles = scheduler.scheduleAtFixedRate(() -> {
-          System.out.println("Polling for all handles finished");
           if (UniffiAsyncHelpers.uniffiForeignFutureHandleCount() == 0) {
             emptyHandlesFuture.complete(null);
           }
