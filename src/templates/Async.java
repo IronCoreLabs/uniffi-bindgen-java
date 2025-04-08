@@ -22,7 +22,6 @@ public final class UniffiAsyncHelpers {
         @Override
         public void callback(long data, byte pollResult) {
             uniffiContinuationHandleMap.remove(data).complete(pollResult);
-            System.out.println("java completed continuation " + System.currentTimeMillis());
         }
     }
 
@@ -64,9 +63,7 @@ public final class UniffiAsyncHelpers {
             try {
                 byte pollResult;
                 do {
-                    System.out.println("java loop polling rust future " + System.currentTimeMillis());
                     pollResult = poll(rustFuture, pollFunc);
-                    System.out.println("java loop finished polling rust future " + System.currentTimeMillis());
                 } while (pollResult != UNIFFI_RUST_FUTURE_POLL_READY);
 
                 if (!future.isCancelled()) {
@@ -183,7 +180,6 @@ public final class UniffiAsyncHelpers {
             try {
                 foreignFutureCf.thenAcceptAsync(handleSuccess).get();
             } catch (Throwable e) {
-                System.out.println("caught error in call to java trait from rust " + System.currentTimeMillis());
                 // if we errored inside the CF, it's that error we want to send to Rust, not the wrapper
                 if (e instanceof ExecutionException) {
                     e = e.getCause();
@@ -221,7 +217,6 @@ public final class UniffiAsyncHelpers {
 
         @Override
         public void callback(long handle) {
-            System.out.println("free called " + System.currentTimeMillis());
             var job = uniffiForeignFutureHandleMap.remove(handle);
             var successfullyCancelled = job.cancel(true);
             if(successfullyCancelled) {
