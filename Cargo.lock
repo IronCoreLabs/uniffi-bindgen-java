@@ -1270,7 +1270,7 @@ dependencies = [
 [[package]]
 name = "uniffi"
 version = "0.29.1"
-source = "git+https://github.com/skeet70/uniffi-rs.git?branch=noisy-test#d4e53a5590df6782697876d061c3882c39fb4089"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=noisy-test#4f7b8119246b19127f02ddb49c82f08f346f44f7"
 dependencies = [
  "anyhow",
  "camino",
@@ -1426,7 +1426,7 @@ dependencies = [
 [[package]]
 name = "uniffi-fixture-futures"
 version = "0.21.0"
-source = "git+https://github.com/skeet70/uniffi-rs.git?branch=noisy-test#d4e53a5590df6782697876d061c3882c39fb4089"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=noisy-test#4f7b8119246b19127f02ddb49c82f08f346f44f7"
 dependencies = [
  "async-trait",
  "futures",
@@ -1471,7 +1471,7 @@ dependencies = [
 [[package]]
 name = "uniffi_bindgen"
 version = "0.29.1"
-source = "git+https://github.com/skeet70/uniffi-rs.git?branch=noisy-test#d4e53a5590df6782697876d061c3882c39fb4089"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=noisy-test#4f7b8119246b19127f02ddb49c82f08f346f44f7"
 dependencies = [
  "anyhow",
  "camino",
@@ -1503,7 +1503,7 @@ dependencies = [
 [[package]]
 name = "uniffi_build"
 version = "0.29.1"
-source = "git+https://github.com/skeet70/uniffi-rs.git?branch=noisy-test#d4e53a5590df6782697876d061c3882c39fb4089"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=noisy-test#4f7b8119246b19127f02ddb49c82f08f346f44f7"
 dependencies = [
  "anyhow",
  "camino",
@@ -1524,7 +1524,7 @@ dependencies = [
 [[package]]
 name = "uniffi_core"
 version = "0.29.1"
-source = "git+https://github.com/skeet70/uniffi-rs.git?branch=noisy-test#d4e53a5590df6782697876d061c3882c39fb4089"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=noisy-test#4f7b8119246b19127f02ddb49c82f08f346f44f7"
 dependencies = [
  "anyhow",
  "async-compat",
@@ -1545,7 +1545,7 @@ dependencies = [
 [[package]]
 name = "uniffi_internal_macros"
 version = "0.29.1"
-source = "git+https://github.com/skeet70/uniffi-rs.git?branch=noisy-test#d4e53a5590df6782697876d061c3882c39fb4089"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=noisy-test#4f7b8119246b19127f02ddb49c82f08f346f44f7"
 dependencies = [
  "quote",
  "syn",
@@ -1570,7 +1570,7 @@ dependencies = [
 [[package]]
 name = "uniffi_macros"
 version = "0.29.1"
-source = "git+https://github.com/skeet70/uniffi-rs.git?branch=noisy-test#d4e53a5590df6782697876d061c3882c39fb4089"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=noisy-test#4f7b8119246b19127f02ddb49c82f08f346f44f7"
 dependencies = [
  "camino",
  "fs-err",
@@ -1596,7 +1596,7 @@ dependencies = [
 [[package]]
 name = "uniffi_meta"
 version = "0.29.1"
-source = "git+https://github.com/skeet70/uniffi-rs.git?branch=noisy-test#d4e53a5590df6782697876d061c3882c39fb4089"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=noisy-test#4f7b8119246b19127f02ddb49c82f08f346f44f7"
 dependencies = [
  "anyhow",
  "siphasher",
@@ -1629,7 +1629,7 @@ dependencies = [
 [[package]]
 name = "uniffi_udl"
 version = "0.29.1"
-source = "git+https://github.com/skeet70/uniffi-rs.git?branch=noisy-test#d4e53a5590df6782697876d061c3882c39fb4089"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=noisy-test#4f7b8119246b19127f02ddb49c82f08f346f44f7"
 dependencies = [
  "anyhow",
  "textwrap",
@@ -1758,7 +1758,7 @@ dependencies = [
 [[package]]
 name = "weedle2"
 version = "5.0.0"
-source = "git+https://github.com/skeet70/uniffi-rs.git?branch=noisy-test#d4e53a5590df6782697876d061c3882c39fb4089"
+source = "git+https://github.com/skeet70/uniffi-rs.git?branch=noisy-test#4f7b8119246b19127f02ddb49c82f08f346f44f7"
 dependencies = [
  "nom",
 ]

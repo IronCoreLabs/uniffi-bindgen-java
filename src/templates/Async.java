@@ -135,10 +135,6 @@ public final class UniffiAsyncHelpers {
         var handle = uniffiContinuationHandleMap.insert(pollFuture);
         pollFunc.apply(rustFuture, UniffiRustFutureContinuationCallbackImpl.INSTANCE, handle);
 
-        // busy-wait until the poll completes
-        // TODO(java): may be more efficient to use a CountdownLatch here instead of a CF we end up busy-waiting
-        //     because of Java bugs.
-        do {} while (!pollFuture.isDone());
         return pollFuture.get();
     }
     
