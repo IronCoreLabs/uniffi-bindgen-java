@@ -66,6 +66,7 @@ public final class UniffiAsyncHelpers {
                 do {
                     System.out.println("java loop polling rust future " + System.currentTimeMillis());
                     pollResult = poll(rustFuture, pollFunc);
+                    System.out.println("java loop finished polling rust future " + System.currentTimeMillis());
                 } while (pollResult != UNIFFI_RUST_FUTURE_POLL_READY);
 
                 if (!future.isCancelled()) {
