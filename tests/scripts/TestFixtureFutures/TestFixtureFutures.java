@@ -192,7 +192,6 @@ public class TestFixtureFutures {
 
           @Override
           public CompletableFuture<Integer> tryFromString(Integer delayMs, String value) {
-            System.out.println("In trait function " + System.currentTimeMillis());
             return TestFixtureFutures.delay((long)delayMs).thenCompose((Void nothing) -> {
               CompletableFuture<Integer> f = new CompletableFuture<>();
               if (value.equals("force-unexpected-exception")) {
@@ -200,10 +199,8 @@ public class TestFixtureFutures {
                 return f;
               }
               try {
-                System.out.println("trying int parse in trait " + System.currentTimeMillis());
                 f.complete(Integer.parseInt(value));
               } catch (NumberFormatException e) {
-                System.out.println("excepted int parse in trait " + System.currentTimeMillis());
                 f.completeExceptionally(new ParserException.NotAnInt());
               }
               return f;
@@ -275,7 +272,6 @@ public class TestFixtureFutures {
 
         // Test that all handles were cleaned up
         var endingHandleCount = UniffiAsyncHelpers.uniffiForeignFutureHandleCount();
-        System.out.println("got handle count " + System.currentTimeMillis());
         assert endingHandleCount == 0 : MessageFormat.format("{0} current handle count != 0", endingHandleCount);
       }
 
