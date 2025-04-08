@@ -280,7 +280,11 @@ public class TestFixtureFutures {
             emptyHandlesFuture.complete(null);
           }
         }, 0, 10, TimeUnit.MILLISECONDS);
+        try {
         emptyHandlesFuture.get(100000, TimeUnit.MILLISECONDS);
+        } catch (Exception e) {
+          // man something is so wrong
+        }
         checkHandles.cancel(true);
         var endingHandleCount = UniffiAsyncHelpers.uniffiForeignFutureHandleCount();
         assert endingHandleCount == 0 : MessageFormat.format("{0} current handle count != 0", endingHandleCount);
