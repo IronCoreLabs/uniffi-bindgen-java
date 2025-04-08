@@ -5,6 +5,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 public class TestFixtureFutures {
@@ -271,6 +272,15 @@ public class TestFixtureFutures {
         assert traitObj.completedDelays == completedDelaysBefore : MessageFormat.format("{0} current delays != {1} delays before", traitObj.completedDelays, completedDelaysBefore);
 
         // Test that all handles were cleaned up
+        // wait until they're gone or we've timed out
+        var emptyHandlesFuture = new CompletableFuture<>();
+        final ScheduledFuture<?> checkHandles = scheduler.scheduleAtFixedRate(() -> {
+          if (UniffiAsyncHelpers.uniffiForeignFutureHandleCount() == 0) {
+            emptyHandlesFuture.complete(null);
+          }
+        }, 0, 10, TimeUnit.MILLISECONDS);
+        emptyHandlesFuture.get(10000, TimeUnit.MILLISECONDS);
+        checkHandles.cancel(true);
         var endingHandleCount = UniffiAsyncHelpers.uniffiForeignFutureHandleCount();
         assert endingHandleCount == 0 : MessageFormat.format("{0} current handle count != 0", endingHandleCount);
       }
