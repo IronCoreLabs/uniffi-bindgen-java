@@ -21,6 +21,7 @@ public final class UniffiAsyncHelpers {
 
         @Override
         public void callback(long data, byte pollResult) {
+            System.out.println("java completed continuation " + System.currentTimeMillis());
             uniffiContinuationHandleMap.remove(data).complete(pollResult);
         }
     }
