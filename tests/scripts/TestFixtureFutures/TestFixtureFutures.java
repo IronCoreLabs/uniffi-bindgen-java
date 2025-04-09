@@ -217,12 +217,14 @@ public class TestFixtureFutures {
 
           @Override
           public CompletableFuture<Void> tryDelay(String delayMs) {
+            System.out.println("java trait method executing" + System.currentTimeMillis());
             try {
               var parsed = Long.parseLong(delayMs);
               return TestFixtureFutures.delay(parsed).thenRun(() -> {
                 completedDelays += 1;
               });
             } catch (NumberFormatException e) {
+              System.out.println("java trait method caught exception" + System.currentTimeMillis());
               var f = new CompletableFuture<Void>();
               f.completeExceptionally(new ParserException.NotAnInt());
               return f;
@@ -256,6 +258,7 @@ public class TestFixtureFutures {
         //   }
         // }
         // Futures.delayUsingTrait(traitObj, 1).get();
+        System.out.println("calling for trait method from java test " + System.currentTimeMillis());
         try {
           Futures.tryDelayUsingTrait(traitObj, "one").get();
           throw new RuntimeException("Expected last statement to throw");
@@ -266,6 +269,7 @@ public class TestFixtureFutures {
             throw e;
           }
         }
+        System.out.println("finished trait method from java test" + System.currentTimeMillis());
         // var completedDelaysBefore = traitObj.completedDelays;
         // Futures.cancelDelayUsingTrait(traitObj, 50).get();
         // // sleep long enough so that the `delay()` call would finish if it wasn't cancelled.
