@@ -9,9 +9,6 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 public class TestFixtureFutures {
-  // static {
-  //     com.sun.jna.Native.setProtected(true);
-  // }
   private static final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 
   // emulating Kotlin's `delay` non-blocking sleep
