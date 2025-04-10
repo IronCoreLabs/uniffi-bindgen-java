@@ -50,6 +50,26 @@ public final class UniffiAsyncHelpers {
         }
     } 
 
+    // helper so both the Java completable future and the job that handles it finishing and reports to Rust can be
+    // retrieved (and potentially cancelled) by handle. This allows our FreeImpl to be a parameterless singleton,
+    // preventing #19, which was caused by our FreeImpls being GCd before Rust called back into them.
+    static class CancelableForeignFuture {
+        private CompletableFuture<?> childFuture;
+        private CompletableFuture<Void> childFutureHandler;
+
+        CancelableForeignFuture(CompletableFuture<?> childFuture, CompletableFuture<Void> childFutureHandler) {
+            this.childFuture = childFuture;
+            this.childFutureHandler = childFutureHandler;
+        }
+
+        public void cancel() {
+            var successfullyCancelled = this.childFutureHandler.cancel(true);
+            if(successfullyCancelled) {
+                childFuture.cancel(true);
+            }
+        }
+    }
+
     static <T, F, E extends Exception> CompletableFuture<T> uniffiRustCallAsync(
         long rustFuture,
         PollingFunction pollFunc,
@@ -209,23 +229,6 @@ public final class UniffiAsyncHelpers {
         long handle = uniffiForeignFutureHandleMap.insert(new CancelableForeignFuture(foreignFutureCf, ffHandler));
         System.out.println("java async trait w/error inserted Handle(" + handle + ") " + System.currentTimeMillis());
         return new UniffiForeignFuture(handle, UniffiForeignFutureFreeImpl.INSTANCE);
-    }
-
-    static class CancelableForeignFuture {
-        private CompletableFuture<?> childFuture;
-        private CompletableFuture<Void> childFutureHandler;
-
-        CancelableForeignFuture(CompletableFuture<?> childFuture, CompletableFuture<Void> childFutureHandler) {
-            this.childFuture = childFuture;
-            this.childFutureHandler = childFutureHandler;
-        }
-        
-        public void cancel() {
-            var successfullyCancelled = this.childFutureHandler.cancel(true);
-            if(successfullyCancelled) {
-                childFuture.cancel(true);
-            }
-        }
     }
 
     static class UniffiForeignFutureFreeImpl implements UniffiForeignFutureFree {
