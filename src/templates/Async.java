@@ -182,7 +182,6 @@ public final class UniffiAsyncHelpers {
 
             return null;
         });
-        // if we don't add the free impl to something static, it could be GCd before Rust calls for free
         long handle = uniffiForeignFutureHandleMap.insert(new CancelableForeignFuture(foreignFutureCf, ffHandler));
         return new UniffiForeignFuture(handle, UniffiForeignFutureFreeImpl.INSTANCE);
     }

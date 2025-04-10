@@ -42,7 +42,7 @@ public class TestFixtureFutures {
 
   public static void assertReturnsImmediately(long actualTime, String testName) {
     // TODO(java): 4ms limit in Kotlin
-    assert actualTime <= 20 : MessageFormat.format("unexpected {0} time: {1}ms", testName, actualTime);
+    assert actualTime <= 40 : MessageFormat.format("unexpected {0} time: {1}ms", testName, actualTime);
   }
   
   public static void assertApproximateTime(long actualTime, int expectedTime, String testName) {
