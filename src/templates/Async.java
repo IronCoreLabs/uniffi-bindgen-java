@@ -21,7 +21,6 @@ public final class UniffiAsyncHelpers {
 
         @Override
         public void callback(long data, byte pollResult) {
-            System.out.println("java completed continuation " + System.currentTimeMillis());
             uniffiContinuationHandleMap.remove(data).complete(pollResult);
         }
     }
@@ -185,7 +184,6 @@ public final class UniffiAsyncHelpers {
         });
         // if we don't add the free impl to something static, it could be GCd before Rust calls for free
         long handle = uniffiForeignFutureHandleMap.insert(new CancelableForeignFuture(foreignFutureCf, ffHandler));
-        System.out.println("java async trait inserted Handle(" + handle + ") " + System.currentTimeMillis());
         return new UniffiForeignFuture(handle, UniffiForeignFutureFreeImpl.INSTANCE);
     }
 
@@ -227,32 +225,16 @@ public final class UniffiAsyncHelpers {
         });
 
         long handle = uniffiForeignFutureHandleMap.insert(new CancelableForeignFuture(foreignFutureCf, ffHandler));
-        System.out.println("java async trait w/error inserted Handle(" + handle + ") " + System.currentTimeMillis());
         return new UniffiForeignFuture(handle, UniffiForeignFutureFreeImpl.INSTANCE);
     }
 
-    static class UniffiForeignFutureFreeImpl implements UniffiForeignFutureFree {
-        public static final UniffiForeignFutureFreeImpl INSTANCE = new UniffiForeignFutureFreeImpl();
-
-        // private to enforce singleton
-        private UniffiForeignFutureFreeImpl() {}
+    enum UniffiForeignFutureFreeImpl implements UniffiForeignFutureFree {
+        INSTANCE;
 
         @Override
         public void callback(long handle) {
-            System.out.println("java free impl called Handle(" + handle + ") " + System.currentTimeMillis());
             var futureWithHandler = uniffiForeignFutureHandleMap.remove(handle);
             futureWithHandler.cancel();
-        }
-
-        /**
-        * @deprecated override deprecated method
-        */
-        @Deprecated
-        @Override
-        @SuppressWarnings("removal")
-        protected void finalize() throws Throwable {
-            System.out.println("🔥 UniffiForeignFutureFreeImpl was GC'd!");
-            super.finalize();
         }
     }
 
