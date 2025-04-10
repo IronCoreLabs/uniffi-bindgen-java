@@ -228,7 +228,12 @@ public final class UniffiAsyncHelpers {
             }
         }
 
+        /**
+        * @deprecated override deprecated method
+        */
+        @Deprecated
         @Override
+        @SuppressWarnings("removal")
         protected void finalize() throws Throwable {
             System.out.println("🔥 UniffiForeignFutureFreeImpl was GC'd!");
             super.finalize();
