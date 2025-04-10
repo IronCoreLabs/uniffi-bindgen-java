@@ -165,6 +165,7 @@ public final class UniffiAsyncHelpers {
         });
         
         long handle = uniffiForeignFutureHandleMap.insert(job);
+        System.out.println("java async trait inserted Handle(" + handle + ") " + System.currentTimeMillis());
         return new UniffiForeignFuture(handle, new UniffiForeignFutureFreeImpl<T>(foreignFutureCf));
     }
 
@@ -206,6 +207,7 @@ public final class UniffiAsyncHelpers {
         });
 
         long handle = uniffiForeignFutureHandleMap.insert(job);
+        System.out.println("java async trait w/error inserted Handle(" + handle + ") " + System.currentTimeMillis());
         return new UniffiForeignFuture(handle, new UniffiForeignFutureFreeImpl<T>(foreignFutureCf));
     }
 
