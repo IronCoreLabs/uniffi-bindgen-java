@@ -227,6 +227,12 @@ public final class UniffiAsyncHelpers {
                 childFuture.cancel(true);
             }
         }
+
+        @Override
+        protected void finalize() throws Throwable {
+            System.out.println("🔥 UniffiForeignFutureFreeImpl was GC'd!");
+            super.finalize();
+        }
     }
 
     // For testing
