@@ -13,7 +13,7 @@ public final class UniffiAsyncHelpers {
     static final byte UNIFFI_RUST_FUTURE_POLL_READY = (byte) 0;
     static final byte UNIFFI_RUST_FUTURE_POLL_MAYBE_READY = (byte) 1;
     static final UniffiHandleMap<CompletableFuture<Byte>> uniffiContinuationHandleMap = new UniffiHandleMap<>();
-    static final UniffiHandleMap<CompletableFuture<Void>> uniffiForeignFutureHandleMap = new UniffiHandleMap<>();
+    static final UniffiHandleMap<CancelableForeignFuture> uniffiForeignFutureHandleMap = new UniffiHandleMap<>();
 
     // FFI type for Rust future continuations
     enum UniffiRustFutureContinuationCallbackImpl implements UniffiRustFutureContinuationCallback {
@@ -145,7 +145,7 @@ public final class UniffiAsyncHelpers {
         // Uniffi does its best to support structured concurrency across the FFI.
         // If the Rust future is dropped, `UniffiForeignFutureFreeImpl` is called, which will cancel the Java completable future if it's still running.
         var foreignFutureCf = makeCall.get();
-        CompletableFuture<Void> job = CompletableFuture.supplyAsync(() -> {
+        CompletableFuture<Void> ffHandler = CompletableFuture.supplyAsync(() -> {
             try {
                 foreignFutureCf.thenAcceptAsync(handleSuccess).get();
             } catch(Throwable e) {
@@ -163,10 +163,10 @@ public final class UniffiAsyncHelpers {
 
             return null;
         });
-        
-        long handle = uniffiForeignFutureHandleMap.insert(job);
+        // if we don't add the free impl to something static, it could be GCd before Rust calls for free
+        long handle = uniffiForeignFutureHandleMap.insert(new CancelableForeignFuture(foreignFutureCf, ffHandler));
         System.out.println("java async trait inserted Handle(" + handle + ") " + System.currentTimeMillis());
-        return new UniffiForeignFuture(handle, new UniffiForeignFutureFreeImpl<T>(foreignFutureCf));
+        return new UniffiForeignFuture(handle, UniffiForeignFutureFreeImpl.INSTANCE);
     }
 
     @SuppressWarnings("unchecked")
@@ -178,7 +178,7 @@ public final class UniffiAsyncHelpers {
         Class<E> errorClass
     ){
         var foreignFutureCf = makeCall.get();
-        CompletableFuture<Void> job = CompletableFuture.supplyAsync(() -> {
+        CompletableFuture<Void> ffHandler = CompletableFuture.supplyAsync(() -> {
             try {
                 foreignFutureCf.thenAcceptAsync(handleSuccess).get();
             } catch (Throwable e) {
@@ -206,26 +206,39 @@ public final class UniffiAsyncHelpers {
             return null;
         });
 
-        long handle = uniffiForeignFutureHandleMap.insert(job);
+        long handle = uniffiForeignFutureHandleMap.insert(new CancelableForeignFuture(foreignFutureCf, ffHandler));
         System.out.println("java async trait w/error inserted Handle(" + handle + ") " + System.currentTimeMillis());
-        return new UniffiForeignFuture(handle, new UniffiForeignFutureFreeImpl<T>(foreignFutureCf));
+        return new UniffiForeignFuture(handle, UniffiForeignFutureFreeImpl.INSTANCE);
     }
 
-    static class UniffiForeignFutureFreeImpl<T> implements UniffiForeignFutureFree {
-        private CompletableFuture<T> childFuture;
+    static class CancelableForeignFuture {
+        private CompletableFuture<?> childFuture;
+        private CompletableFuture<Void> childFutureHandler;
 
-        UniffiForeignFutureFreeImpl(CompletableFuture<T> childFuture) {
+        CancelableForeignFuture(CompletableFuture<?> childFuture, CompletableFuture<Void> childFutureHandler) {
             this.childFuture = childFuture;
+            this.childFutureHandler = childFutureHandler;
         }
+        
+        public void cancel() {
+            var successfullyCancelled = this.childFutureHandler.cancel(true);
+            if(successfullyCancelled) {
+                childFuture.cancel(true);
+            }
+        }
+    }
+
+    static class UniffiForeignFutureFreeImpl implements UniffiForeignFutureFree {
+        public static final UniffiForeignFutureFreeImpl INSTANCE = new UniffiForeignFutureFreeImpl();
+
+        // private to enforce singleton
+        private UniffiForeignFutureFreeImpl() {}
 
         @Override
         public void callback(long handle) {
             System.out.println("java free impl called Handle(" + handle + ") " + System.currentTimeMillis());
-            var job = uniffiForeignFutureHandleMap.remove(handle);
-            var successfullyCancelled = job.cancel(true);
-            if(successfullyCancelled) {
-                childFuture.cancel(true);
-            }
+            var futureWithHandler = uniffiForeignFutureHandleMap.remove(handle);
+            futureWithHandler.cancel();
         }
 
         /**
