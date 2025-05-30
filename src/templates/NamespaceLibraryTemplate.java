@@ -135,8 +135,8 @@ final class UniffiLibInitializer {
         UniffiLib instance = NamespaceLibrary.loadIndirect("{{ ci.namespace() }}", UniffiLib.class);
         NamespaceLibrary.uniffiCheckContractApiVersion(instance);
         NamespaceLibrary.uniffiCheckApiChecksums(instance);
-        {% for fn in self.initialization_fns() -%}
-        {{ fn }}(instance);
+        {% for init_fn in self.initialization_fns() -%}
+        {{ init_fn }}(instance);
         {% endfor -%}
         return instance;
     }
