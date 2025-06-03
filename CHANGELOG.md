@@ -1,3 +1,10 @@
+## 0.2.0
+
+- Update to uniffi 0.29.2
+- Consumes a uniffi fix to Python bindgen that was affecting `ironcore-alloy` (PR #2512)
+
+Consumers will also need to update to uniffi 0.29.2.
+
 ## 0.1.1
 
 - Update to uniffi 0.29.1
