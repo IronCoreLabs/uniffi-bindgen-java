@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
+use askama::Template;
 use core::fmt::Debug;
 use heck::{ToLowerCamelCase, ToShoutySnakeCase, ToUpperCamelCase};
 use once_cell::sync::Lazy;
-use rinja::Template;
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::Borrow,
@@ -683,11 +683,11 @@ mod filters {
         as_ct: &impl AsCodeType,
         ci: &ComponentInterface,
         config: &Config,
-    ) -> Result<String, rinja::Error> {
+    ) -> Result<String, askama::Error> {
         Ok(as_ct.as_codetype().type_label(ci, config))
     }
 
-    pub(super) fn canonical_name(as_ct: &impl AsCodeType) -> Result<String, rinja::Error> {
+    pub(super) fn canonical_name(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
         Ok(as_ct.as_codetype().canonical_name())
     }
 
@@ -695,11 +695,11 @@ mod filters {
         as_ct: &impl AsCodeType,
         config: &Config,
         ci: &ComponentInterface,
-    ) -> Result<String, rinja::Error> {
+    ) -> Result<String, askama::Error> {
         Ok(as_ct.as_codetype().ffi_converter_instance(config, ci))
     }
 
-    pub(super) fn ffi_converter_name(as_ct: &impl AsCodeType) -> Result<String, rinja::Error> {
+    pub(super) fn ffi_converter_name(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
         Ok(as_ct.as_codetype().ffi_converter_name())
     }
 
@@ -707,7 +707,7 @@ mod filters {
         as_ct: &impl AsCodeType,
         config: &Config,
         ci: &ComponentInterface,
-    ) -> Result<String, rinja::Error> {
+    ) -> Result<String, askama::Error> {
         Ok(format!(
             "{}.lower",
             as_ct.as_codetype().ffi_converter_instance(config, ci)
@@ -718,7 +718,7 @@ mod filters {
         as_ct: &impl AsCodeType,
         config: &Config,
         ci: &ComponentInterface,
-    ) -> Result<String, rinja::Error> {
+    ) -> Result<String, askama::Error> {
         Ok(format!(
             "{}.allocationSize",
             as_ct.as_codetype().ffi_converter_instance(config, ci)
@@ -729,7 +729,7 @@ mod filters {
         as_ct: &impl AsCodeType,
         config: &Config,
         ci: &ComponentInterface,
-    ) -> Result<String, rinja::Error> {
+    ) -> Result<String, askama::Error> {
         Ok(format!(
             "{}.write",
             as_ct.as_codetype().ffi_converter_instance(config, ci)
@@ -740,7 +740,7 @@ mod filters {
         as_ct: &impl AsCodeType,
         config: &Config,
         ci: &ComponentInterface,
-    ) -> Result<String, rinja::Error> {
+    ) -> Result<String, askama::Error> {
         Ok(format!(
             "{}.lift",
             as_ct.as_codetype().ffi_converter_instance(config, ci)
@@ -751,7 +751,7 @@ mod filters {
         as_ct: &impl AsCodeType,
         config: &Config,
         ci: &ComponentInterface,
-    ) -> Result<String, rinja::Error> {
+    ) -> Result<String, askama::Error> {
         Ok(format!(
             "{}.read",
             as_ct.as_codetype().ffi_converter_instance(config, ci)
@@ -759,27 +759,27 @@ mod filters {
     }
 
     // Get the idiomatic Java rendering of an integer.
-    fn int_literal(t: &Option<Type>, base10: String) -> Result<String, rinja::Error> {
+    fn int_literal(t: &Option<Type>, base10: String) -> Result<String, askama::Error> {
         if let Some(t) = t {
             match t {
                 Type::Int8 | Type::Int16 | Type::Int32 | Type::Int64 => Ok(base10),
                 Type::UInt8 | Type::UInt16 | Type::UInt32 | Type::UInt64 => Ok(base10 + "u"),
-                _ => Err(to_rinja_error("Only ints are supported.")),
+                _ => Err(to_askama_error("Only ints are supported.")),
             }
         } else {
-            Err(to_rinja_error("Enum hasn't defined a repr"))
+            Err(to_askama_error("Enum hasn't defined a repr"))
         }
     }
 
     // Get the idiomatic Java rendering of an individual enum variant's discriminant
-    pub fn variant_discr_literal(e: &Enum, index: &usize) -> Result<String, rinja::Error> {
+    pub fn variant_discr_literal(e: &Enum, index: &usize) -> Result<String, askama::Error> {
         let literal = e.variant_discr(*index).expect("invalid index");
         match literal {
             // Java doesn't convert between signed and unsigned by default
             // so we'll need to make sure we define the type as appropriately
             LiteralMetadata::UInt(v, _, _) => int_literal(e.variant_discr_type(), v.to_string()),
             LiteralMetadata::Int(v, _, _) => int_literal(e.variant_discr_type(), v.to_string()),
-            _ => Err(to_rinja_error("Only ints are supported.")),
+            _ => Err(to_askama_error("Only ints are supported.")),
         }
     }
 
@@ -787,7 +787,7 @@ mod filters {
         type_: &FfiType,
         config: &Config,
         ci: &ComponentInterface,
-    ) -> Result<String, rinja::Error> {
+    ) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.ffi_type_label_by_value(type_, false, config, ci))
     }
 
@@ -795,11 +795,11 @@ mod filters {
         type_: &FfiType,
         config: &Config,
         ci: &ComponentInterface,
-    ) -> Result<String, rinja::Error> {
+    ) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.ffi_type_label_for_ffi_struct(type_, config, ci))
     }
 
-    pub fn ffi_default_value(type_: FfiType) -> Result<String, rinja::Error> {
+    pub fn ffi_default_value(type_: FfiType) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.ffi_default_value(&type_))
     }
 
@@ -807,54 +807,54 @@ mod filters {
     pub fn class_name<S: AsRef<str>>(
         nm: S,
         ci: &ComponentInterface,
-    ) -> Result<String, rinja::Error> {
+    ) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.class_name(ci, nm.as_ref()))
     }
 
     /// Get the idiomatic Java rendering of a function name.
-    pub fn fn_name<S: AsRef<str>>(nm: S) -> Result<String, rinja::Error> {
+    pub fn fn_name<S: AsRef<str>>(nm: S) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.fn_name(nm.as_ref()))
     }
 
     /// Get the idiomatic Java rendering of a variable name.
-    pub fn var_name<S: AsRef<str>>(nm: S) -> Result<String, rinja::Error> {
+    pub fn var_name<S: AsRef<str>>(nm: S) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.var_name(nm.as_ref()))
     }
 
     /// Get the idiomatic Java rendering of a variable name, without altering reserved words.
-    pub fn var_name_raw<S: AsRef<str>>(nm: S) -> Result<String, rinja::Error> {
+    pub fn var_name_raw<S: AsRef<str>>(nm: S) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.var_name_raw(nm.as_ref()))
     }
 
     /// Get the idiomatic Java setter method name.
-    pub fn setter<S: AsRef<str>>(nm: S) -> Result<String, rinja::Error> {
+    pub fn setter<S: AsRef<str>>(nm: S) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.setter(nm.as_ref()))
     }
 
     /// Get a String representing the name used for an individual enum variant.
-    pub fn variant_name(v: &Variant) -> Result<String, rinja::Error> {
+    pub fn variant_name(v: &Variant) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.enum_variant_name(v.name()))
     }
 
-    pub fn error_variant_name(v: &Variant) -> Result<String, rinja::Error> {
+    pub fn error_variant_name(v: &Variant) -> Result<String, askama::Error> {
         let name = v.name().to_string().to_upper_camel_case();
         Ok(JavaCodeOracle.convert_error_suffix(&name))
     }
 
     /// Get the idiomatic Java rendering of an FFI callback function name
-    pub fn ffi_callback_name<S: AsRef<str>>(nm: S) -> Result<String, rinja::Error> {
+    pub fn ffi_callback_name<S: AsRef<str>>(nm: S) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.ffi_callback_name(nm.as_ref()))
     }
 
     /// Get the idiomatic Java rendering of an FFI struct name
-    pub fn ffi_struct_name<S: AsRef<str>>(nm: S) -> Result<String, rinja::Error> {
+    pub fn ffi_struct_name<S: AsRef<str>>(nm: S) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.ffi_struct_name(nm.as_ref()))
     }
 
     pub fn object_names(
         obj: &Object,
         ci: &ComponentInterface,
-    ) -> Result<(String, String), rinja::Error> {
+    ) -> Result<(String, String), askama::Error> {
         Ok(JavaCodeOracle.object_names(ci, obj))
     }
 
@@ -862,7 +862,7 @@ mod filters {
         callable: impl Callable,
         ci: &ComponentInterface,
         config: &Config,
-    ) -> Result<String, rinja::Error> {
+    ) -> Result<String, askama::Error> {
         callable
             .return_type()
             .map_or(Ok("Void".to_string()), |t| type_name(t, ci, config))
@@ -872,7 +872,7 @@ mod filters {
         callable: impl Callable,
         ci: &ComponentInterface,
         config: &Config,
-    ) -> Result<String, rinja::Error> {
+    ) -> Result<String, askama::Error> {
         let is_async = callable.is_async();
         let inner_type = async_inner_return_type(callable, ci, config)?;
         if is_async {
@@ -885,7 +885,7 @@ mod filters {
     pub fn async_poll(
         callable: impl Callable,
         ci: &ComponentInterface,
-    ) -> Result<String, rinja::Error> {
+    ) -> Result<String, askama::Error> {
         let ffi_func = callable.ffi_rust_future_poll(ci);
         Ok(format!(
             "(future, callback, continuation) -> UniffiLib.INSTANCE.{ffi_func}(future, callback, continuation)"
@@ -896,7 +896,7 @@ mod filters {
         callable: impl Callable,
         ci: &ComponentInterface,
         config: &Config,
-    ) -> Result<String, rinja::Error> {
+    ) -> Result<String, askama::Error> {
         let ffi_func = callable.ffi_rust_future_complete(ci);
         let call = format!("UniffiLib.INSTANCE.{ffi_func}(future, continuation)");
         let call = match callable.return_type() {
@@ -927,7 +927,7 @@ mod filters {
     pub fn async_free(
         callable: impl Callable,
         ci: &ComponentInterface,
-    ) -> Result<String, rinja::Error> {
+    ) -> Result<String, askama::Error> {
         let ffi_func = callable.ffi_rust_future_free(ci);
         Ok(format!("(future) -> UniffiLib.INSTANCE.{ffi_func}(future)"))
     }
@@ -937,12 +937,12 @@ mod filters {
     /// These are used to avoid name clashes with java identifiers, but sometimes you want to
     /// render the name unquoted.  One example is the message property for errors where we want to
     /// display the name for the user.
-    pub fn unquote<S: AsRef<str>>(nm: S) -> Result<String, rinja::Error> {
+    pub fn unquote<S: AsRef<str>>(nm: S) -> Result<String, askama::Error> {
         Ok(nm.as_ref().trim_matches('`').to_string())
     }
 
     /// Get the idiomatic Java rendering of docstring
-    pub fn docstring<S: AsRef<str>>(docstring: S, spaces: &i32) -> Result<String, rinja::Error> {
+    pub fn docstring<S: AsRef<str>>(docstring: S, spaces: &i32) -> Result<String, askama::Error> {
         let middle = textwrap::indent(&textwrap::dedent(docstring.as_ref()), " * ");
         let wrapped = format!("/**\n{middle}\n */");
 

@@ -4,7 +4,7 @@ License, v. 2.0. If a copy of the MPL was not distributed with this
 
 use anyhow::{Context, Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
-use cargo_metadata::{MetadataCommand, Package, Target};
+use cargo_metadata::{CrateType, MetadataCommand, Package, Target};
 use std::env::consts::ARCH;
 use std::io::{Read, Write};
 use std::process::Command;
@@ -145,7 +145,7 @@ fn find_uniffi_toml(name: &str) -> Result<Option<Utf8PathBuf>> {
     let cdylib_targets: Vec<&Target> = package
         .targets
         .iter()
-        .filter(|t| t.crate_types.iter().any(|t| t == "cdylib"))
+        .filter(|t| t.crate_types.iter().any(|t| t == &CrateType::CDyLib))
         .collect();
     let target = match cdylib_targets.len() {
         1 => cdylib_targets[0],
