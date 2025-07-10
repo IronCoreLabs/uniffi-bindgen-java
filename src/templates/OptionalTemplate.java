@@ -2,6 +2,8 @@
 package {{ config.package_name() }};
 
 import java.nio.ByteBuffer;
+import java.util.List;
+import java.util.Map;
 
 // public class TestForOptionals {}
 

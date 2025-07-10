@@ -1,3 +1,7 @@
+## 0.2.1
+
+- Fix `OptionalTemplate` missing potential imports of `java.util.List` and `java.util.Map`
+
 ## 0.2.0
 
 - Update to uniffi 0.29.2
