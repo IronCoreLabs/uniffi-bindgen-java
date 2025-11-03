@@ -1,6 +1,6 @@
 use super::{CodeType, Config};
 use paste::paste;
-use uniffi_bindgen::backend::Literal;
+use uniffi_bindgen::interface::Literal;
 use uniffi_bindgen::interface::{ComponentInterface, Radix, Type};
 
 fn render_literal(literal: &Literal, _ci: &ComponentInterface, _config: &Config) -> String {

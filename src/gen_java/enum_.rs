@@ -4,7 +4,7 @@
 
 use super::{CodeType, Config, potentially_add_external_package};
 use crate::ComponentInterface;
-use uniffi_bindgen::backend::Literal;
+use uniffi_bindgen::interface::Literal;
 
 #[derive(Debug)]
 pub struct EnumCodeType {

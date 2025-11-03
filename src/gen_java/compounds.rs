@@ -5,7 +5,7 @@
 use super::{AsCodeType, CodeType, Config};
 use uniffi_bindgen::{
     ComponentInterface,
-    backend::{Literal, Type},
+    interface::{Literal, Type},
 };
 
 #[derive(Debug)]
@@ -40,9 +40,9 @@ impl CodeType for OptionalCodeType {
     fn literal(&self, literal: &Literal, ci: &ComponentInterface, config: &Config) -> String {
         match literal {
             Literal::None => "null".into(),
-            Literal::Some { inner } => super::JavaCodeOracle
+            l @ Literal::Some { .. } => super::JavaCodeOracle
                 .find(&self.inner)
-                .literal(inner, ci, config),
+                .literal(l, ci, config),
             _ => panic!("Invalid literal for Optional type: {literal:?}"),
         }
     }

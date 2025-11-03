@@ -13,7 +13,7 @@ pub struct JavaBindingGenerator;
 impl BindingGenerator for JavaBindingGenerator {
     type Config = gen_java::Config;
 
-    fn new_config(&self, root_toml: &toml::Value) -> Result<Self::Config> {
+    fn new_config(&self, root_toml: &toml::value::Value) -> Result<Self::Config> {
         Ok(
             match root_toml.get("bindings").and_then(|b| b.get("java")) {
                 Some(v) => v.clone().try_into()?,
