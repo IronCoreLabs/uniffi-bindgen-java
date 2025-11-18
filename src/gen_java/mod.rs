@@ -698,6 +698,10 @@ mod filters {
         Ok(as_ct.as_codetype().ffi_converter_name())
     }
 
+    pub(super) fn ffi_type(type_: &impl AsType) -> askama::Result<FfiType, askama::Error> {
+        Ok(type_.as_type().into())
+    }
+
     pub(super) fn lower_fn(
         as_ct: &impl AsCodeType,
         config: &Config,

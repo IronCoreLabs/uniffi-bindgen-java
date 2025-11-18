@@ -5,7 +5,7 @@
 #}
 
 {%- macro to_ffi_call(func) -%}
-    {%- if func.takes_self() %}
+    {%- if func.self_type().is_some() %}
     callWithPointer(it -> {
         try {
     {% if func.return_type().is_some() %}
@@ -30,7 +30,7 @@
     UniffiHelpers.uniffiRustCall(
     {%- endmatch %} _status -> {
         {% if func.return_type().is_some() %}return {% endif %}UniffiLib.INSTANCE.{{ func.ffi_func().name() }}(
-            {% if func.takes_self() %}it, {% endif -%}
+            {% if func.self_type().is_some() %}it, {% endif -%}
             {% if func.arguments().len() != 0 %}{% call arg_list_lowered(func) -%}, {% endif -%}
             _status);
     })
@@ -44,13 +44,13 @@
     {% endif %}
     {%- if callable.is_async() %}
     {{ func_decl }} CompletableFuture<{% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|type_name(ci, config) }}{%- when None %}Void{%- endmatch %}> {{ callable.name()|fn_name }}(
-        {%- call arg_list(callable, !callable.takes_self()) -%}
+        {%- call arg_list(callable, callable.self_type().is_none()) -%}
     ){
         return {% call call_async(callable) %};
     }
     {%- else -%}
     {{ func_decl }} {% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|type_name(ci, config) }}{%- when None %}void{%- endmatch %} {{ callable.name()|fn_name }}(
-        {%- call arg_list(callable, !callable.takes_self()) -%}
+        {%- call arg_list(callable, callable.self_type().is_none()) -%}
     ) {% match callable.throws_type() -%}
         {%-     when Some(throwable) -%}
         throws {{ throwable|type_name(ci, config) }}
@@ -80,7 +80,7 @@
 
 {%- macro call_async(callable) -%}
     UniffiAsyncHelpers.uniffiRustCallAsync(
-{%- if callable.takes_self() %}
+{%- if callable.self_type().is_some() %}
         callWithPointer(thisPtr -> {
             return UniffiLib.INSTANCE.{{ callable.ffi_func().name() }}(
                 thisPtr{% if callable.arguments().len() != 0 %},{% endif %}

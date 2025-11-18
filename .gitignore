@@ -1,3 +1,4 @@
 /target
 .direnv
 *.class
+**/.DS_Store
