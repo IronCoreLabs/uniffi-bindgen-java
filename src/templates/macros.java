@@ -5,27 +5,35 @@
 #}
 
 {%- macro to_ffi_call(func) -%}
+{%- if config.use_pointer_ffi() && func.ffi_func().has_rust_call_status_arg() %}
+    {%- call to_ffi_call_pointer(func) %}
+{%- else %}
+    {%- call to_ffi_call_standard(func) %}
+{%- endif %}
+{%- endmacro %}
+
+{%- macro to_ffi_call_standard(func) -%}
     {%- if func.takes_self() %}
     callWithPointer(it -> {
         try {
     {% if func.return_type().is_some() %}
-            return {%- call to_raw_ffi_call(func) %};
+            return {%- call to_raw_ffi_call_standard(func) %};
     {% else %}
-            {%- call to_raw_ffi_call(func) %};
+            {%- call to_raw_ffi_call_standard(func) %};
     {% endif %}
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
     })
     {% else %}
-        {%- call to_raw_ffi_call(func) %}
+        {%- call to_raw_ffi_call_standard(func) %}
     {% endif %}
 {%- endmacro %}
 
-{%- macro to_raw_ffi_call(func) -%}
+{%- macro to_raw_ffi_call_standard(func) -%}
     {%- match func.throws_type() %}
     {%- when Some(e) %}
-    UniffiHelpers.uniffiRustCallWithError(new {{ e|type_name(ci, config) }}ErrorHandler(), 
+    UniffiHelpers.uniffiRustCallWithError(new {{ e|type_name(ci, config) }}ErrorHandler(),
     {%- else %}
     UniffiHelpers.uniffiRustCall(
     {%- endmatch %} _status -> {
@@ -34,6 +42,59 @@
             {% if func.arguments().len() != 0 %}{% call arg_list_lowered(func) -%}, {% endif -%}
             _status);
     })
+{%- endmacro -%}
+
+{#- Pointer FFI: buffer-based call macros -#}
+{%- macro to_ffi_call_pointer(func) -%}
+    {%- if func.takes_self() %}
+    callWithPointer(it -> {
+        try {
+    {% if func.return_type().is_some() %}
+            return {%- call to_raw_ffi_call_pointer(func) %};
+    {% else %}
+            {%- call to_raw_ffi_call_pointer(func) %};
+    {% endif %}
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    })
+    {% else %}
+        {%- call to_raw_ffi_call_pointer(func) %}
+    {% endif %}
+{%- endmacro %}
+
+{%- macro to_raw_ffi_call_pointer(func) -%}
+    UniffiHelpers.uniffiPointerFfiCall(
+        {%- match func.throws_type() %}
+        {%- when Some(e) %}
+        new {{ e|type_name(ci, config) }}ErrorHandler(),
+        {%- else %}
+        new UniffiNullRustCallStatusErrorHandler(),
+        {%- endmatch %}
+        () -> {
+            var _buf = new FfiSerializer({{ func.ffi_func()|ffi_buffer_total_slots }});
+            {%- if func.takes_self() %}
+            _buf.writePointer(it);
+            {%- endif %}
+            {%- for arg in func.arguments() %}
+            _buf.{{ arg|ffi_buffer_write_arg }}({{ arg|lower_fn(config, ci) }}({{ arg.name()|var_name }}));
+            {%- endfor %}
+            UniffiLib.INSTANCE.{{ func.ffi_func().ffi_buffer_fn_name() }}(_buf.getPointer());
+            {%- match func.ffi_func().return_type() %}
+            {%- when Some with (return_type) %}
+            _buf.setReadOffset({{ func.ffi_func()|ffi_buffer_total_slots }} - {{ return_type|ffi_buffer_size }} - 4);
+            {%- when None %}
+            _buf.setReadOffset({{ func.ffi_func()|ffi_buffer_total_slots }} - 4);
+            {%- endmatch %}
+            return _buf;
+        },
+        {%- match func.ffi_func().return_type() %}
+        {%- when Some with (return_type) %}
+        _buf -> _buf.{{ return_type|ffi_buffer_read }}()
+        {%- when None %}
+        null
+        {%- endmatch %}
+    )
 {%- endmacro -%}
 
 {%- macro func_decl(func_decl, annotation, callable, indent) %}
@@ -90,9 +151,9 @@
 {%- else %}
         UniffiLib.INSTANCE.{{ callable.ffi_func().name() }}({% call arg_list_lowered(callable) %}),
 {%- endif %}
-        {{ callable|async_poll(ci) }},
+        {{ callable|async_poll(ci, config) }},
         {{ callable|async_complete(ci, config) }},
-        {{ callable|async_free(ci) }},
+        {{ callable|async_free(ci, config) }},
         // lift function
         {%- match callable.return_type() %}
         {%- when Some(return_type) %}

@@ -165,11 +165,17 @@ pub struct Config {
     android: bool,
     #[serde(default)]
     android_cleaner: Option<bool>,
+    #[serde(default)]
+    use_pointer_ffi: bool,
 }
 
 impl Config {
     pub(crate) fn android_cleaner(&self) -> bool {
         self.android_cleaner.unwrap_or(self.android)
+    }
+
+    pub fn use_pointer_ffi(&self) -> bool {
+        self.use_pointer_ffi
     }
 }
 
@@ -545,6 +551,64 @@ impl JavaCodeOracle {
         }
     }
 
+    /// Get the number of 8-byte FfiBufferElement slots needed for an FFI type.
+    fn ffi_buffer_size(&self, ffi_type: &FfiType) -> usize {
+        match ffi_type {
+            FfiType::UInt8
+            | FfiType::Int8
+            | FfiType::UInt16
+            | FfiType::Int16
+            | FfiType::UInt32
+            | FfiType::Int32
+            | FfiType::UInt64
+            | FfiType::Int64
+            | FfiType::Float32
+            | FfiType::Float64
+            | FfiType::Handle
+            | FfiType::RustArcPtr(_)
+            | FfiType::Callback(_)
+            | FfiType::VoidPointer => 1,
+            FfiType::RustBuffer(_) | FfiType::ForeignBytes => 3,
+            FfiType::RustCallStatus => 4,
+            FfiType::Struct(_) => unimplemented!("ffi_buffer_size for Struct"),
+            FfiType::Reference(_) | FfiType::MutReference(_) => 1,
+        }
+    }
+
+    /// Get the FfiSerializer write method name for an FFI type.
+    fn ffi_buffer_write_method(&self, ffi_type: &FfiType) -> String {
+        match ffi_type {
+            FfiType::UInt8 | FfiType::Int8 => "writeByte".to_string(),
+            FfiType::UInt16 | FfiType::Int16 => "writeShort".to_string(),
+            FfiType::UInt32 | FfiType::Int32 => "writeInt".to_string(),
+            FfiType::UInt64 | FfiType::Int64 | FfiType::Handle => "writeLong".to_string(),
+            FfiType::Float32 => "writeFloat".to_string(),
+            FfiType::Float64 => "writeDouble".to_string(),
+            FfiType::RustArcPtr(_) | FfiType::VoidPointer => "writePointer".to_string(),
+            FfiType::RustBuffer(_) | FfiType::ForeignBytes => "writeRustBuffer".to_string(),
+            FfiType::Callback(_) => "writeLong".to_string(),
+            FfiType::Reference(_) | FfiType::MutReference(_) => "writePointer".to_string(),
+            _ => unimplemented!("ffi_buffer_write_method for {ffi_type:?}"),
+        }
+    }
+
+    /// Get the FfiSerializer read method name for an FFI type.
+    fn ffi_buffer_read_method(&self, ffi_type: &FfiType) -> String {
+        match ffi_type {
+            FfiType::UInt8 | FfiType::Int8 => "readByte".to_string(),
+            FfiType::UInt16 | FfiType::Int16 => "readShort".to_string(),
+            FfiType::UInt32 | FfiType::Int32 => "readInt".to_string(),
+            FfiType::UInt64 | FfiType::Int64 | FfiType::Handle => "readLong".to_string(),
+            FfiType::Float32 => "readFloat".to_string(),
+            FfiType::Float64 => "readDouble".to_string(),
+            FfiType::RustArcPtr(_) | FfiType::VoidPointer => "readPointer".to_string(),
+            FfiType::RustBuffer(_) | FfiType::ForeignBytes => "readRustBuffer".to_string(),
+            FfiType::Callback(_) => "readLong".to_string(),
+            FfiType::Reference(_) | FfiType::MutReference(_) => "readPointer".to_string(),
+            _ => unimplemented!("ffi_buffer_read_method for {ffi_type:?}"),
+        }
+    }
+
     /// Get the name of the interface and class name for an object.
     ///
     /// If we support callback interfaces, the interface name is the object name, and the class name is derived from that.
@@ -791,6 +855,61 @@ mod filters {
         Ok(JavaCodeOracle.ffi_type_label_by_value(type_, false, config, ci))
     }
 
+    /// Helper trait to extract &FfiType from multiple reference levels
+    pub(super) trait AsFfiTypeRef {
+        fn as_ffi_type_ref(&self) -> &FfiType;
+    }
+    impl AsFfiTypeRef for FfiType {
+        fn as_ffi_type_ref(&self) -> &FfiType { self }
+    }
+    impl AsFfiTypeRef for &FfiType {
+        fn as_ffi_type_ref(&self) -> &FfiType { self }
+    }
+    impl AsFfiTypeRef for &&FfiType {
+        fn as_ffi_type_ref(&self) -> &FfiType { self }
+    }
+    impl AsFfiTypeRef for &&&FfiType {
+        fn as_ffi_type_ref(&self) -> &FfiType { self }
+    }
+
+    /// Get the number of FfiBufferElement slots for an FFI type.
+    pub(super) fn ffi_buffer_size(type_: impl AsFfiTypeRef) -> Result<usize, askama::Error> {
+        Ok(JavaCodeOracle.ffi_buffer_size(type_.as_ffi_type_ref()))
+    }
+
+    /// Get the FfiSerializer write method name for an FFI type.
+    pub(super) fn ffi_buffer_write(type_: impl AsFfiTypeRef) -> Result<String, askama::Error> {
+        Ok(JavaCodeOracle.ffi_buffer_write_method(type_.as_ffi_type_ref()))
+    }
+
+    /// Get the FfiSerializer read method name for an FFI type.
+    pub(super) fn ffi_buffer_read(type_: impl AsFfiTypeRef) -> Result<String, askama::Error> {
+        Ok(JavaCodeOracle.ffi_buffer_read_method(type_.as_ffi_type_ref()))
+    }
+
+    /// Get the FfiSerializer write method name for a high-level Argument type (converted to FfiType).
+    pub fn ffi_buffer_write_arg(arg: &Argument) -> Result<String, askama::Error> {
+        let ffi_type = FfiType::from(arg.as_type());
+        Ok(JavaCodeOracle.ffi_buffer_write_method(&ffi_type))
+    }
+
+    /// Compute the total slot count for an FFI function's buffer.
+    /// This is: sum of arg sizes + return size + RustCallStatus (4 slots).
+    pub fn ffi_buffer_total_slots(func: impl std::borrow::Borrow<FfiFunction>) -> Result<usize, askama::Error> {
+        let func = func.borrow();
+        let arg_slots: usize = func
+            .arguments()
+            .iter()
+            .map(|arg| JavaCodeOracle.ffi_buffer_size(&arg.type_()))
+            .sum();
+        let return_slots = func
+            .return_type()
+            .map(|t| JavaCodeOracle.ffi_buffer_size(t))
+            .unwrap_or(0);
+        let call_status_slots = if func.has_rust_call_status_arg() { 4 } else { 0 };
+        Ok(arg_slots + return_slots + call_status_slots)
+    }
+
     pub fn ffi_type_name_for_ffi_struct(
         type_: &FfiType,
         config: &Config,
@@ -885,7 +1004,10 @@ mod filters {
     pub fn async_poll(
         callable: impl Callable,
         ci: &ComponentInterface,
+        _config: &Config,
     ) -> Result<String, askama::Error> {
+        // poll has no rust_call_status_arg, so no buffer variant is generated.
+        // Always use the standard JNA call.
         let ffi_func = callable.ffi_rust_future_poll(ci);
         Ok(format!(
             "(future, callback, continuation) -> UniffiLib.INSTANCE.{ffi_func}(future, callback, continuation)"
@@ -898,38 +1020,100 @@ mod filters {
         config: &Config,
     ) -> Result<String, askama::Error> {
         let ffi_func = callable.ffi_rust_future_complete(ci);
-        let call = format!("UniffiLib.INSTANCE.{ffi_func}(future, continuation)");
-        let call = match callable.return_type() {
-            Some(return_type) if ci.is_external(return_type) => {
-                let ffi_type = FfiType::from(return_type);
-                match ffi_type {
-                    FfiType::RustBuffer(Some(ExternalFfiMetadata { name, module_path })) => {
-                        // Need to convert the RustBuffer from our package to the RustBuffer of the external package
+        if config.use_pointer_ffi() {
+            let buffer_fn = uniffi_meta::ffi_buffer_symbol_name(&ffi_func);
+            // complete takes: future(1) + return value slots + call status(4)
+            let return_type = callable.return_type();
+            let return_ffi = return_type.map(|t| FfiType::from(t));
+            let return_slots = return_ffi
+                .as_ref()
+                .map(|t| JavaCodeOracle.ffi_buffer_size(t))
+                .unwrap_or(0);
+            let total_slots = 1 + return_slots + 4; // future handle + return + call status
+            // The lambda receives (future, status) where status is passed by uniffiRustCallWithError.
+            // We do the buffer call, read the return value from buffer, then read the buffer-embedded
+            // status and copy it into the passed-in status object so uniffiRustCallWithError can check it.
+            let read_offset = total_slots - return_slots - 4;
+            let read_return_and_status = if return_slots > 0 {
+                let read_method = JavaCodeOracle.ffi_buffer_read_method(return_ffi.as_ref().unwrap());
+                // Handle external RustBuffer conversion
+                match (return_type, return_ffi.as_ref().unwrap()) {
+                    (Some(rt), FfiType::RustBuffer(Some(ExternalFfiMetadata { name, module_path })))
+                        if ci.is_external(rt) =>
+                    {
                         let rust_buffer = format!(
                             "{}.RustBuffer",
-                            config.external_type_package_name(&module_path, &name)
+                            config.external_type_package_name(module_path, name)
                         );
                         format!(
-                            "(future, continuation) -> {{
+                            "var result = _buf.{read_method}();
+            UniffiRustCallStatus _bufStatus = _buf.readCallStatus();
+            _passedStatus.code = _bufStatus.code;
+            _passedStatus.error_buf = _bufStatus.error_buf;
+            return {rust_buffer}.create(result.capacity, result.len, result.data);"
+                        )
+                    }
+                    _ => format!(
+                        "var _retVal = _buf.{read_method}();
+            UniffiRustCallStatus _bufStatus = _buf.readCallStatus();
+            _passedStatus.code = _bufStatus.code;
+            _passedStatus.error_buf = _bufStatus.error_buf;
+            return _retVal;"
+                    ),
+                }
+            } else {
+                "UniffiRustCallStatus _bufStatus = _buf.readCallStatus();
+            _passedStatus.code = _bufStatus.code;
+            _passedStatus.error_buf = _bufStatus.error_buf;"
+                    .to_string()
+            };
+            Ok(format!(
+                "(future, _passedStatus) -> {{
+            var _buf = new FfiSerializer({total_slots});
+            _buf.writeLong(future);
+            UniffiLib.INSTANCE.{buffer_fn}(_buf.getPointer());
+            _buf.setReadOffset({read_offset});
+            {read_return_and_status}
+        }}"
+            ))
+        } else {
+            let call = format!("UniffiLib.INSTANCE.{ffi_func}(future, continuation)");
+            let call = match callable.return_type() {
+                Some(return_type) if ci.is_external(return_type) => {
+                    let ffi_type = FfiType::from(return_type);
+                    match ffi_type {
+                        FfiType::RustBuffer(Some(ExternalFfiMetadata { name, module_path })) => {
+                            let rust_buffer = format!(
+                                "{}.RustBuffer",
+                                config.external_type_package_name(&module_path, &name)
+                            );
+                            format!(
+                                "(future, continuation) -> {{
                     var result = {call};
                     return {rust_buffer}.create(result.capacity, result.len, result.data);
                 }}"
-                        )
+                            )
+                        }
+                        _ => call,
                     }
-                    _ => call,
                 }
-            }
-            _ => format!("(future, continuation) -> {call}"),
-        };
-        Ok(call)
+                _ => format!("(future, continuation) -> {call}"),
+            };
+            Ok(call)
+        }
     }
 
     pub fn async_free(
         callable: impl Callable,
         ci: &ComponentInterface,
+        _config: &Config,
     ) -> Result<String, askama::Error> {
+        // free has no rust_call_status_arg, so no buffer variant is generated.
+        // Always use the standard JNA call.
         let ffi_func = callable.ffi_rust_future_free(ci);
-        Ok(format!("(future) -> UniffiLib.INSTANCE.{ffi_func}(future)"))
+        Ok(format!(
+            "(future) -> UniffiLib.INSTANCE.{ffi_func}(future)"
+        ))
     }
 
     /// Remove the "`" chars we put around function/variable names

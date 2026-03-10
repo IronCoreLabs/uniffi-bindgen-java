@@ -17,6 +17,9 @@
 {% include "FfiConverterTemplate.java" %}
 {% include "Helpers.java" %}
 {% include "HandleMap.java" %}
+{%- if config.use_pointer_ffi() %}
+{% include "FfiSerializer.java" %}
+{%- endif %}
 
 // Contains loading, initialization code,
 // and the FFI Function declarations in a com.sun.jna.Library.

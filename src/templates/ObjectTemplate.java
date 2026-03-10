@@ -212,21 +212,44 @@ public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }
     @Override
     public void run() {
       if (pointer != null) {
+        {%- if config.use_pointer_ffi() %}
+        var _buf = new FfiSerializer({{ obj.ffi_object_free()|ffi_buffer_total_slots }});
+        _buf.writePointer(pointer);
+        UniffiLib.INSTANCE.{{ obj.ffi_object_free().ffi_buffer_fn_name() }}(_buf.getPointer());
+        _buf.setReadOffset({{ obj.ffi_object_free()|ffi_buffer_total_slots }} - 4);
+        UniffiRustCallStatus _status = _buf.readCallStatus();
+        UniffiHelpers.uniffiCheckCallStatus(new UniffiNullRustCallStatusErrorHandler(), _status);
+        {%- else %}
         UniffiHelpers.uniffiRustCall(status -> {
           UniffiLib.INSTANCE.{{ obj.ffi_object_free().name() }}(pointer, status);
           return null;
         });
+        {%- endif %}
       }
     }
   }
 
   Pointer uniffiClonePointer() {
+    {%- if config.use_pointer_ffi() %}
+    if (pointer == null) {
+      throw new NullPointerException();
+    }
+    var _buf = new FfiSerializer({{ obj.ffi_object_clone()|ffi_buffer_total_slots }});
+    _buf.writePointer(pointer);
+    UniffiLib.INSTANCE.{{ obj.ffi_object_clone().ffi_buffer_fn_name() }}(_buf.getPointer());
+    _buf.setReadOffset({{ obj.ffi_object_clone()|ffi_buffer_total_slots }} - 1 - 4);
+    Pointer _result = _buf.readPointer();
+    UniffiRustCallStatus _status = _buf.readCallStatus();
+    UniffiHelpers.uniffiCheckCallStatus(new UniffiNullRustCallStatusErrorHandler(), _status);
+    return _result;
+    {%- else %}
     return UniffiHelpers.uniffiRustCall(status -> {
       if (pointer == null) {
         throw new NullPointerException();
       }
       return UniffiLib.INSTANCE.{{ obj.ffi_object_clone().name() }}(pointer, status);
     });
+    {%- endif %}
   }
 
   {% for meth in obj.methods() -%}

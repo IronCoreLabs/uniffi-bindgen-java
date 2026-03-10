@@ -24,9 +24,19 @@ public class RustBuffer extends Structure {
     }
 
     public static RustBuffer.ByValue alloc(long size) {
+        {%- if config.use_pointer_ffi() %}
+        var _buf = new FfiSerializer({{ ci.ffi_rustbuffer_alloc()|ffi_buffer_total_slots }});
+        _buf.writeLong(size);
+        UniffiLib.INSTANCE.{{ ci.ffi_rustbuffer_alloc().ffi_buffer_fn_name() }}(_buf.getPointer());
+        _buf.setReadOffset({{ ci.ffi_rustbuffer_alloc()|ffi_buffer_total_slots }} - 3 - 4);
+        RustBuffer.ByValue buffer = _buf.readRustBuffer();
+        UniffiRustCallStatus _status = _buf.readCallStatus();
+        UniffiHelpers.uniffiCheckCallStatus(new UniffiNullRustCallStatusErrorHandler(), _status);
+        {%- else %}
         RustBuffer.ByValue buffer = UniffiHelpers.uniffiRustCall((UniffiRustCallStatus status) -> {
             return (RustBuffer.ByValue) UniffiLib.INSTANCE.{{ ci.ffi_rustbuffer_alloc().name() }}(size, status);
         });
+        {%- endif %}
         if (buffer.data == null) {
             throw new RuntimeException("RustBuffer.alloc() returned null data pointer (size=" + size + ")");
         }
@@ -34,10 +44,19 @@ public class RustBuffer extends Structure {
     }
 
     public static void free(RustBuffer.ByValue buffer) {
+        {%- if config.use_pointer_ffi() %}
+        var _buf = new FfiSerializer({{ ci.ffi_rustbuffer_free()|ffi_buffer_total_slots }});
+        _buf.writeRustBuffer(buffer);
+        UniffiLib.INSTANCE.{{ ci.ffi_rustbuffer_free().ffi_buffer_fn_name() }}(_buf.getPointer());
+        _buf.setReadOffset({{ ci.ffi_rustbuffer_free()|ffi_buffer_total_slots }} - 4);
+        UniffiRustCallStatus _status = _buf.readCallStatus();
+        UniffiHelpers.uniffiCheckCallStatus(new UniffiNullRustCallStatusErrorHandler(), _status);
+        {%- else %}
         UniffiHelpers.uniffiRustCall((status) -> {
             UniffiLib.INSTANCE.{{ ci.ffi_rustbuffer_free().name() }}(buffer, status);
             return null;
         });
+        {%- endif %}
     }
 
     public java.nio.ByteBuffer asByteBuffer() {

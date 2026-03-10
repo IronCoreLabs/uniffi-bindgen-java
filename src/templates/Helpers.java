@@ -123,6 +123,29 @@ public final class UniffiHelpers {
       uniffiRustCallWithError(new UniffiNullRustCallStatusErrorHandler(), callback);
   }
 
+  {%- if config.use_pointer_ffi() %}
+  // Pointer FFI call helper: executes a buffer-based FFI call, reads return value and call status
+  @SuppressWarnings("unchecked")
+  static <U, E extends Exception> U uniffiPointerFfiCall(
+      UniffiRustCallStatusErrorHandler<E> errorHandler,
+      java.util.function.Supplier<FfiSerializer> bufferCall,
+      java.util.function.Function<FfiSerializer, U> readReturn
+  ) {
+      FfiSerializer _buf = bufferCall.get();
+      if (readReturn != null) {
+          U returnValue = readReturn.apply(_buf);
+          UniffiRustCallStatus status = _buf.readCallStatus();
+          uniffiCheckCallStatus(errorHandler, status);
+          return returnValue;
+      } else {
+          UniffiRustCallStatus status = _buf.readCallStatus();
+          uniffiCheckCallStatus(errorHandler, status);
+          return null;
+      }
+  }
+
+  {%- endif %}
+
   static <T> void uniffiTraitInterfaceCall(
       UniffiRustCallStatus callStatus,
       Supplier<T> makeCall,
