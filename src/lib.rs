@@ -1,11 +1,19 @@
 use anyhow::Result;
 use camino::Utf8PathBuf;
 use clap::{Parser, Subcommand};
+use once_cell::sync::Lazy;
 use std::{
     collections::HashMap,
     fs::{self},
 };
 use uniffi_bindgen::{BindingGenerator, Component, ComponentInterface, GenerationSettings};
+
+static FILENAME_REGEX: Lazy<regex::Regex> = Lazy::new(|| {
+    regex::Regex::new(
+        r"(?m)^(?:public\s)?(?:final\s)?(?:sealed\s)?(?:abstract\s)?(?:static\s)?(?:class|interface|enum|record)\s(\w+)",
+    )
+    .unwrap()
+});
 
 mod gen_java;
 
@@ -63,10 +71,6 @@ impl BindingGenerator for JavaBindingGenerator {
         settings: &GenerationSettings,
         components: &[Component<Self::Config>],
     ) -> anyhow::Result<()> {
-        let filename_capture = regex::Regex::new(
-            r"(?m)^(?:public\s)?(?:final\s)?(?:sealed\s)?(?:abstract\s)?(?:static\s)?(?:class|interface|enum|record)\s(\w+)",
-        )
-        .unwrap();
         for Component { ci, config, .. } in components {
             let bindings_str = gen_java::generate_bindings(config, ci)?;
             let java_package_out_dir = &settings.out_dir.join(
@@ -80,7 +84,7 @@ impl BindingGenerator for JavaBindingGenerator {
             let package_line = format!("package {};", config.package_name());
             let split_classes = bindings_str.split(&package_line);
             let writable = split_classes
-                .map(|file| (filename_capture.captures(file), file))
+                .map(|file| (FILENAME_REGEX.captures(file), file))
                 .filter(|(x, _)| x.is_some())
                 .map(|(captures, file)| (captures.unwrap().get(1).unwrap().as_str(), file))
                 .collect::<Vec<_>>();

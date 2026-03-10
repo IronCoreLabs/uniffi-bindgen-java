@@ -2,6 +2,7 @@ package {{ config.package_name() }};
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.locks.LockSupport;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -149,9 +150,13 @@ public final class UniffiAsyncHelpers {
     
     private static byte poll(long rustFuture, PollingFunction pollFunc) throws InterruptedException, ExecutionException {
         CompletableFuture<Byte> pollFuture = new CompletableFuture<>();
+        Thread currentThread = Thread.currentThread();
+        pollFuture.whenComplete((result, error) -> LockSupport.unpark(currentThread));
         var handle = uniffiContinuationHandleMap.insert(pollFuture);
         pollFunc.apply(rustFuture, UniffiRustFutureContinuationCallbackImpl.INSTANCE, handle);
-        do {} while (!pollFuture.isDone()); // removing this makes futures not cancel (sometimes)
+        while (!pollFuture.isDone()) {
+            LockSupport.park();
+        }
         return pollFuture.get();
     }
     

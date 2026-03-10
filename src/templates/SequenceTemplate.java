@@ -4,10 +4,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 package {{ config.package_name() }};
 
-import java.util.List;
 import java.nio.ByteBuffer;
-import java.util.stream.IntStream;
-import java.util.stream.Stream;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 public enum {{ ffi_converter_name }} implements FfiConverterRustBuffer<List<{{ inner_type_name }}>> {
   INSTANCE;
@@ -15,7 +15,11 @@ public enum {{ ffi_converter_name }} implements FfiConverterRustBuffer<List<{{ i
   @Override
   public List<{{ inner_type_name }}> read(ByteBuffer buf) {
     int len = buf.getInt();
-    return IntStream.range(0, len).mapToObj(_i -> {{ inner_type|read_fn(config, ci) }}(buf)).toList();
+    List<{{ inner_type_name }}> list = new ArrayList<>(len);
+    for (int i = 0; i < len; i++) {
+      list.add({{ inner_type|read_fn(config, ci) }}(buf));
+    }
+    return list;
   }
 
   @Override
