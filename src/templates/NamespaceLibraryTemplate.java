@@ -1,7 +1,9 @@
 package {{ config.package_name() }};
 
-import com.sun.jna.Library;
-import com.sun.jna.Native;
+import java.lang.foreign.Arena;
+import java.lang.foreign.Linker;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.SymbolLookup;
 
 final class NamespaceLibrary {
   static synchronized String findLibraryName(String componentName) {
@@ -12,23 +14,24 @@ final class NamespaceLibrary {
     return "{{ config.cdylib_name() }}";
   }
 
-  static <Lib extends Library> Lib loadIndirect(String componentName, Class<Lib> clazz) {
-    return Native.load(findLibraryName(componentName), clazz);
+  static SymbolLookup loadLibrary(String componentName) {
+    System.loadLibrary(findLibraryName(componentName));
+    return SymbolLookup.loaderLookup();
   }
 
-  static void uniffiCheckContractApiVersion(UniffiLib lib) {
+  static void uniffiCheckContractApiVersion() {
     // Get the bindings contract version from our ComponentInterface
     int bindingsContractVersion = {{ ci.uniffi_contract_version() }};
-    // Get the scaffolding contract version by calling the into the dylib
-    int scaffoldingContractVersion = lib.{{ ci.ffi_uniffi_contract_version().name() }}();
+    // Get the scaffolding contract version by calling into the dylib
+    int scaffoldingContractVersion = UniffiLib.{{ ci.ffi_uniffi_contract_version().name() }}();
     if (bindingsContractVersion != scaffoldingContractVersion) {
         throw new RuntimeException("UniFFI contract version mismatch: try cleaning and rebuilding your project");
     }
   }
 
-  static void uniffiCheckApiChecksums(UniffiLib lib) {
+  static void uniffiCheckApiChecksums() {
     {%- for (name, expected_checksum) in ci.iter_checksums() %}
-    if (lib.{{ name }}() != ((short) {{ expected_checksum }})) {
+    if (UniffiLib.{{ name }}() != ((short) {{ expected_checksum }})) {
         throw new RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project");
     }
     {%- endfor %}
@@ -41,64 +44,107 @@ final class NamespaceLibrary {
 {%- when FfiDefinition::CallbackFunction(callback) %}
 package {{ config.package_name() }};
 
-import com.sun.jna.*;
-import com.sun.jna.ptr.*;
+import java.lang.foreign.Arena;
+import java.lang.foreign.FunctionDescriptor;
+import java.lang.foreign.Linker;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 
-interface {{ callback.name()|ffi_callback_name }} extends Callback {
-    public {% match callback.return_type() %}{%- when Some(return_type) %}{{ return_type|ffi_type_name_for_ffi_struct(config, ci) }}{%- when None %}void{%- endmatch %} callback(
+final class {{ callback.name()|ffi_callback_name }} {
+    public static final FunctionDescriptor DESCRIPTOR = FunctionDescriptor.{% match callback.return_type() %}{%- when Some(return_type) %}of({{ return_type|ffi_value_layout }}{%- when None %}ofVoid({%- endmatch -%}
         {%- for arg in callback.arguments() -%}
-        {{ arg.type_().borrow()|ffi_type_name_for_ffi_struct(config, ci) }} {{ arg.name().borrow()|var_name }}{% if !loop.last %},{% endif %}
+        {%- if callback.return_type().is_some() || !loop.first %}, {% endif -%}
+        {{ arg.type_().borrow()|ffi_value_layout }}
         {%- endfor -%}
-        {%- if callback.has_rust_call_status_arg() -%}{% if callback.arguments().len() != 0 %},{% endif %}
-        UniffiRustCallStatus uniffiCallStatus
+        {%- if callback.has_rust_call_status_arg() -%}
+        {%- if callback.return_type().is_some() || callback.arguments().len() != 0 %}, {% endif -%}
+        ValueLayout.ADDRESS
         {%- endif -%}
     );
+
+    @FunctionalInterface
+    public interface Fn {
+        {% match callback.return_type() %}{%- when Some(return_type) %}{{ return_type|ffi_type_name_for_ffi_struct(config, ci) }}{%- when None %}void{%- endmatch %} callback(
+            {%- for arg in callback.arguments() -%}
+            {{ arg.type_().borrow()|ffi_type_name_for_ffi_struct(config, ci) }} {{ arg.name().borrow()|var_name }}{% if !loop.last %},{% endif %}
+            {%- endfor -%}
+            {%- if callback.has_rust_call_status_arg() -%}{% if callback.arguments().len() != 0 %},{% endif %}
+            MemorySegment uniffiCallStatus
+            {%- endif -%}
+        );
+    }
+
+    public static MemorySegment toUpcallStub(Fn fn, Arena arena) {
+        try {
+            MethodHandle handle = MethodHandles.lookup().findVirtual(
+                Fn.class,
+                "callback",
+                MethodType.methodType(
+                    {% match callback.return_type() %}{%- when Some(return_type) %}{{ return_type|ffi_type_name_for_ffi_struct(config, ci) }}.class{%- when None %}void.class{%- endmatch %}
+                    {%- for arg in callback.arguments() -%}
+                    , {{ arg.type_().borrow()|ffi_type_name_for_ffi_struct(config, ci) }}.class
+                    {%- endfor -%}
+                    {%- if callback.has_rust_call_status_arg() -%}
+                    , MemorySegment.class
+                    {%- endif -%}
+                )
+            ).bindTo(fn);
+            return Linker.nativeLinker().upcallStub(handle, DESCRIPTOR, arena);
+        } catch (NoSuchMethodException | IllegalAccessException e) {
+            throw new AssertionError(e);
+        }
+    }
 }
 {%- when FfiDefinition::Struct(ffi_struct) %}
 package {{ config.package_name() }};
 
-import com.sun.jna.Structure;
-import com.sun.jna.Pointer;
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemoryLayout;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.StructLayout;
+import java.lang.foreign.ValueLayout;
+public final class {{ ffi_struct.name()|ffi_struct_name }} {
+    public static final StructLayout LAYOUT = MemoryLayout.structLayout(
+        {{ ffi_struct|ffi_struct_layout_fields }}
+    );
 
-@Structure.FieldOrder({ {% for field in ffi_struct.fields() %}"{{ field.name()|var_name_raw }}"{% if !loop.last %}, {% endif %}{% endfor %} })
-public class {{ ffi_struct.name()|ffi_struct_name }} extends Structure {
     {%- for field in ffi_struct.fields() %}
-    public {{ field.type_().borrow()|ffi_type_name_for_ffi_struct(config, ci) }} {{ field.name()|var_name }} = {{ field.type_()|ffi_default_value }};
+    private static final long OFFSET_{{ field.name()|var_name_raw|upper }} = LAYOUT.byteOffset(MemoryLayout.PathElement.groupElement("{{ field.name()|var_name_raw }}"));
+    {%- if field.type_().borrow()|ffi_type_is_embedded_struct %}
+    private static final long SIZE_{{ field.name()|var_name_raw|upper }} = {{ field.type_().borrow()|ffi_value_layout }}.byteSize();
+    {%- endif %}
     {%- endfor %}
 
-    // no-arg constructor required so JNA can instantiate and reflect
-    public {{ ffi_struct.name()|ffi_struct_name}}() {
-        super();
-    }
-    
-    public {{ ffi_struct.name()|ffi_struct_name }}(
-        {%- for field in ffi_struct.fields() %}
-        {{ field.type_().borrow()|ffi_type_name_for_ffi_struct(config, ci) }} {{ field.name()|var_name }}{% if !loop.last %},{% endif %}
-        {%- endfor %}
-    ) {
-        {%- for field in ffi_struct.fields() %}
-        this.{{ field.name()|var_name }} = {{ field.name()|var_name }};
-        {%- endfor %}
+    private {{ ffi_struct.name()|ffi_struct_name }}() {}
+
+    public static MemorySegment allocate(Arena arena) {
+        return arena.allocate(LAYOUT);
     }
 
-    public static class UniffiByValue extends {{ ffi_struct.name()|ffi_struct_name }} implements Structure.ByValue {
-        public UniffiByValue(
-            {%- for field in ffi_struct.fields() %}
-            {{ field.type_().borrow()|ffi_type_name_for_ffi_struct(config, ci) }} {{ field.name()|var_name }}{% if !loop.last %},{% endif %}
-            {%- endfor %}
-        ) {
-            super({%- for field in ffi_struct.fields() -%}
-                {{ field.name()|var_name }}{% if !loop.last %},{% endif %}        
-            {% endfor %});
-        }
+    {%- for field in ffi_struct.fields() %}
+    {%- if field.type_().borrow()|ffi_type_is_embedded_struct %}
+
+    public static MemorySegment get{{ field.name()|var_name_raw }}(MemorySegment seg) {
+        return seg.asSlice(OFFSET_{{ field.name()|var_name_raw|upper }}, SIZE_{{ field.name()|var_name_raw|upper }});
     }
 
-    void uniffiSetValue({{ ffi_struct.name()|ffi_struct_name }} other) {
-        {%- for field in ffi_struct.fields() %}
-        {{ field.name()|var_name }} = other.{{ field.name()|var_name }};
-        {%- endfor %}
+    public static void set{{ field.name()|var_name_raw }}(MemorySegment seg, MemorySegment value) {
+        MemorySegment.copy(value, 0, seg, OFFSET_{{ field.name()|var_name_raw|upper }}, SIZE_{{ field.name()|var_name_raw|upper }});
+    }
+    {%- else %}
+
+    public static {{ field.type_().borrow()|ffi_type_name_for_ffi_struct(config, ci) }} get{{ field.name()|var_name_raw }}(MemorySegment seg) {
+        return seg.get({{ field.type_().borrow()|ffi_value_layout_unaligned }}, OFFSET_{{ field.name()|var_name_raw|upper }});
     }
 
+    public static void set{{ field.name()|var_name_raw }}(MemorySegment seg, {{ field.type_().borrow()|ffi_type_name_for_ffi_struct(config, ci) }} value) {
+        seg.set({{ field.type_().borrow()|ffi_value_layout_unaligned }}, OFFSET_{{ field.name()|var_name_raw|upper }}, value);
+    }
+    {%- endif %}
+    {%- endfor %}
 }
 {%- when FfiDefinition::Function(_) %}
 {# functions are handled below #}
@@ -107,37 +153,70 @@ public class {{ ffi_struct.name()|ffi_struct_name }} extends Structure {
 
 package {{ config.package_name() }};
 
-import com.sun.jna.Library;
-import com.sun.jna.Pointer;
+import java.lang.foreign.Arena;
+import java.lang.foreign.FunctionDescriptor;
+import java.lang.foreign.Linker;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.SegmentAllocator;
+import java.lang.foreign.SymbolLookup;
+import java.lang.foreign.ValueLayout;
+import java.lang.invoke.MethodHandle;
 
-// A JNA Library to expose the extern-C FFI definitions.
-// This is an implementation detail which will be called internally by the public API.
-interface UniffiLib extends Library {
-    UniffiLib INSTANCE = UniffiLibInitializer.load();
+// FFM-based native library interface.
+// All access is via static methods. No INSTANCE field.
+final class UniffiLib {
+    static final Linker LINKER = Linker.nativeLinker();
+    // Load symbols first so MethodHandle field initializers can reference them.
+    static final SymbolLookup SYMBOLS = NamespaceLibrary.loadLibrary("{{ ci.namespace() }}");
 
     {% if ci.contains_object_types() %}
     // The Cleaner for the whole library
-    static UniffiCleaner CLEANER = UniffiCleaner.create();
+    static final UniffiCleaner CLEANER = UniffiCleaner.create();
     {%- endif %}
-    
+
     {% for func in ci.iter_ffi_function_definitions() -%}
-    {% match func.return_type() %}{% when Some with (return_type) %}{{ return_type.borrow()|ffi_type_name_by_value(config, ci) }}{% when None %}void{% endmatch %} {{ func.name() }}({%- call java::arg_list_ffi_decl(func) %});
+    private static final MethodHandle MH_{{ func.name() }} = LINKER.downcallHandle(
+        SYMBOLS.find("{{ func.name() }}").orElseThrow(),
+        {% match func.return_type() %}{% when Some(return_type) %}FunctionDescriptor.of({{ return_type|ffi_value_layout }}{% when None %}FunctionDescriptor.ofVoid({% endmatch -%}
+            {%- for arg in func.arguments() -%}
+            {%- if func.return_type().is_some() || !loop.first %}, {% endif -%}
+            {{ arg.type_().borrow()|ffi_value_layout }}
+            {%- endfor -%}
+            {%- if func.has_rust_call_status_arg() -%}
+            {%- if func.return_type().is_some() || func.arguments().len() != 0 %}, {% endif -%}
+            ValueLayout.ADDRESS
+            {%- endif -%}
+        )
+        {%- match func.return_type() %}{% when Some(return_type) %}{% when None %}{% endmatch %}
+    );
+    static {% match func.return_type() %}{% when Some(return_type) %}{{ return_type.borrow()|ffi_type_name_for_ffi_struct(config, ci) }}{% when None %}void{% endmatch %} {{ func.name() }}(
+        {%- match func.return_type() %}{% when Some(return_type) %}{% if return_type|ffi_type_is_struct %}Arena _uniffi_arena{% if func.arguments().len() != 0 || func.has_rust_call_status_arg() %}, {% endif %}{% endif %}{% when None %}{% endmatch -%}
+        {%- for arg in func.arguments() -%}
+        {{ arg.type_().borrow()|ffi_type_name_for_ffi_struct(config, ci) }} {{ arg.name()|var_name }}{% if !loop.last || func.has_rust_call_status_arg() %}, {% endif -%}
+        {%- endfor -%}
+        {%- if func.has_rust_call_status_arg() %}MemorySegment uniffi_out_err{% endif -%}
+    ) {
+        try {
+            {% match func.return_type() %}{% when Some(return_type) %}return {{ return_type|ffi_invoke_exact_cast }}MH_{{ func.name() }}.invokeExact(
+                {%- if return_type|ffi_type_is_struct %}(SegmentAllocator) _uniffi_arena{% if func.arguments().len() != 0 || func.has_rust_call_status_arg() %}, {% endif %}{% endif -%}
+            {% when None %}MH_{{ func.name() }}.invokeExact({% endmatch -%}
+                {%- for arg in func.arguments() -%}
+                {{ arg.name()|var_name }}{% if !loop.last || func.has_rust_call_status_arg() %}, {% endif -%}
+                {%- endfor -%}
+                {%- if func.has_rust_call_status_arg() %}uniffi_out_err{% endif -%}
+            );
+        } catch (Throwable _ex) {
+            throw new AssertionError("Unexpected exception from FFI call", _ex);
+        }
+    }
     {% endfor %}
-}
 
-package {{ config.package_name() }};
-
-// Java doesn't allow for static init blocks in an interface outside of a static property with a default.
-// To get around that and make sure that when the UniffiLib interface loads it has an initialized library
-// we call this class. The init code won't be called until a function on this interface is called unfortunately.
-final class UniffiLibInitializer {
-    static UniffiLib load() {
-        UniffiLib instance = NamespaceLibrary.loadIndirect("{{ ci.namespace() }}", UniffiLib.class);
-        NamespaceLibrary.uniffiCheckContractApiVersion(instance);
-        NamespaceLibrary.uniffiCheckApiChecksums(instance);
+    // Verify contract version and checksums after all MethodHandles are initialized.
+    static {
+        NamespaceLibrary.uniffiCheckContractApiVersion();
+        NamespaceLibrary.uniffiCheckApiChecksums();
         {% for init_fn in self.initialization_fns() -%}
-        {{ init_fn }}(instance);
+        {{ init_fn }};
         {% endfor -%}
-        return instance;
     }
 }

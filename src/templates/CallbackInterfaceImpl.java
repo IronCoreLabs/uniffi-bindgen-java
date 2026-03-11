@@ -2,42 +2,47 @@
 
 package {{ config.package_name() }};
 
+import java.lang.foreign.Arena;
+import java.lang.foreign.FunctionDescriptor;
+import java.lang.foreign.Linker;
+import java.lang.foreign.MemorySegment;
+import java.lang.invoke.MethodHandle;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Callable;
 import java.util.function.Function;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.List;
-import com.sun.jna.*;
-import com.sun.jna.ptr.*;
 
 {%- let trait_impl=format!("UniffiCallbackInterface{}", name) %}
 
 // Put the implementation in an object so we don't pollute the top-level namespace
 public class {{ trait_impl }} {
+    private static final Arena ARENA = Arena.ofAuto();
     public static final {{ trait_impl }} INSTANCE = new {{ trait_impl }}();
-    {{ vtable|ffi_type_name_by_value(config, ci) }} vtable;
-    
+    MemorySegment vtable;
+
     {{ trait_impl }}() {
-        vtable = new {{ vtable|ffi_type_name_by_value(config, ci) }}(
-            {%- for (ffi_callback, meth) in vtable_methods.iter() %}
-            {{ meth.name()|var_name }}.INSTANCE,
-            {%- endfor %}
-            UniffiFree.INSTANCE
-        );
+        vtable = {{ vtable|ffi_struct_type_name }}.allocate(ARENA);
+        {%- for (ffi_callback, meth) in vtable_methods.iter() %}
+        {{ vtable|ffi_struct_type_name }}.set{{ meth.name()|var_name_raw }}(vtable,
+            {{ ffi_callback.name()|ffi_callback_name }}.toUpcallStub({{ meth.name()|var_name }}Impl.INSTANCE, ARENA));
+        {%- endfor %}
+        {{ vtable|ffi_struct_type_name }}.setuniffiFree(vtable,
+            {{ "CallbackInterfaceFree"|ffi_callback_name }}.toUpcallStub(UniffiFreeImpl.INSTANCE, ARENA));
     }
-    
+
     // Registers the foreign callback with the Rust side.
     // This method is generated for each callback interface.
-    void register(UniffiLib lib) {
-        lib.{{ ffi_init_callback.name() }}(vtable);
-    }        
+    void register() {
+        UniffiLib.{{ ffi_init_callback.name() }}(vtable);
+    }
 
     {%- for (ffi_callback, meth) in vtable_methods.iter() %}
     {% let inner_method_class = meth.name()|var_name %}
-    public static class {{ inner_method_class }} implements {{ ffi_callback.name()|ffi_callback_name }} {
-        public static final {{ inner_method_class }} INSTANCE = new {{ inner_method_class }}();
-        private {{ inner_method_class }}() {}
+    public static class {{ inner_method_class }}Impl implements {{ ffi_callback.name()|ffi_callback_name }}.Fn {
+        public static final {{ inner_method_class }}Impl INSTANCE = new {{ inner_method_class }}Impl();
+        private {{ inner_method_class }}Impl() {}
 
         @Override
         public {% match ffi_callback.return_type() %}{% when Some(return_type) %}{{ return_type|ffi_type_name_for_ffi_struct(config, ci) }}{% when None %}void{% endmatch %} callback(
@@ -45,7 +50,7 @@ public class {{ trait_impl }} {
             {{ arg.type_().borrow()|ffi_type_name_for_ffi_struct(config, ci) }} {{ arg.name().borrow()|var_name }}{% if !loop.last || (loop.last && ffi_callback.has_rust_call_status_arg()) %},{% endif %}
             {%- endfor -%}
             {%- if ffi_callback.has_rust_call_status_arg() -%}
-            UniffiRustCallStatus uniffiCallStatus
+            MemorySegment uniffiCallStatus
             {%- endif -%}
         ) {
             var uniffiObj = {{ ffi_converter_name }}.INSTANCE.handleMap.get(uniffiHandle);
@@ -60,7 +65,10 @@ public class {{ trait_impl }} {
             {%- if !meth.is_async() %}
             {%- match meth.return_type() %}
             {%- when Some(return_type) %}
-            Consumer<{{ return_type|type_name(ci, config)}}> writeReturn = ({{ return_type|type_name(ci, config) }} value) -> { uniffiOutReturn.setValue({{ return_type|lower_fn(config, ci) }}(value)); };
+            final var uniffiOutReturnSized = uniffiOutReturn.reinterpret({{ meth.foreign_future_ffi_result_struct().name()|ffi_struct_name }}.LAYOUT.byteSize());
+            Consumer<{{ return_type|type_name(ci, config)}}> writeReturn = ({{ return_type|type_name(ci, config) }} value) -> {
+                {{ meth.foreign_future_ffi_result_struct().name()|ffi_struct_name }}.setreturnValue(uniffiOutReturnSized, {{ return_type|lower_fn(config, ci) }}(value));
+            };
             {%- when None %}
             Consumer<Void> writeReturn = (nothing) -> {};
             {%- endmatch %}
@@ -79,40 +87,57 @@ public class {{ trait_impl }} {
             {%- endmatch %}
 
             {%- else %}
+            // Convert confined upcall MemorySegment to globally-scoped for cross-thread access.
+            // Upcall parameter segments are confined to the upcall thread, but the async
+            // completion handlers run on ForkJoinPool threads.
+            var uniffiFutureCallbackGlobal = MemorySegment.ofAddress(uniffiFutureCallback.address());
             Consumer<{{ meth|async_inner_return_type(ci, config) }}> uniffiHandleSuccess = ({% match meth.return_type() %}{%- when Some(return_type) %}returnValue{%- when None %}nothing{% endmatch %}) -> {
-                var uniffiResult = new {{ meth.foreign_future_ffi_result_struct().name()|ffi_struct_name }}.UniffiByValue(
-                    {%- match meth.return_type() %}
-                    {%- when Some(return_type) %}
-                    {{ return_type|lower_fn(config, ci) }}(returnValue),
-                    {%- when None %}
-                    {%- endmatch %}
-                    new UniffiRustCallStatus.ByValue()
-                );
-                uniffiResult.write();
-                uniffiFutureCallback.callback(uniffiCallbackData, uniffiResult);
+                Arena resultArena = Arena.ofAuto();
+                var uniffiResult = {{ meth.foreign_future_ffi_result_struct().name()|ffi_struct_name }}.allocate(resultArena);
+                {%- match meth.return_type() %}
+                {%- when Some(return_type) %}
+                {{ meth.foreign_future_ffi_result_struct().name()|ffi_struct_name }}.setreturnValue(uniffiResult, {{ return_type|lower_fn(config, ci) }}(returnValue));
+                {%- when None %}
+                {%- endmatch %}
+                var emptyStatus = UniffiRustCallStatus.allocate(resultArena);
+                {{ meth.foreign_future_ffi_result_struct().name()|ffi_struct_name }}.setcallStatus(uniffiResult, emptyStatus);
+                try {
+                    var completeMh = Linker.nativeLinker().downcallHandle(
+                        uniffiFutureCallbackGlobal,
+                        {{ ffi_callback|async_completion_callback_name }}.DESCRIPTOR
+                    );
+                    completeMh.invokeExact(uniffiCallbackData, uniffiResult);
+                } catch (Throwable _ex) {
+                    throw new AssertionError("Unexpected exception from FFI callback invocation", _ex);
+                }
             };
-            Consumer<UniffiRustCallStatus.ByValue> uniffiHandleError = (callStatus) -> {
-                uniffiFutureCallback.callback(
-                    uniffiCallbackData,
-                    new {{ meth.foreign_future_ffi_result_struct().name()|ffi_struct_name }}.UniffiByValue(
-                        {%- match meth.return_type() %}
-                        {%- when Some(return_type) %}
-                        {{ return_type.into()|ffi_default_value }},
-                        {%- when None %}
-                        {%- endmatch %}
-                        callStatus
-                    )
-                );
+            Consumer<MemorySegment> uniffiHandleError = (callStatus) -> {
+                Arena resultArena = Arena.ofAuto();
+                var uniffiResult = {{ meth.foreign_future_ffi_result_struct().name()|ffi_struct_name }}.allocate(resultArena);
+                {%- match meth.return_type() %}
+                {%- when Some(return_type) %}
+                {%- when None %}
+                {%- endmatch %}
+                {{ meth.foreign_future_ffi_result_struct().name()|ffi_struct_name }}.setcallStatus(uniffiResult, callStatus);
+                try {
+                    var completeMh = Linker.nativeLinker().downcallHandle(
+                        uniffiFutureCallbackGlobal,
+                        {{ ffi_callback|async_completion_callback_name }}.DESCRIPTOR
+                    );
+                    completeMh.invokeExact(uniffiCallbackData, uniffiResult);
+                } catch (Throwable _ex) {
+                    throw new AssertionError("Unexpected exception from FFI callback invocation", _ex);
+                }
             };
 
-            uniffiOutReturn.uniffiSetValue(
+            var foreignFuture =
                 {%- match meth.throws_type() %}
                 {%- when None %}
                 UniffiAsyncHelpers.uniffiTraitInterfaceCallAsync(
                     makeCall,
                     uniffiHandleSuccess,
                     uniffiHandleError
-                )
+                );
                 {%- when Some(error_type) %}
                 UniffiAsyncHelpers.uniffiTraitInterfaceCallAsyncWithError(
                     makeCall,
@@ -120,18 +145,20 @@ public class {{ trait_impl }} {
                     uniffiHandleError,
                     ({{error_type|type_name(ci, config) }} e) -> {{ error_type|lower_fn(config, ci) }}(e),
                     {{ error_type|type_name(ci, config)}}.class
-                )
+                );
                 {%- endmatch %}
-            );
+            var uniffiOutReturnSized = uniffiOutReturn.reinterpret({{ "ForeignFuture"|ffi_struct_name }}.LAYOUT.byteSize());
+            {{ "ForeignFuture"|ffi_struct_name }}.sethandle(uniffiOutReturnSized, foreignFuture.handle);
+            {{ "ForeignFuture"|ffi_struct_name }}.setfree(uniffiOutReturnSized, foreignFuture.free);
             {%- endif %}
         }
     }
     {%- endfor %}
 
-    public static class UniffiFree implements {{ "CallbackInterfaceFree"|ffi_callback_name }} {
-        public static final UniffiFree INSTANCE = new UniffiFree();
+    public static class UniffiFreeImpl implements {{ "CallbackInterfaceFree"|ffi_callback_name }}.Fn {
+        public static final UniffiFreeImpl INSTANCE = new UniffiFreeImpl();
 
-        private UniffiFree() {}
+        private UniffiFreeImpl() {}
 
         @Override
         public void callback(long handle) {

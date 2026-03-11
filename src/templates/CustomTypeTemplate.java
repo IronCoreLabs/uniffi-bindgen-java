@@ -17,7 +17,7 @@ public record {{ type_name }}(
 package {{ package_name }};
 
 import java.nio.ByteBuffer;
-import com.sun.jna.Pointer;
+import java.lang.foreign.MemorySegment;
 
 public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, {{ ffi_type_name}}> {
   INSTANCE;
@@ -79,7 +79,7 @@ public record {{ type_name }}(
 package {{ package_name }};
 
 import java.nio.ByteBuffer;
-import com.sun.jna.Pointer;
+import java.lang.foreign.MemorySegment;
 
 {%- match custom_type_config.imports %}
 {%- when Some(imports) %}

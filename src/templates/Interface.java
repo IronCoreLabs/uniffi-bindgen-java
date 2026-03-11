@@ -3,8 +3,6 @@ package {{ config.package_name() }};
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import com.sun.jna.*;
-import com.sun.jna.ptr.*;
 
 {%- call java::docstring_value(interface_docstring, 0) %}
 public interface {{ interface_name }} {

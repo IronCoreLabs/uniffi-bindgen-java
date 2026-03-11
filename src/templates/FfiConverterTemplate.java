@@ -1,5 +1,6 @@
 package {{ config.package_name() }};
 
+import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
@@ -36,13 +37,15 @@ public interface FfiConverter<JavaType, FfiType> {
     // FfiType.  It's used by the callback interface code.  Callback interface
     // returns are always serialized into a `RustBuffer` regardless of their
     // normal FFI type.
-    default RustBuffer.ByValue lowerIntoRustBuffer(JavaType value) {
-        RustBuffer.ByValue rbuf = RustBuffer.alloc(allocationSize(value));
+    default MemorySegment lowerIntoRustBuffer(JavaType value) {
+        long size = allocationSize(value);
+        MemorySegment rbuf = RustBuffer.alloc(size);
         try {
-            ByteBuffer bbuf = rbuf.data.getByteBuffer(0, rbuf.capacity);
-            bbuf.order(ByteOrder.BIG_ENDIAN);
-            write(value, bbuf);
-            rbuf.writeField("len", (long)bbuf.position());
+            if (size > 0) {
+                ByteBuffer bbuf = RustBuffer.asWriteByteBuffer(rbuf);
+                write(value, bbuf);
+                RustBuffer.setLen(rbuf, (long)bbuf.position());
+            }
             return rbuf;
         } catch (Throwable e) {
             RustBuffer.free(rbuf);
@@ -54,14 +57,18 @@ public interface FfiConverter<JavaType, FfiType> {
     //
     // This here mostly because of the symmetry with `lowerIntoRustBuffer()`.
     // It's currently only used by the `FfiConverterRustBuffer` class below.
-    default JavaType liftFromRustBuffer(RustBuffer.ByValue rbuf) {
-        ByteBuffer byteBuf = rbuf.asByteBuffer();
+    default JavaType liftFromRustBuffer(MemorySegment rbuf) {
         try {
-           JavaType item = read(byteBuf);
-           if (byteBuf.hasRemaining()) {
-               throw new RuntimeException("junk remaining in buffer after lifting, something is very wrong!!");
-           }
-           return item;
+            ByteBuffer byteBuf = RustBuffer.asByteBuffer(rbuf);
+            if (byteBuf == null) {
+                // Zero-length buffer; wrap an empty ByteBuffer for read()
+                byteBuf = ByteBuffer.allocate(0).order(ByteOrder.BIG_ENDIAN);
+            }
+            JavaType item = read(byteBuf);
+            if (byteBuf.hasRemaining()) {
+                throw new RuntimeException("junk remaining in buffer after lifting, something is very wrong!!");
+            }
+            return item;
         } finally {
             RustBuffer.free(rbuf);
         }
@@ -70,14 +77,16 @@ public interface FfiConverter<JavaType, FfiType> {
 
 package {{ config.package_name() }};
 
-// FfiConverter that uses `RustBuffer` as the FfiType
-public interface FfiConverterRustBuffer<JavaType> extends FfiConverter<JavaType, RustBuffer.ByValue> {
+import java.lang.foreign.MemorySegment;
+
+// FfiConverter that uses `RustBuffer` (MemorySegment) as the FfiType
+public interface FfiConverterRustBuffer<JavaType> extends FfiConverter<JavaType, MemorySegment> {
     @Override
-    default JavaType lift(RustBuffer.ByValue value) {
+    default JavaType lift(MemorySegment value) {
         return liftFromRustBuffer(value);
     }
     @Override
-    default RustBuffer.ByValue lower(JavaType value) {
+    default MemorySegment lower(JavaType value) {
         return lowerIntoRustBuffer(value);
     }
 }

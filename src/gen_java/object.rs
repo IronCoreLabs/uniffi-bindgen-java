@@ -34,7 +34,7 @@ impl CodeType for ObjectCodeType {
     fn initialization_fn(&self) -> Option<String> {
         self.imp
             .has_callback_interface()
-            .then(|| format!("UniffiCallbackInterface{}.INSTANCE.register", self.name))
+            .then(|| format!("UniffiCallbackInterface{}.INSTANCE.register()", self.name))
     }
 
     fn ffi_converter_instance(&self, config: &Config, ci: &ComponentInterface) -> String {

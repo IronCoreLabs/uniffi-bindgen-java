@@ -25,11 +25,12 @@
 {%- macro to_raw_ffi_call(func) -%}
     {%- match func.throws_type() %}
     {%- when Some(e) %}
-    UniffiHelpers.uniffiRustCallWithError(new {{ e|type_name(ci, config) }}ErrorHandler(), 
+    UniffiHelpers.uniffiRustCallWithError(new {{ e|type_name(ci, config) }}ErrorHandler(),
     {%- else %}
     UniffiHelpers.uniffiRustCall(
-    {%- endmatch %} _status -> {
-        {% if func.return_type().is_some() %}return {% endif %}UniffiLib.INSTANCE.{{ func.ffi_func().name() }}(
+    {%- endmatch %} (_arena, _status) -> {
+        {% if func.return_type().is_some() %}return {% endif %}UniffiLib.{{ func.ffi_func().name() }}(
+            {% match func.ffi_func().return_type() %}{% when Some(return_type) %}{% if return_type|ffi_type_is_struct %}_arena, {% endif %}{% when None %}{% endmatch -%}
             {% if func.takes_self() %}it, {% endif -%}
             {% if func.arguments().len() != 0 %}{% call arg_list_lowered(func) -%}, {% endif -%}
             _status);
@@ -82,13 +83,13 @@
     UniffiAsyncHelpers.uniffiRustCallAsync(
 {%- if callable.takes_self() %}
         callWithPointer(thisPtr -> {
-            return UniffiLib.INSTANCE.{{ callable.ffi_func().name() }}(
+            return UniffiLib.{{ callable.ffi_func().name() }}(
                 thisPtr{% if callable.arguments().len() != 0 %},{% endif %}
                 {% call arg_list_lowered(callable) %}
             );
         }),
 {%- else %}
-        UniffiLib.INSTANCE.{{ callable.ffi_func().name() }}({% call arg_list_lowered(callable) %}),
+        UniffiLib.{{ callable.ffi_func().name() }}({% call arg_list_lowered(callable) %}),
 {%- endif %}
         {{ callable|async_poll(ci) }},
         {{ callable|async_complete(ci, config) }},
@@ -138,7 +139,7 @@
     {%- for arg in func.arguments() %}
         {{- arg.type_().borrow()|ffi_type_name_by_value(config, ci) }} {{arg.name()|var_name -}}{%- if !loop.last %}, {% endif -%}
     {%- endfor %}
-    {%- if func.has_rust_call_status_arg() %}{% if func.arguments().len() != 0 %}, {% endif %}UniffiRustCallStatus uniffi_out_errmk{% endif %}
+    {%- if func.has_rust_call_status_arg() %}{% if func.arguments().len() != 0 %}, {% endif %}MemorySegment uniffi_out_errmk{% endif %}
 {%- endmacro -%}
 
 {% macro field_name(field, field_num) %}

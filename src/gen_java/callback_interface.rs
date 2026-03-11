@@ -32,7 +32,7 @@ impl CodeType for CallbackInterfaceCodeType {
 
     fn initialization_fn(&self) -> Option<String> {
         Some(format!(
-            "UniffiCallbackInterface{}.INSTANCE.register",
+            "UniffiCallbackInterface{}.INSTANCE.register()",
             self.id
         ))
     }

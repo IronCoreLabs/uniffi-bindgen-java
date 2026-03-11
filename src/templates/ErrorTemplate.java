@@ -80,9 +80,11 @@ public class {{ type_name }} extends Exception {
 
 package {{ config.package_name() }};
 
+import java.lang.foreign.MemorySegment;
+
 public class {{ type_name }}ErrorHandler implements UniffiRustCallStatusErrorHandler<{{ type_name }}> {
   @Override
-  public {{ type_name }} lift(RustBuffer.ByValue errorBuf){
+  public {{ type_name }} lift(MemorySegment errorBuf){
      return {{ ffi_converter_instance }}.lift(errorBuf);
   }
 }

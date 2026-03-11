@@ -1,5 +1,7 @@
 package {{ config.package_name() }};
 
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.locks.LockSupport;
@@ -16,21 +18,23 @@ public final class UniffiAsyncHelpers {
     static final UniffiHandleMap<CompletableFuture<Byte>> uniffiContinuationHandleMap = new UniffiHandleMap<>();
     static final UniffiHandleMap<CancelableForeignFuture> uniffiForeignFutureHandleMap = new UniffiHandleMap<>();
 
-    // FFI type for Rust future continuations
-    enum UniffiRustFutureContinuationCallbackImpl implements UniffiRustFutureContinuationCallback {
-        INSTANCE;
-
-        @Override
-        public void callback(long data, byte pollResult) {
-            uniffiContinuationHandleMap.remove(data).complete(pollResult);
-        }
+    // Upcall stub for the continuation callback - created once and reused
+    private static final Arena CALLBACK_ARENA = Arena.ofAuto();
+    private static final MemorySegment CONTINUATION_CALLBACK_STUB;
+    static {
+        CONTINUATION_CALLBACK_STUB = {{ "RustFutureContinuationCallback"|ffi_callback_name }}.toUpcallStub(
+            (long data, byte pollResult) -> {
+                uniffiContinuationHandleMap.remove(data).complete(pollResult);
+            },
+            CALLBACK_ARENA
+        );
     }
 
     @FunctionalInterface
     interface PollingFunction {
-        void apply(long rustFuture, UniffiRustFutureContinuationCallback callback, long continuationHandle);
+        void apply(long rustFuture, MemorySegment callback, long continuationHandle);
     }
-    
+
     static class UniffiFreeingFuture<T> extends CompletableFuture<T> {
         private Consumer<Long> freeFunc;
         private long rustFuture;
@@ -48,7 +52,7 @@ public final class UniffiAsyncHelpers {
             }
             return cancelled;
         }
-    } 
+    }
 
     // helper so both the Java completable future and the job that handles it finishing and reports to Rust can be
     // retrieved (and potentially cancelled) by handle. This allows our FreeImpl to be a parameterless singleton,
@@ -70,10 +74,32 @@ public final class UniffiAsyncHelpers {
         }
     }
 
+    // Simple data holder for returning a foreign future handle + free stub from
+    // uniffiTraitInterfaceCallAsync. Not the same as the FFI struct class UniffiForeignFuture.
+    static class UniffiForeignFutureData {
+        final long handle;
+        final MemorySegment free;
+
+        UniffiForeignFutureData(long handle, MemorySegment free) {
+            this.handle = handle;
+            this.free = free;
+        }
+    }
+
+    @FunctionalInterface
+    interface AsyncCompleteFunction<F> {
+        F apply(Arena arena, long rustFuture, MemorySegment status);
+    }
+
+    @FunctionalInterface
+    interface AsyncCompleteVoidFunction {
+        void apply(Arena arena, long rustFuture, MemorySegment status);
+    }
+
     static <T, F, E extends Exception> CompletableFuture<T> uniffiRustCallAsync(
         long rustFuture,
         PollingFunction pollFunc,
-        BiFunction<Long, UniffiRustCallStatus, F> completeFunc,
+        AsyncCompleteFunction<F> completeFunc,
         Consumer<Long> freeFunc,
         Function<F, T> liftFunc,
         UniffiRustCallStatusErrorHandler<E> errorHandler
@@ -88,8 +114,8 @@ public final class UniffiAsyncHelpers {
                 } while (pollResult != UNIFFI_RUST_FUTURE_POLL_READY);
 
                 if (!future.isCancelled()) {
-                    F result = UniffiHelpers.uniffiRustCallWithError(errorHandler, status -> {
-                        return completeFunc.apply(rustFuture, status);
+                    F result = UniffiHelpers.uniffiRustCallWithError(errorHandler, (_arena, status) -> {
+                        return completeFunc.apply(_arena, rustFuture, status);
                     });
                     T liftedResult = liftFunc.apply(result);
                     future.complete(liftedResult);
@@ -106,19 +132,19 @@ public final class UniffiAsyncHelpers {
         return future;
     }
 
-    
+
     // overload specifically for Void cases, which aren't within the Object type.
     // This is only necessary because of Java's lack of proper Any/Unit
     static <E extends Exception> CompletableFuture<Void> uniffiRustCallAsync(
         long rustFuture,
         PollingFunction pollFunc,
-        BiConsumer<Long, UniffiRustCallStatus> completeFunc,
+        AsyncCompleteVoidFunction completeFunc,
         Consumer<Long> freeFunc,
         Runnable liftFunc,
         UniffiRustCallStatusErrorHandler<E> errorHandler
     ){
         CompletableFuture<Void> future = new UniffiFreeingFuture<>(rustFuture, freeFunc);
-        
+
         CompletableFuture.runAsync(() -> {
             try {
                 byte pollResult;
@@ -126,13 +152,9 @@ public final class UniffiAsyncHelpers {
                     pollResult = poll(rustFuture, pollFunc);
                 } while (pollResult != UNIFFI_RUST_FUTURE_POLL_READY);
 
-                // even though the outer `future` has been cancelled, this inner `runAsync` is unsupervised
-                // and keeps running. When it calls `completeFunc` after being cancelled, it's status is `SUCCESS`
-                // (assuming the Rust part succeeded), and the function being called can lead to a core dump.
-                // Guarding with `isCancelled` here makes everything work, but feels like a cludge.
                 if (!future.isCancelled()) {
-                    UniffiHelpers.uniffiRustCallWithError(errorHandler, status -> {
-                        completeFunc.accept(rustFuture, status);
+                    UniffiHelpers.uniffiRustCallWithError(errorHandler, (_arena, status) -> {
+                        completeFunc.apply(_arena, rustFuture, status);
                     });
                     future.complete(null);
                 }
@@ -147,24 +169,24 @@ public final class UniffiAsyncHelpers {
 
         return future;
     }
-    
+
     private static byte poll(long rustFuture, PollingFunction pollFunc) throws InterruptedException, ExecutionException {
         CompletableFuture<Byte> pollFuture = new CompletableFuture<>();
         Thread currentThread = Thread.currentThread();
         pollFuture.whenComplete((result, error) -> LockSupport.unpark(currentThread));
         var handle = uniffiContinuationHandleMap.insert(pollFuture);
-        pollFunc.apply(rustFuture, UniffiRustFutureContinuationCallbackImpl.INSTANCE, handle);
+        pollFunc.apply(rustFuture, CONTINUATION_CALLBACK_STUB, handle);
         while (!pollFuture.isDone()) {
             LockSupport.park();
         }
         return pollFuture.get();
     }
-    
+
     {%- if ci.has_async_callback_interface_definition() %}
-    static <T> UniffiForeignFuture uniffiTraitInterfaceCallAsync(
+    static <T> UniffiForeignFutureData uniffiTraitInterfaceCallAsync(
         Supplier<CompletableFuture<T>> makeCall,
         Consumer<T> handleSuccess,
-        Consumer<UniffiRustCallStatus.ByValue> handleError 
+        Consumer<MemorySegment> handleError
     ){
         // Uniffi does its best to support structured concurrency across the FFI.
         // If the Rust future is dropped, `UniffiForeignFutureFreeImpl` is called, which will cancel the Java completable future if it's still running.
@@ -177,8 +199,10 @@ public final class UniffiAsyncHelpers {
                 if (e instanceof ExecutionException) {
                     e = e.getCause();
                 }
+                Arena arena = Arena.ofAuto();
                 handleError.accept(
                     UniffiRustCallStatus.create(
+                        arena,
                         UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR,
                         {{ Type::String.borrow()|lower_fn(config, ci) }}(e.toString())
                     )
@@ -188,15 +212,15 @@ public final class UniffiAsyncHelpers {
             return null;
         });
         long handle = uniffiForeignFutureHandleMap.insert(new CancelableForeignFuture(foreignFutureCf, ffHandler));
-        return new UniffiForeignFuture(handle, UniffiForeignFutureFreeImpl.INSTANCE);
+        return new UniffiForeignFutureData(handle, FOREIGN_FUTURE_FREE_STUB);
     }
 
     @SuppressWarnings("unchecked")
-    static <T, E extends Throwable> UniffiForeignFuture uniffiTraitInterfaceCallAsyncWithError(
+    static <T, E extends Throwable> UniffiForeignFutureData uniffiTraitInterfaceCallAsyncWithError(
         Supplier<CompletableFuture<T>> makeCall,
         Consumer<T> handleSuccess,
-        Consumer<UniffiRustCallStatus.ByValue> handleError, 
-        Function<E, RustBuffer.ByValue> lowerError,
+        Consumer<MemorySegment> handleError,
+        Function<E, MemorySegment> lowerError,
         Class<E> errorClass
     ){
         var foreignFutureCf = makeCall.get();
@@ -208,9 +232,11 @@ public final class UniffiAsyncHelpers {
                 if (e instanceof ExecutionException) {
                     e = e.getCause();
                 }
+                Arena arena = Arena.ofAuto();
                 if (errorClass.isInstance(e)) {
                     handleError.accept(
                         UniffiRustCallStatus.create(
+                            arena,
                             UniffiRustCallStatus.UNIFFI_CALL_ERROR,
                             lowerError.apply((E) e)
                         )
@@ -218,6 +244,7 @@ public final class UniffiAsyncHelpers {
                 } else {
                     handleError.accept(
                         UniffiRustCallStatus.create(
+                            arena,
                             UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR,
                             {{ Type::String.borrow()|lower_fn(config, ci) }}(e.getMessage())
                         )
@@ -227,20 +254,18 @@ public final class UniffiAsyncHelpers {
 
             return null;
         });
-
         long handle = uniffiForeignFutureHandleMap.insert(new CancelableForeignFuture(foreignFutureCf, ffHandler));
-        return new UniffiForeignFuture(handle, UniffiForeignFutureFreeImpl.INSTANCE);
+        return new UniffiForeignFutureData(handle, FOREIGN_FUTURE_FREE_STUB);
     }
 
-    enum UniffiForeignFutureFreeImpl implements UniffiForeignFutureFree {
-        INSTANCE;
-
-        @Override
-        public void callback(long handle) {
-            var futureWithHandler = uniffiForeignFutureHandleMap.remove(handle);
-            futureWithHandler.cancel();
-        }
-    }
+    private static final MemorySegment FOREIGN_FUTURE_FREE_STUB =
+        {{ "ForeignFutureFree"|ffi_callback_name }}.toUpcallStub(
+            (long handle) -> {
+                var futureWithHandler = uniffiForeignFutureHandleMap.remove(handle);
+                futureWithHandler.cancel();
+            },
+            CALLBACK_ARENA
+        );
 
     // For testing
     public static int uniffiForeignFutureHandleCount() {
