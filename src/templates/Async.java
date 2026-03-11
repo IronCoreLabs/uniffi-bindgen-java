@@ -5,8 +5,6 @@ import java.lang.foreign.MemorySegment;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.locks.LockSupport;
-import java.util.function.BiConsumer;
-import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -191,24 +189,33 @@ public final class UniffiAsyncHelpers {
         // Uniffi does its best to support structured concurrency across the FFI.
         // If the Rust future is dropped, `UniffiForeignFutureFreeImpl` is called, which will cancel the Java completable future if it's still running.
         var foreignFutureCf = makeCall.get();
-        CompletableFuture<Void> ffHandler = CompletableFuture.supplyAsync(() -> {
-            try {
-                foreignFutureCf.thenAcceptAsync(handleSuccess).get();
-            } catch(Throwable e) {
-                // if we errored inside the CF, it's that error we want to send to Rust, not the wrapper
-                if (e instanceof ExecutionException) {
-                    e = e.getCause();
-                }
+        CompletableFuture<Void> ffHandler = foreignFutureCf.<Void>handleAsync((result, error) -> {
+            if (error != null) {
+                // handleAsync wraps exceptions in CompletionException; unwrap to get the real cause
+                Throwable cause = (error instanceof java.util.concurrent.CompletionException && error.getCause() != null)
+                    ? error.getCause() : error;
                 Arena arena = Arena.ofAuto();
                 handleError.accept(
                     UniffiRustCallStatus.create(
                         arena,
                         UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR,
-                        {{ Type::String.borrow()|lower_fn(config, ci) }}(e.toString())
+                        {{ Type::String.borrow()|lower_fn(config, ci) }}(cause.toString())
                     )
                 );
+            } else {
+                try {
+                    handleSuccess.accept(result);
+                } catch (Throwable e) {
+                    Arena arena = Arena.ofAuto();
+                    handleError.accept(
+                        UniffiRustCallStatus.create(
+                            arena,
+                            UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR,
+                            {{ Type::String.borrow()|lower_fn(config, ci) }}(e.toString())
+                        )
+                    );
+                }
             }
-
             return null;
         });
         long handle = uniffiForeignFutureHandleMap.insert(new CancelableForeignFuture(foreignFutureCf, ffHandler));
@@ -224,21 +231,18 @@ public final class UniffiAsyncHelpers {
         Class<E> errorClass
     ){
         var foreignFutureCf = makeCall.get();
-        CompletableFuture<Void> ffHandler = CompletableFuture.supplyAsync(() -> {
-            try {
-                foreignFutureCf.thenAcceptAsync(handleSuccess).get();
-            } catch (Throwable e) {
-                // if we errored inside the CF, it's that error we want to send to Rust, not the wrapper
-                if (e instanceof ExecutionException) {
-                    e = e.getCause();
-                }
+        CompletableFuture<Void> ffHandler = foreignFutureCf.<Void>handleAsync((result, error) -> {
+            if (error != null) {
+                // handleAsync wraps exceptions in CompletionException; unwrap to get the real cause
+                Throwable cause = (error instanceof java.util.concurrent.CompletionException && error.getCause() != null)
+                    ? error.getCause() : error;
                 Arena arena = Arena.ofAuto();
-                if (errorClass.isInstance(e)) {
+                if (errorClass.isInstance(cause)) {
                     handleError.accept(
                         UniffiRustCallStatus.create(
                             arena,
                             UniffiRustCallStatus.UNIFFI_CALL_ERROR,
-                            lowerError.apply((E) e)
+                            lowerError.apply((E) cause)
                         )
                     );
                 } else {
@@ -246,12 +250,34 @@ public final class UniffiAsyncHelpers {
                         UniffiRustCallStatus.create(
                             arena,
                             UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR,
-                            {{ Type::String.borrow()|lower_fn(config, ci) }}(e.getMessage())
+                            {{ Type::String.borrow()|lower_fn(config, ci) }}(cause.getMessage())
                         )
                     );
                 }
+            } else {
+                try {
+                    handleSuccess.accept(result);
+                } catch (Throwable e) {
+                    Arena arena = Arena.ofAuto();
+                    if (errorClass.isInstance(e)) {
+                        handleError.accept(
+                            UniffiRustCallStatus.create(
+                                arena,
+                                UniffiRustCallStatus.UNIFFI_CALL_ERROR,
+                                lowerError.apply((E) e)
+                            )
+                        );
+                    } else {
+                        handleError.accept(
+                            UniffiRustCallStatus.create(
+                                arena,
+                                UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR,
+                                {{ Type::String.borrow()|lower_fn(config, ci) }}(e.getMessage())
+                            )
+                        );
+                    }
+                }
             }
-
             return null;
         });
         long handle = uniffiForeignFutureHandleMap.insert(new CancelableForeignFuture(foreignFutureCf, ffHandler));
