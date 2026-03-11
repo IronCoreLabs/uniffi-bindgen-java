@@ -89,6 +89,8 @@ import java.lang.foreign.MemorySegment;
 
 // UniffiRustCallStatusErrorHandler implementation for times when we don't expect a CALL_ERROR
 class UniffiNullRustCallStatusErrorHandler implements UniffiRustCallStatusErrorHandler<InternalException> {
+    static final UniffiNullRustCallStatusErrorHandler INSTANCE = new UniffiNullRustCallStatusErrorHandler();
+
     @Override
     public InternalException lift(MemorySegment errorBuf) {
         RustBuffer.free(errorBuf);
@@ -100,7 +102,6 @@ package {{ config.package_name() }};
 
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
-import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.concurrent.Callable;
@@ -159,12 +160,12 @@ public final class UniffiHelpers {
 
   // Call a rust function that returns a plain value
   static <U> U uniffiRustCall(UniffiRustCallFunction<U> callback) {
-      return uniffiRustCallWithError(new UniffiNullRustCallStatusErrorHandler(), callback);
+      return uniffiRustCallWithError(UniffiNullRustCallStatusErrorHandler.INSTANCE, callback);
   }
 
   // Call a rust function that returns nothing
   static void uniffiRustCall(UniffiRustCallVoidFunction callback) {
-      uniffiRustCallWithError(new UniffiNullRustCallStatusErrorHandler(), callback);
+      uniffiRustCallWithError(UniffiNullRustCallStatusErrorHandler.INSTANCE, callback);
   }
 
   static <T> void uniffiTraitInterfaceCall(

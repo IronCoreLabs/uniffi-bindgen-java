@@ -106,7 +106,7 @@
         {%- when Some(e) %}
         new {{ e|type_name(ci, config) }}ErrorHandler()
         {%- when None %}
-        new UniffiNullRustCallStatusErrorHandler()
+        UniffiNullRustCallStatusErrorHandler.INSTANCE
         {%- endmatch %}
     )
 {%- endmacro %}

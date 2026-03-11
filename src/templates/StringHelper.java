@@ -48,7 +48,10 @@ public enum FfiConverterString implements FfiConverter<String, MemorySegment> {
     @Override
     public long allocationSize(String value) {
         long sizeForLength = 4L;
-        long sizeForString = (long) value.getBytes(StandardCharsets.UTF_8).length;
+        // Pessimistic allocation: UTF-8 uses at most 3 bytes per Java char.
+        // This avoids encoding the string just to measure its length, since
+        // write() will encode it anyway.
+        long sizeForString = (long) value.length() * 3;
         return sizeForLength + sizeForString;
     }
 
