@@ -153,7 +153,6 @@ public final class {{ ffi_struct.name()|ffi_struct_name }} {
 
 package {{ config.package_name() }};
 
-import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
 import java.lang.foreign.MemorySegment;
@@ -190,7 +189,7 @@ final class UniffiLib {
         {%- match func.return_type() %}{% when Some(return_type) %}{% when None %}{% endmatch %}
     );
     static {% match func.return_type() %}{% when Some(return_type) %}{{ return_type.borrow()|ffi_type_name_for_ffi_struct(config, ci) }}{% when None %}void{% endmatch %} {{ func.name() }}(
-        {%- match func.return_type() %}{% when Some(return_type) %}{% if return_type|ffi_type_is_struct %}Arena _uniffi_arena{% if func.arguments().len() != 0 || func.has_rust_call_status_arg() %}, {% endif %}{% endif %}{% when None %}{% endmatch -%}
+        {%- match func.return_type() %}{% when Some(return_type) %}{% if return_type|ffi_type_is_struct %}SegmentAllocator _uniffi_allocator{% if func.arguments().len() != 0 || func.has_rust_call_status_arg() %}, {% endif %}{% endif %}{% when None %}{% endmatch -%}
         {%- for arg in func.arguments() -%}
         {{ arg.type_().borrow()|ffi_type_name_for_ffi_struct(config, ci) }} {{ arg.name()|var_name }}{% if !loop.last || func.has_rust_call_status_arg() %}, {% endif -%}
         {%- endfor -%}
@@ -198,7 +197,7 @@ final class UniffiLib {
     ) {
         try {
             {% match func.return_type() %}{% when Some(return_type) %}return {{ return_type|ffi_invoke_exact_cast }}MH_{{ func.name() }}.invokeExact(
-                {%- if return_type|ffi_type_is_struct %}(SegmentAllocator) _uniffi_arena{% if func.arguments().len() != 0 || func.has_rust_call_status_arg() %}, {% endif %}{% endif -%}
+                {%- if return_type|ffi_type_is_struct %}_uniffi_allocator{% if func.arguments().len() != 0 || func.has_rust_call_status_arg() %}, {% endif %}{% endif -%}
             {% when None %}MH_{{ func.name() }}.invokeExact({% endmatch -%}
                 {%- for arg in func.arguments() -%}
                 {{ arg.name()|var_name }}{% if !loop.last || func.has_rust_call_status_arg() %}, {% endif -%}

@@ -102,6 +102,7 @@ package {{ config.package_name() }};
 
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.SegmentAllocator;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.concurrent.Callable;
@@ -112,12 +113,12 @@ import java.util.concurrent.Callable;
 public final class UniffiHelpers {
   @FunctionalInterface
   interface UniffiRustCallFunction<U> {
-      U apply(Arena arena, MemorySegment status);
+      U apply(SegmentAllocator allocator, MemorySegment status);
   }
 
   @FunctionalInterface
   interface UniffiRustCallVoidFunction {
-      void apply(Arena arena, MemorySegment status);
+      void apply(SegmentAllocator allocator, MemorySegment status);
   }
 
   // Call a rust function that returns a Result<>.  Pass in the Error class companion that corresponds to the Err

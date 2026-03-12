@@ -28,9 +28,9 @@
     UniffiHelpers.uniffiRustCallWithError(new {{ e|type_name(ci, config) }}ErrorHandler(),
     {%- else %}
     UniffiHelpers.uniffiRustCall(
-    {%- endmatch %} (_arena, _status) -> {
+    {%- endmatch %} (_allocator, _status) -> {
         {% if func.return_type().is_some() %}return {% endif %}UniffiLib.{{ func.ffi_func().name() }}(
-            {% match func.ffi_func().return_type() %}{% when Some(return_type) %}{% if return_type|ffi_type_is_struct %}_arena, {% endif %}{% when None %}{% endmatch -%}
+            {% match func.ffi_func().return_type() %}{% when Some(return_type) %}{% if return_type|ffi_type_is_struct %}_allocator, {% endif %}{% when None %}{% endmatch -%}
             {% if func.takes_self() %}it, {% endif -%}
             {% if func.arguments().len() != 0 %}{% call arg_list_lowered(func) -%}, {% endif -%}
             _status);

@@ -2,6 +2,7 @@ package {{ config.package_name() }};
 
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.SegmentAllocator;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.locks.LockSupport;
@@ -86,12 +87,12 @@ public final class UniffiAsyncHelpers {
 
     @FunctionalInterface
     interface AsyncCompleteFunction<F> {
-        F apply(Arena arena, long rustFuture, MemorySegment status);
+        F apply(SegmentAllocator allocator, long rustFuture, MemorySegment status);
     }
 
     @FunctionalInterface
     interface AsyncCompleteVoidFunction {
-        void apply(Arena arena, long rustFuture, MemorySegment status);
+        void apply(SegmentAllocator allocator, long rustFuture, MemorySegment status);
     }
 
     static <T, F, E extends Exception> CompletableFuture<T> uniffiRustCallAsync(
@@ -112,8 +113,8 @@ public final class UniffiAsyncHelpers {
                 } while (pollResult != UNIFFI_RUST_FUTURE_POLL_READY);
 
                 if (!future.isCancelled()) {
-                    F result = UniffiHelpers.uniffiRustCallWithError(errorHandler, (_arena, status) -> {
-                        return completeFunc.apply(_arena, rustFuture, status);
+                    F result = UniffiHelpers.uniffiRustCallWithError(errorHandler, (_allocator, status) -> {
+                        return completeFunc.apply(_allocator, rustFuture, status);
                     });
                     T liftedResult = liftFunc.apply(result);
                     future.complete(liftedResult);
@@ -151,8 +152,8 @@ public final class UniffiAsyncHelpers {
                 } while (pollResult != UNIFFI_RUST_FUTURE_POLL_READY);
 
                 if (!future.isCancelled()) {
-                    UniffiHelpers.uniffiRustCallWithError(errorHandler, (_arena, status) -> {
-                        completeFunc.apply(_arena, rustFuture, status);
+                    UniffiHelpers.uniffiRustCallWithError(errorHandler, (_allocator, status) -> {
+                        completeFunc.apply(_allocator, rustFuture, status);
                     });
                     future.complete(null);
                 }

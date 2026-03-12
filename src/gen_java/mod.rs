@@ -1016,13 +1016,13 @@ mod filters {
         config: &Config,
     ) -> Result<String, askama::Error> {
         let ffi_func = callable.ffi_rust_future_complete(ci);
-        // Check if the complete function returns a struct (RustBuffer) - if so, pass _arena
-        let needs_arena = matches!(callable.return_type(), Some(return_type) if {
+        // Check if the complete function returns a struct (RustBuffer) - if so, pass _allocator
+        let needs_allocator = matches!(callable.return_type(), Some(return_type) if {
             let ffi_type = FfiType::from(return_type);
             matches!(ffi_type, FfiType::RustBuffer(_))
         });
-        let call = if needs_arena {
-            format!("UniffiLib.{ffi_func}(_arena, future, continuation)")
+        let call = if needs_allocator {
+            format!("UniffiLib.{ffi_func}(_allocator, future, continuation)")
         } else {
             format!("UniffiLib.{ffi_func}(future, continuation)")
         };
@@ -1037,16 +1037,16 @@ mod filters {
                             config.external_type_package_name(&module_path, &name)
                         );
                         format!(
-                            "(_arena, future, continuation) -> {{
+                            "(_allocator, future, continuation) -> {{
                     var result = {call};
                     return {rust_buffer}.fromSegment(result);
                 }}"
                         )
                     }
-                    _ => format!("(_arena, future, continuation) -> {call}"),
+                    _ => format!("(_allocator, future, continuation) -> {call}"),
                 }
             }
-            _ => format!("(_arena, future, continuation) -> {call}"),
+            _ => format!("(_allocator, future, continuation) -> {call}"),
         };
         Ok(call)
     }
