@@ -190,9 +190,12 @@ public final class UniffiAsyncHelpers {
         // Uniffi does its best to support structured concurrency across the FFI.
         // If the Rust future is dropped, `UniffiForeignFutureFreeImpl` is called, which will cancel the Java completable future if it's still running.
         var foreignFutureCf = makeCall.get();
-        CompletableFuture<Void> ffHandler = foreignFutureCf.<Void>handleAsync((result, error) -> {
+        // Use handle() instead of handleAsync() to run completion handler on the completing
+        // thread, avoiding ForkJoinPool scheduling overhead. This is safe because the handler
+        // only lowers data and calls a native function (no blocking operations).
+        CompletableFuture<Void> ffHandler = foreignFutureCf.<Void>handle((result, error) -> {
             if (error != null) {
-                // handleAsync wraps exceptions in CompletionException; unwrap to get the real cause
+                // handle() can also wrap exceptions in CompletionException; unwrap to get the real cause
                 Throwable cause = (error instanceof java.util.concurrent.CompletionException && error.getCause() != null)
                     ? error.getCause() : error;
                 Arena arena = Arena.ofAuto();
@@ -232,9 +235,12 @@ public final class UniffiAsyncHelpers {
         Class<E> errorClass
     ){
         var foreignFutureCf = makeCall.get();
-        CompletableFuture<Void> ffHandler = foreignFutureCf.<Void>handleAsync((result, error) -> {
+        // Use handle() instead of handleAsync() to run completion handler on the completing
+        // thread, avoiding ForkJoinPool scheduling overhead. This is safe because the handler
+        // only lowers data and calls a native function (no blocking operations).
+        CompletableFuture<Void> ffHandler = foreignFutureCf.<Void>handle((result, error) -> {
             if (error != null) {
-                // handleAsync wraps exceptions in CompletionException; unwrap to get the real cause
+                // handle() can also wrap exceptions in CompletionException; unwrap to get the real cause
                 Throwable cause = (error instanceof java.util.concurrent.CompletionException && error.getCause() != null)
                     ? error.getCause() : error;
                 Arena arena = Arena.ofAuto();

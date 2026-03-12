@@ -121,20 +121,29 @@ public final class UniffiHelpers {
       void apply(SegmentAllocator allocator, MemorySegment status);
   }
 
+  // Thread-local pre-allocated call-status segment, reused across all FFI calls on the
+  // same thread. Allocated from global arena so it's never freed.
+  private static final ThreadLocal<MemorySegment> REUSABLE_STATUS = ThreadLocal.withInitial(() ->
+      Arena.global().allocate(UniffiRustCallStatus.LAYOUT)
+  );
+
   // Call a rust function that returns a Result<>.  Pass in the Error class companion that corresponds to the Err
+  // Uses Arena.global() for return value allocations to avoid Arena.ofAuto() GC pressure.
   static <U, E extends Exception> U uniffiRustCallWithError(UniffiRustCallStatusErrorHandler<E> errorHandler, UniffiRustCallFunction<U> callback) throws E {
-      Arena arena = Arena.ofAuto();
-      MemorySegment status = UniffiRustCallStatus.allocate(arena);
-      U returnValue = callback.apply(arena, status);
+      MemorySegment status = REUSABLE_STATUS.get();
+      // Zero out the entire status struct to avoid stale error buffer pointers
+      status.fill((byte) 0);
+      U returnValue = callback.apply(Arena.global(), status);
       uniffiCheckCallStatus(errorHandler, status);
       return returnValue;
   }
 
   // Overload to call a rust function that returns a Result<()>, because void is outside Java's type system.
   static <E extends Exception> void uniffiRustCallWithError(UniffiRustCallStatusErrorHandler<E> errorHandler, UniffiRustCallVoidFunction callback) throws E {
-      Arena arena = Arena.ofAuto();
-      MemorySegment status = UniffiRustCallStatus.allocate(arena);
-      callback.apply(arena, status);
+      MemorySegment status = REUSABLE_STATUS.get();
+      // Zero out the entire status struct to avoid stale error buffer pointers
+      status.fill((byte) 0);
+      callback.apply(Arena.global(), status);
       uniffiCheckCallStatus(errorHandler, status);
   }
 

@@ -41,6 +41,18 @@ public class {{ trait_impl }} {
     {% let inner_method_class = meth.name()|var_name %}
     public static class {{ inner_method_class }}Impl implements {{ ffi_callback.name()|ffi_callback_name }}.Fn {
         public static final {{ inner_method_class }}Impl INSTANCE = new {{ inner_method_class }}Impl();
+        // Cached downcall handle for async completion callback.
+        // The Rust scaffolding typically provides the same function pointer for all
+        // completions, so caching by address avoids expensive downcallHandle() creation.
+        private static volatile java.lang.invoke.MethodHandle uniffiCachedCompleteMh;
+        private static volatile long uniffiCachedCompleteAddr;
+        {%- if meth.is_async() %}
+        // Thread-local pre-allocated result struct to avoid Arena.ofConfined() overhead.
+        // Each thread gets its own segment, so no synchronization needed.
+        private static final ThreadLocal<MemorySegment> RESULT_STRUCT = ThreadLocal.withInitial(() ->
+            Arena.global().allocate({{ meth.foreign_future_ffi_result_struct().name()|ffi_struct_name }}.LAYOUT)
+        );
+        {%- endif %}
         private {{ inner_method_class }}Impl() {}
 
         @Override
@@ -91,38 +103,58 @@ public class {{ trait_impl }} {
             // completion handlers run on ForkJoinPool threads.
             var uniffiFutureCallbackGlobal = MemorySegment.ofAddress(uniffiFutureCallback.address());
             Consumer<{{ meth|async_inner_return_type(ci, config) }}> uniffiHandleSuccess = ({% match meth.return_type() %}{%- when Some(return_type) %}returnValue{%- when None %}nothing{% endmatch %}) -> {
-                Arena resultArena = Arena.ofAuto();
-                var uniffiResult = {{ meth.foreign_future_ffi_result_struct().name()|ffi_struct_name }}.allocate(resultArena);
                 {%- match meth.return_type() %}
                 {%- when Some(return_type) %}
-                {{ meth.foreign_future_ffi_result_struct().name()|ffi_struct_name }}.setreturnValue(uniffiResult, {{ return_type|lower_fn(config, ci) }}(returnValue));
+                // Lower the return value before accessing the result struct.
+                var uniffiLoweredReturn = {{ return_type|lower_fn(config, ci) }}(returnValue);
                 {%- when None %}
                 {%- endmatch %}
-                var emptyStatus = UniffiRustCallStatus.allocate(resultArena);
-                {{ meth.foreign_future_ffi_result_struct().name()|ffi_struct_name }}.setcallStatus(uniffiResult, emptyStatus);
+                // Use thread-local pre-allocated result struct to avoid Arena allocation overhead.
+                // The struct is consumed synchronously by invokeExact before we return.
+                var uniffiResult = RESULT_STRUCT.get();
+                {%- match meth.return_type() %}
+                {%- when Some(return_type) %}
+                {{ meth.foreign_future_ffi_result_struct().name()|ffi_struct_name }}.setreturnValue(uniffiResult, uniffiLoweredReturn);
+                {%- when None %}
+                {%- endmatch %}
+                // Zero the call status inline (success = code 0, no error buffer).
+                var callStatusSlice = {{ meth.foreign_future_ffi_result_struct().name()|ffi_struct_name }}.getcallStatus(uniffiResult);
+                callStatusSlice.fill((byte) 0);
                 try {
-                    var completeMh = Linker.nativeLinker().downcallHandle(
-                        uniffiFutureCallbackGlobal,
-                        {{ ffi_callback|async_completion_callback_name }}.DESCRIPTOR
-                    );
+                    long addr = uniffiFutureCallbackGlobal.address();
+                    java.lang.invoke.MethodHandle completeMh = uniffiCachedCompleteMh;
+                    if (uniffiCachedCompleteAddr != addr || completeMh == null) {
+                        completeMh = Linker.nativeLinker().downcallHandle(
+                            uniffiFutureCallbackGlobal,
+                            {{ ffi_callback|async_completion_callback_name }}.DESCRIPTOR
+                        );
+                        uniffiCachedCompleteAddr = addr;
+                        uniffiCachedCompleteMh = completeMh;
+                    }
                     completeMh.invokeExact(uniffiCallbackData, uniffiResult);
                 } catch (Throwable _ex) {
                     throw new AssertionError("Unexpected exception from FFI callback invocation", _ex);
                 }
             };
             Consumer<MemorySegment> uniffiHandleError = (callStatus) -> {
-                Arena resultArena = Arena.ofAuto();
-                var uniffiResult = {{ meth.foreign_future_ffi_result_struct().name()|ffi_struct_name }}.allocate(resultArena);
+                // Use thread-local pre-allocated result struct to avoid Arena allocation overhead.
+                var uniffiResult = RESULT_STRUCT.get();
                 {%- match meth.return_type() %}
                 {%- when Some(return_type) %}
                 {%- when None %}
                 {%- endmatch %}
                 {{ meth.foreign_future_ffi_result_struct().name()|ffi_struct_name }}.setcallStatus(uniffiResult, callStatus);
                 try {
-                    var completeMh = Linker.nativeLinker().downcallHandle(
-                        uniffiFutureCallbackGlobal,
-                        {{ ffi_callback|async_completion_callback_name }}.DESCRIPTOR
-                    );
+                    long addr = uniffiFutureCallbackGlobal.address();
+                    java.lang.invoke.MethodHandle completeMh = uniffiCachedCompleteMh;
+                    if (uniffiCachedCompleteAddr != addr || completeMh == null) {
+                        completeMh = Linker.nativeLinker().downcallHandle(
+                            uniffiFutureCallbackGlobal,
+                            {{ ffi_callback|async_completion_callback_name }}.DESCRIPTOR
+                        );
+                        uniffiCachedCompleteAddr = addr;
+                        uniffiCachedCompleteMh = completeMh;
+                    }
                     completeMh.invokeExact(uniffiCallbackData, uniffiResult);
                 } catch (Throwable _ex) {
                     throw new AssertionError("Unexpected exception from FFI callback invocation", _ex);
