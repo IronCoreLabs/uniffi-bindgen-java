@@ -1288,18 +1288,18 @@ checksum = "1fc81956842c57dac11422a97c3b8195a1ff727f06e85c84ed2e8aa277c9a0fd"
 
 [[package]]
 name = "uniffi"
-version = "0.29.3"
-source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.3#8ece6a721159b2d99f1b148817f10b7f14eac60e"
+version = "0.29.4"
+source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.4#00cd7e313cf73c78637161831ff17f8f53f7b824"
 dependencies = [
  "anyhow",
  "camino",
  "cargo_metadata",
  "clap",
- "uniffi_bindgen 0.29.3",
+ "uniffi_bindgen 0.29.4",
  "uniffi_build",
  "uniffi_core",
  "uniffi_macros",
- "uniffi_pipeline 0.29.3",
+ "uniffi_pipeline 0.29.4",
 ]
 
 [[package]]
@@ -1337,7 +1337,7 @@ dependencies = [
 [[package]]
 name = "uniffi-example-arithmetic"
 version = "0.22.0"
-source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.3#8ece6a721159b2d99f1b148817f10b7f14eac60e"
+source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.4#00cd7e313cf73c78637161831ff17f8f53f7b824"
 dependencies = [
  "thiserror 1.0.69",
  "uniffi",
@@ -1346,7 +1346,7 @@ dependencies = [
 [[package]]
 name = "uniffi-example-custom-types"
 version = "0.22.0"
-source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.3#8ece6a721159b2d99f1b148817f10b7f14eac60e"
+source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.4#00cd7e313cf73c78637161831ff17f8f53f7b824"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1357,7 +1357,7 @@ dependencies = [
 [[package]]
 name = "uniffi-example-futures"
 version = "0.22.0"
-source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.3#8ece6a721159b2d99f1b148817f10b7f14eac60e"
+source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.4#00cd7e313cf73c78637161831ff17f8f53f7b824"
 dependencies = [
  "async-std",
  "thiserror 1.0.69",
@@ -1367,7 +1367,7 @@ dependencies = [
 [[package]]
 name = "uniffi-example-geometry"
 version = "0.22.0"
-source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.3#8ece6a721159b2d99f1b148817f10b7f14eac60e"
+source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.4#00cd7e313cf73c78637161831ff17f8f53f7b824"
 dependencies = [
  "uniffi",
 ]
@@ -1375,7 +1375,7 @@ dependencies = [
 [[package]]
 name = "uniffi-example-rondpoint"
 version = "0.22.0"
-source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.3#8ece6a721159b2d99f1b148817f10b7f14eac60e"
+source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.4#00cd7e313cf73c78637161831ff17f8f53f7b824"
 dependencies = [
  "uniffi",
 ]
@@ -1383,7 +1383,7 @@ dependencies = [
 [[package]]
 name = "uniffi-fixture-coverall"
 version = "0.22.0"
-source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.3#8ece6a721159b2d99f1b148817f10b7f14eac60e"
+source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.4#00cd7e313cf73c78637161831ff17f8f53f7b824"
 dependencies = [
  "once_cell",
  "thiserror 1.0.69",
@@ -1393,7 +1393,7 @@ dependencies = [
 [[package]]
 name = "uniffi-fixture-ext-types"
 version = "0.22.0"
-source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.3#8ece6a721159b2d99f1b148817f10b7f14eac60e"
+source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.4#00cd7e313cf73c78637161831ff17f8f53f7b824"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1409,7 +1409,7 @@ dependencies = [
 [[package]]
 name = "uniffi-fixture-ext-types-custom-types"
 version = "0.22.0"
-source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.3#8ece6a721159b2d99f1b148817f10b7f14eac60e"
+source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.4#00cd7e313cf73c78637161831ff17f8f53f7b824"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1420,12 +1420,12 @@ dependencies = [
 [[package]]
 name = "uniffi-fixture-ext-types-external-crate"
 version = "0.22.0"
-source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.3#8ece6a721159b2d99f1b148817f10b7f14eac60e"
+source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.4#00cd7e313cf73c78637161831ff17f8f53f7b824"
 
 [[package]]
 name = "uniffi-fixture-ext-types-lib-one"
 version = "0.22.0"
-source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.3#8ece6a721159b2d99f1b148817f10b7f14eac60e"
+source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.4#00cd7e313cf73c78637161831ff17f8f53f7b824"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1436,7 +1436,7 @@ dependencies = [
 [[package]]
 name = "uniffi-fixture-ext-types-sub-lib"
 version = "0.22.0"
-source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.3#8ece6a721159b2d99f1b148817f10b7f14eac60e"
+source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.4#00cd7e313cf73c78637161831ff17f8f53f7b824"
 dependencies = [
  "anyhow",
  "uniffi",
@@ -1446,7 +1446,7 @@ dependencies = [
 [[package]]
 name = "uniffi-fixture-futures"
 version = "0.21.0"
-source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.3#8ece6a721159b2d99f1b148817f10b7f14eac60e"
+source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.4#00cd7e313cf73c78637161831ff17f8f53f7b824"
 dependencies = [
  "async-trait",
  "futures",
@@ -1459,7 +1459,7 @@ dependencies = [
 [[package]]
 name = "uniffi-fixture-time"
 version = "0.22.0"
-source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.3#8ece6a721159b2d99f1b148817f10b7f14eac60e"
+source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.4#00cd7e313cf73c78637161831ff17f8f53f7b824"
 dependencies = [
  "chrono",
  "thiserror 1.0.69",
@@ -1468,8 +1468,8 @@ dependencies = [
 
 [[package]]
 name = "uniffi_bindgen"
-version = "0.29.3"
-source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.3#8ece6a721159b2d99f1b148817f10b7f14eac60e"
+version = "0.29.4"
+source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.4#00cd7e313cf73c78637161831ff17f8f53f7b824"
 dependencies = [
  "anyhow",
  "askama",
@@ -1485,10 +1485,10 @@ dependencies = [
  "tempfile",
  "textwrap",
  "toml",
- "uniffi_internal_macros 0.29.3",
- "uniffi_meta 0.29.3",
- "uniffi_pipeline 0.29.3",
- "uniffi_udl 0.29.3",
+ "uniffi_internal_macros 0.29.4",
+ "uniffi_meta 0.29.4",
+ "uniffi_pipeline 0.29.4",
+ "uniffi_udl 0.29.4",
 ]
 
 [[package]]
@@ -1519,18 +1519,18 @@ dependencies = [
 
 [[package]]
 name = "uniffi_build"
-version = "0.29.3"
-source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.3#8ece6a721159b2d99f1b148817f10b7f14eac60e"
+version = "0.29.4"
+source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.4#00cd7e313cf73c78637161831ff17f8f53f7b824"
 dependencies = [
  "anyhow",
  "camino",
- "uniffi_bindgen 0.29.3",
+ "uniffi_bindgen 0.29.4",
 ]
 
 [[package]]
 name = "uniffi_core"
-version = "0.29.3"
-source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.3#8ece6a721159b2d99f1b148817f10b7f14eac60e"
+version = "0.29.4"
+source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.4#00cd7e313cf73c78637161831ff17f8f53f7b824"
 dependencies = [
  "anyhow",
  "async-compat",
@@ -1541,8 +1541,8 @@ dependencies = [
 
 [[package]]
 name = "uniffi_internal_macros"
-version = "0.29.3"
-source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.3#8ece6a721159b2d99f1b148817f10b7f14eac60e"
+version = "0.29.4"
+source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.4#00cd7e313cf73c78637161831ff17f8f53f7b824"
 dependencies = [
  "anyhow",
  "indexmap",
@@ -1566,8 +1566,8 @@ dependencies = [
 
 [[package]]
 name = "uniffi_macros"
-version = "0.29.3"
-source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.3#8ece6a721159b2d99f1b148817f10b7f14eac60e"
+version = "0.29.4"
+source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.4#00cd7e313cf73c78637161831ff17f8f53f7b824"
 dependencies = [
  "camino",
  "fs-err",
@@ -1577,18 +1577,18 @@ dependencies = [
  "serde",
  "syn",
  "toml",
- "uniffi_meta 0.29.3",
+ "uniffi_meta 0.29.4",
 ]
 
 [[package]]
 name = "uniffi_meta"
-version = "0.29.3"
-source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.3#8ece6a721159b2d99f1b148817f10b7f14eac60e"
+version = "0.29.4"
+source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.4#00cd7e313cf73c78637161831ff17f8f53f7b824"
 dependencies = [
  "anyhow",
  "siphasher",
- "uniffi_internal_macros 0.29.3",
- "uniffi_pipeline 0.29.3",
+ "uniffi_internal_macros 0.29.4",
+ "uniffi_pipeline 0.29.4",
 ]
 
 [[package]]
@@ -1605,14 +1605,14 @@ dependencies = [
 
 [[package]]
 name = "uniffi_pipeline"
-version = "0.29.3"
-source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.3#8ece6a721159b2d99f1b148817f10b7f14eac60e"
+version = "0.29.4"
+source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.4#00cd7e313cf73c78637161831ff17f8f53f7b824"
 dependencies = [
  "anyhow",
  "heck",
  "indexmap",
  "tempfile",
- "uniffi_internal_macros 0.29.3",
+ "uniffi_internal_macros 0.29.4",
 ]
 
 [[package]]
@@ -1630,8 +1630,8 @@ dependencies = [
 
 [[package]]
 name = "uniffi_testing"
-version = "0.29.3"
-source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.3#8ece6a721159b2d99f1b148817f10b7f14eac60e"
+version = "0.29.4"
+source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.4#00cd7e313cf73c78637161831ff17f8f53f7b824"
 dependencies = [
  "anyhow",
  "camino",
@@ -1642,13 +1642,13 @@ dependencies = [
 
 [[package]]
 name = "uniffi_udl"
-version = "0.29.3"
-source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.3#8ece6a721159b2d99f1b148817f10b7f14eac60e"
+version = "0.29.4"
+source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.4#00cd7e313cf73c78637161831ff17f8f53f7b824"
 dependencies = [
  "anyhow",
  "textwrap",
- "uniffi_meta 0.29.3",
- "weedle2 5.0.0 (git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.3)",
+ "uniffi_meta 0.29.4",
+ "weedle2 5.0.0 (git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.4)",
 ]
 
 [[package]]
@@ -1788,7 +1788,7 @@ dependencies = [
 [[package]]
 name = "weedle2"
 version = "5.0.0"
-source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.3#8ece6a721159b2d99f1b148817f10b7f14eac60e"
+source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.29.4#00cd7e313cf73c78637161831ff17f8f53f7b824"
 dependencies = [
  "nom",
 ]
