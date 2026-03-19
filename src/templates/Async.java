@@ -93,7 +93,7 @@ public final class UniffiAsyncHelpers {
                     T liftedResult = liftFunc.apply(result);
                     future.complete(liftedResult);
                 }
-            } catch (Exception e) {
+            } catch (java.lang.Exception e) {
                 future.completeExceptionally(e);
             } finally {
                 if (!future.isCancelled()) {

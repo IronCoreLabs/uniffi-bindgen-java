@@ -13,7 +13,7 @@
     {% else %}
             {%- call to_raw_ffi_call(func) %};
     {% endif %}
-        } catch (Exception e) {
+        } catch (java.lang.Exception e) {
             throw new RuntimeException(e);
         }
     })

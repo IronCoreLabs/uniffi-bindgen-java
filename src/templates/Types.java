@@ -15,7 +15,7 @@ public interface AutoCloseableHelper {
                 if (obj instanceof AutoCloseable) {
                     try {
                         ((AutoCloseable) obj).close();
-                    } catch (Exception e) {
+                    } catch (java.lang.Exception e) {
                         throw new RuntimeException(e);
                     }
                 }
@@ -25,7 +25,7 @@ public interface AutoCloseableHelper {
                         if (element instanceof AutoCloseable) {
                             try {
                                 ((AutoCloseable) element).close();
-                            } catch (Exception e) {
+                            } catch (java.lang.Exception e) {
                                 throw new RuntimeException(e);
                             }
                         }
@@ -36,7 +36,7 @@ public interface AutoCloseableHelper {
                         if (value instanceof AutoCloseable) {
                             try {
                                 ((AutoCloseable) value).close();
-                            } catch (Exception e) {
+                            } catch (java.lang.Exception e) {
                                 throw new RuntimeException(e);
                             }
                         }
@@ -47,7 +47,7 @@ public interface AutoCloseableHelper {
                         if (value instanceof AutoCloseable) {
                             try {
                                 ((AutoCloseable) value).close();
-                            } catch (Exception e) {
+                            } catch (java.lang.Exception e) {
                                 throw new RuntimeException(e);
                             }
                         }

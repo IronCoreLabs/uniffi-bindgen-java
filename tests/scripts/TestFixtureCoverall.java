@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.*;
 import java.lang.ref.WeakReference;
 import java.text.MessageFormat;
@@ -446,10 +447,12 @@ public class TestFixtureCoverall {
     // assert d.category() == null;
     // assert d.integer() == 31L;
 
-    DictWithDefaults d = new DictWithDefaults("this", "that", 42L);
+    DictWithDefaults d = new DictWithDefaults("this", "that", 42L, List.of(), Map.of());
     assert d.name().equals("this");
     assert d.category().equals("that");
     assert d.integer() == 42L;
+    assert d.itemList().isEmpty();
+    assert d.itemMap().isEmpty();
 
     // Test bytes
     try (Coveralls coveralls = new Coveralls("test_bytes")) {
