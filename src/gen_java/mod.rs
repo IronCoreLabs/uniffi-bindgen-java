@@ -955,21 +955,56 @@ mod filters {
 mod tests {
     use super::*;
     use uniffi_bindgen::interface::ComponentInterface;
+    use uniffi_meta::{
+        EnumMetadata, EnumShape, FnMetadata, Metadata, MetadataGroup, NamespaceMetadata, Type,
+        VariantMetadata,
+    };
 
     #[test]
     fn preserves_error_type_named_error() {
-        const UDL: &str = r#"
-            namespace test {
-                [Throws=Error]
-                void alwaysFails();
-            };
-
-            [Error]
-            enum Error { "oops" };
-        "#;
-
-        let ci = ComponentInterface::from_webidl(UDL, "crate_name").unwrap();
+        // create a metadata group with an error enum named only "Error" and a
+        // function that always returns that error.
+        let mut group = MetadataGroup {
+            namespace: NamespaceMetadata {
+                crate_name: "test".to_string(),
+                name: "test".to_string(),
+                ..Default::default()
+            },
+            namespace_docstring: None,
+            items: Default::default(),
+        };
+        group.add_item(Metadata::Enum(EnumMetadata {
+            module_path: "test".to_string(),
+            name: "Error".to_string(),
+            shape: EnumShape::Error { flat: true },
+            remote: false,
+            variants: vec![VariantMetadata {
+                name: "Oops".to_string(),
+                discr: None,
+                fields: vec![],
+                docstring: None,
+            }],
+            discr_type: None,
+            non_exhaustive: false,
+            docstring: None,
+        }));
+        group.add_item(Metadata::Func(FnMetadata {
+            module_path: "test".to_string(),
+            name: "always_fails".to_string(),
+            is_async: false,
+            inputs: vec![],
+            return_type: None,
+            throws: Some(Type::Enum {
+                module_path: "test".to_string(),
+                name: "Error".to_string(),
+            }),
+            checksum: None,
+            docstring: None,
+        }));
+        let ci = ComponentInterface::from_metadata(group).unwrap();
         let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+
+        // show that the generated bindings preserve the name
         let relevant_lines = bindings
             .lines()
             .filter(|line| {
@@ -993,7 +1028,10 @@ mod tests {
 
     #[test]
     fn converts_error_suffix_but_not_bare_error() {
-        assert_eq!(JavaCodeOracle.convert_error_suffix("ExampleError"), "ExampleException");
+        assert_eq!(
+            JavaCodeOracle.convert_error_suffix("ExampleError"),
+            "ExampleException"
+        );
         assert_eq!(JavaCodeOracle.convert_error_suffix("Error"), "Error");
     }
 }
