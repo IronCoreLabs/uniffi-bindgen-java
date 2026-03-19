@@ -367,12 +367,12 @@ public class TestFixtureCoverall {
       assert traits.get(1).name().equals("node-2");
       assert traits.get(1).strongCount() == 2L;
 
-      // Note: this doesn't increase the Rust strong count, since we wrap the Rust impl with a
-      // Swift impl before passing it to `setParent()`
+      // Passing a Rust-backed trait object clones the handle,  which increases the Rust strong count by 1.
       traits.get(0).setParent(traits.get(1));
       assert Coverall.ancestorNames(traits.get(0)).equals(Arrays.asList("node-2"));
       assert Coverall.ancestorNames(traits.get(1)).isEmpty();
-      assert traits.get(1).strongCount() == 2L;
+      // strongCount is 3: 1 for Java wrapper + 1 for method call clone + 1 for setParent's clone
+      assert traits.get(1).strongCount() == 3L;
       assert traits.get(0).getParent().name().equals("node-2");
 
       JavaNode javaNode = new JavaNode();
@@ -464,7 +464,7 @@ public class TestFixtureCoverall {
       private Color color;
   
       public FakePatch(Color color) {
-        super(NoPointer.INSTANCE);
+        super(NoHandle.INSTANCE);
         this.color = color;
       }
 
@@ -479,7 +479,7 @@ public class TestFixtureCoverall {
       private ArrayList<Repair> repairs = new ArrayList(List.of());
 
       public FakeCoveralls(String name) {
-        super(NoPointer.INSTANCE);
+        super(NoHandle.INSTANCE);
         this.name = name;
       }
 

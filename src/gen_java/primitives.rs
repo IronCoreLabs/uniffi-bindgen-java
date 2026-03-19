@@ -1,7 +1,8 @@
 use super::{CodeType, Config};
+use anyhow::Result;
 use paste::paste;
-use uniffi_bindgen::backend::Literal;
-use uniffi_bindgen::interface::{ComponentInterface, Radix, Type};
+use uniffi_bindgen::interface::{ComponentInterface, DefaultValue, Literal};
+use uniffi_meta::{Radix, Type};
 
 fn render_literal(literal: &Literal, _ci: &ComponentInterface, _config: &Config) -> String {
     fn typed_number(type_: &Type, num_str: String) -> String {
@@ -53,7 +54,7 @@ fn render_literal(literal: &Literal, _ci: &ComponentInterface, _config: &Config)
 }
 
 macro_rules! impl_code_type_for_primitive {
-    ($T:ty, $class_name:literal) => {
+    ($T:ty, $class_name:literal, $default:literal) => {
         paste! {
             #[derive(Debug)]
             pub struct $T;
@@ -67,8 +68,11 @@ macro_rules! impl_code_type_for_primitive {
                     $class_name.into()
                 }
 
-                fn literal(&self, literal: &Literal, ci: &ComponentInterface, config: &Config) -> String {
-                    render_literal(&literal, ci, config)
+                fn default(&self, default: &DefaultValue, ci: &ComponentInterface, config: &Config) -> Result<String, askama::Error> {
+                    match default {
+                        DefaultValue::Default => Ok($default.into()),
+                        DefaultValue::Literal(literal) => Ok(render_literal(literal, ci, config)),
+                    }
                 }
             }
         }
@@ -86,16 +90,19 @@ impl CodeType for BytesCodeType {
         "ByteArray".to_string()
     }
 
-    fn literal(&self, literal: &Literal, ci: &ComponentInterface, config: &Config) -> String {
-        render_literal(&literal, ci, config)
+    fn default(&self, default: &DefaultValue, ci: &ComponentInterface, config: &Config) -> Result<String, askama::Error> {
+        match default {
+            DefaultValue::Default => Ok("new byte[]{}".into()),
+            DefaultValue::Literal(literal) => Ok(render_literal(literal, ci, config)),
+        }
     }
 }
 
-impl_code_type_for_primitive!(BooleanCodeType, "Boolean");
-impl_code_type_for_primitive!(StringCodeType, "String");
-impl_code_type_for_primitive!(Int8CodeType, "Byte");
-impl_code_type_for_primitive!(Int16CodeType, "Short");
-impl_code_type_for_primitive!(Int32CodeType, "Integer");
-impl_code_type_for_primitive!(Int64CodeType, "Long");
-impl_code_type_for_primitive!(Float32CodeType, "Float");
-impl_code_type_for_primitive!(Float64CodeType, "Double");
+impl_code_type_for_primitive!(BooleanCodeType, "Boolean", "false");
+impl_code_type_for_primitive!(StringCodeType, "String", "\"\"");
+impl_code_type_for_primitive!(Int8CodeType, "Byte", "(byte)0");
+impl_code_type_for_primitive!(Int16CodeType, "Short", "(short)0");
+impl_code_type_for_primitive!(Int32CodeType, "Integer", "0");
+impl_code_type_for_primitive!(Int64CodeType, "Long", "0L");
+impl_code_type_for_primitive!(Float32CodeType, "Float", "0.0f");
+impl_code_type_for_primitive!(Float64CodeType, "Double", "0.0");

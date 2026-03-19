@@ -9,7 +9,7 @@ use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
 };
-use uniffi_bindgen::{backend::Literal, interface::*};
+use uniffi_bindgen::{interface::*, to_askama_error};
 
 mod callback_interface;
 mod compounds;
@@ -55,8 +55,14 @@ trait CodeType: Debug {
     /// with this type only.
     fn canonical_name(&self) -> String;
 
-    fn literal(&self, _literal: &Literal, ci: &ComponentInterface, config: &Config) -> String {
-        unimplemented!("Unimplemented for {}", self.type_label(ci, config))
+    fn default(&self, default: &DefaultValue, ci: &ComponentInterface, config: &Config) -> Result<String, askama::Error> {
+        match default {
+            DefaultValue::Default => Ok(format!("new {}()", self.type_label(ci, config))),
+            DefaultValue::Literal(_) => Err(to_askama_error(&format!(
+                "Literals for {} are not supported",
+                self.type_label(ci, config)
+            ))),
+        }
     }
 
     /// Instance of the FfiConverter
@@ -426,7 +432,7 @@ impl JavaCodeOracle {
             FfiType::UInt64 | FfiType::Int64 => "0L".to_owned(),
             FfiType::Float32 => "0.0f".to_owned(),
             FfiType::Float64 => "0.0".to_owned(),
-            FfiType::RustArcPtr(_) => "Pointer.NULL".to_owned(),
+            FfiType::Handle => "0L".to_owned(),
             FfiType::RustBuffer(_) => "new RustBuffer.ByValue()".to_owned(),
             FfiType::Callback(_) => "null".to_owned(),
             FfiType::RustCallStatus => "new UniffiRustCallStatus.ByValue()".to_owned(),
@@ -452,7 +458,7 @@ impl JavaCodeOracle {
             | FfiType::Float64 => {
                 format!("{}ByReference", self.ffi_type_label(ffi_type, config, ci))
             }
-            FfiType::RustArcPtr(_) => "PointerByReference".to_owned(),
+            FfiType::Handle => "LongByReference".to_owned(),
             // JNA structs default to ByReference
             FfiType::RustBuffer(_) | FfiType::Struct(_) => {
                 self.ffi_type_label(ffi_type, config, ci)
@@ -479,7 +485,6 @@ impl JavaCodeOracle {
             FfiType::Float32 => "Float".to_string(),
             FfiType::Float64 => "Double".to_string(),
             FfiType::Handle => "Long".to_string(),
-            FfiType::RustArcPtr(_) => "Pointer".to_string(),
             FfiType::RustBuffer(maybe_external) => match maybe_external {
                 Some(external_meta) if external_meta.module_path != ci.crate_name() => {
                     format!(
@@ -521,7 +526,6 @@ impl JavaCodeOracle {
             FfiType::Float32 => "float".to_string(),
             FfiType::Float64 => "double".to_string(),
             FfiType::Handle => "long".to_string(),
-            FfiType::RustArcPtr(_) => "Pointer".to_string(),
             FfiType::RustBuffer(maybe_external) => match maybe_external {
                 Some(external_meta) => {
                     format!(
@@ -675,9 +679,12 @@ fn can_render_callable(callable: &dyn Callable, ci: &ComponentInterface) -> bool
 
 mod filters {
     use super::*;
-    pub use uniffi_bindgen::backend::filters::*;
     use uniffi_bindgen::interface::ffi::ExternalFfiMetadata;
-    use uniffi_meta::LiteralMetadata;
+    use uniffi_meta::AsType;
+
+    pub(super) fn ffi_type(type_: &impl AsType) -> Result<FfiType, askama::Error> {
+        Ok(type_.as_type().into())
+    }
 
     pub(super) fn type_name(
         as_ct: &impl AsCodeType,
@@ -777,8 +784,8 @@ mod filters {
         match literal {
             // Java doesn't convert between signed and unsigned by default
             // so we'll need to make sure we define the type as appropriately
-            LiteralMetadata::UInt(v, _, _) => int_literal(e.variant_discr_type(), v.to_string()),
-            LiteralMetadata::Int(v, _, _) => int_literal(e.variant_discr_type(), v.to_string()),
+            Literal::UInt(v, _, _) => int_literal(e.variant_discr_type(), v.to_string()),
+            Literal::Int(v, _, _) => int_literal(e.variant_discr_type(), v.to_string()),
             _ => Err(to_askama_error("Only ints are supported.")),
         }
     }

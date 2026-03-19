@@ -3,10 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use super::{AsCodeType, CodeType, Config};
-use uniffi_bindgen::{
-    ComponentInterface,
-    backend::{Literal, Type},
-};
+use uniffi_bindgen::interface::{ComponentInterface, DefaultValue, Literal};
+use uniffi_meta::Type;
 
 #[derive(Debug)]
 pub struct OptionalCodeType {
@@ -37,13 +35,15 @@ impl CodeType for OptionalCodeType {
         )
     }
 
-    fn literal(&self, literal: &Literal, ci: &ComponentInterface, config: &Config) -> String {
-        match literal {
-            Literal::None => "null".into(),
-            Literal::Some { inner } => super::JavaCodeOracle
-                .find(&self.inner)
-                .literal(inner, ci, config),
-            _ => panic!("Invalid literal for Optional type: {literal:?}"),
+    fn default(&self, default: &DefaultValue, ci: &ComponentInterface, config: &Config) -> Result<String, askama::Error> {
+        match default {
+            DefaultValue::Default | DefaultValue::Literal(Literal::None) => Ok("null".into()),
+            DefaultValue::Literal(Literal::Some { inner }) => {
+                super::JavaCodeOracle.find(&self.inner).default(inner, ci, config)
+            }
+            _ => Err(uniffi_bindgen::to_askama_error(&format!(
+                "Invalid default for Optional type: {default:?}"
+            ))),
         }
     }
 }
@@ -79,10 +79,14 @@ impl CodeType for SequenceCodeType {
         )
     }
 
-    fn literal(&self, literal: &Literal, _ci: &ComponentInterface, _config: &Config) -> String {
-        match literal {
-            Literal::EmptySequence => "List.of()".into(),
-            _ => panic!("Invalid literal for List type: {literal:?}"),
+    fn default(&self, default: &DefaultValue, _ci: &ComponentInterface, _config: &Config) -> Result<String, askama::Error> {
+        match default {
+            DefaultValue::Default | DefaultValue::Literal(Literal::EmptySequence) => {
+                Ok("List.of()".into())
+            }
+            _ => Err(uniffi_bindgen::to_askama_error(&format!(
+                "Invalid default for List type: {default:?}"
+            ))),
         }
     }
 }
@@ -128,10 +132,14 @@ impl CodeType for MapCodeType {
         )
     }
 
-    fn literal(&self, literal: &Literal, _ci: &ComponentInterface, _config: &Config) -> String {
-        match literal {
-            Literal::EmptyMap => "Map.of()".into(),
-            _ => panic!("Invalid literal for Map type: {literal:?}"),
+    fn default(&self, default: &DefaultValue, _ci: &ComponentInterface, _config: &Config) -> Result<String, askama::Error> {
+        match default {
+            DefaultValue::Default | DefaultValue::Literal(Literal::EmptyMap) => {
+                Ok("Map.of()".into())
+            }
+            _ => Err(uniffi_bindgen::to_askama_error(&format!(
+                "Invalid default for Map type: {default:?}"
+            ))),
         }
     }
 }

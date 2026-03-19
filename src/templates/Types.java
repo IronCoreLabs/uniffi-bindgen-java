@@ -58,12 +58,24 @@ public interface AutoCloseableHelper {
 }
 package {{ config.package_name() }};
 
-public class NoPointer {
+public class NoHandle {
     // Private constructor to prevent instantiation
-    private NoPointer() {}
+    private NoHandle() {}
 
     // Static final instance of the class so it can be used in tests
-    public static final NoPointer INSTANCE = new NoPointer();
+    public static final NoHandle INSTANCE = new NoHandle();
+}
+
+package {{ config.package_name() }};
+
+// Marker class for constructors that accept a raw handle.
+// This disambiguates constructor signatures when an interface has both
+// a regular constructor and one accepting an FFI handle.
+public class UniffiWithHandle {
+    // Private constructor to prevent instantiation
+    private UniffiWithHandle() {}
+
+    public static final UniffiWithHandle INSTANCE = new UniffiWithHandle();
 }
 
 {%- for type_ in ci.iter_local_types() %}

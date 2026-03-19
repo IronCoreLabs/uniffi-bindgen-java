@@ -20,10 +20,11 @@ public class {{ trait_impl }} {
     
     {{ trait_impl }}() {
         vtable = new {{ vtable|ffi_type_name_by_value(config, ci) }}(
+            UniffiFree.INSTANCE,
+            UniffiClone.INSTANCE,
             {%- for (ffi_callback, meth) in vtable_methods.iter() %}
-            {{ meth.name()|var_name }}.INSTANCE,
+            {{ meth.name()|var_name }}.INSTANCE{% if !loop.last %},{% endif %}
             {%- endfor %}
-            UniffiFree.INSTANCE
         );
     }
     
@@ -105,24 +106,24 @@ public class {{ trait_impl }} {
                 );
             };
 
-            uniffiOutReturn.uniffiSetValue(
-                {%- match meth.throws_type() %}
-                {%- when None %}
-                UniffiAsyncHelpers.uniffiTraitInterfaceCallAsync(
-                    makeCall,
-                    uniffiHandleSuccess,
-                    uniffiHandleError
-                )
-                {%- when Some(error_type) %}
-                UniffiAsyncHelpers.uniffiTraitInterfaceCallAsyncWithError(
-                    makeCall,
-                    uniffiHandleSuccess,
-                    uniffiHandleError,
-                    ({{error_type|type_name(ci, config) }} e) -> {{ error_type|lower_fn(config, ci) }}(e),
-                    {{ error_type|type_name(ci, config)}}.class
-                )
-                {%- endmatch %}
+            {%- match meth.throws_type() %}
+            {%- when None %}
+            UniffiAsyncHelpers.uniffiTraitInterfaceCallAsync(
+                makeCall,
+                uniffiHandleSuccess,
+                uniffiHandleError,
+                uniffiOutDroppedCallback
             );
+            {%- when Some(error_type) %}
+            UniffiAsyncHelpers.uniffiTraitInterfaceCallAsyncWithError(
+                makeCall,
+                uniffiHandleSuccess,
+                uniffiHandleError,
+                ({{error_type|type_name(ci, config) }} e) -> {{ error_type|lower_fn(config, ci) }}(e),
+                {{ error_type|type_name(ci, config)}}.class,
+                uniffiOutDroppedCallback
+            );
+            {%- endmatch %}
             {%- endif %}
         }
     }
@@ -136,6 +137,17 @@ public class {{ trait_impl }} {
         @Override
         public void callback(long handle) {
             {{ ffi_converter_name }}.INSTANCE.handleMap.remove(handle);
+        }
+    }
+
+    public static class UniffiClone implements {{ "CallbackInterfaceClone"|ffi_callback_name }} {
+        public static final UniffiClone INSTANCE = new UniffiClone();
+
+        private UniffiClone() {}
+
+        @Override
+        public long callback(long handle) {
+            return {{ ffi_converter_name }}.INSTANCE.handleMap.clone(handle);
         }
     }
 }

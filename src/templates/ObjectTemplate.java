@@ -1,4 +1,4 @@
-// This template implements a class for working with a Rust struct via a Pointer/Arc<T>
+// This template implements a class for working with a Rust struct via a handle
 // to the live Rust struct on the other side of the FFI.
 //
 // Each instance implements core operations for working with the Rust `Arc<T>` and the
@@ -8,8 +8,8 @@
 // struct after it has been dropped, and because we must expose a public API for freeing
 // the Java wrapper object in lieu of reliable finalizers. The core requirements are:
 //
-//   * Each instance holds an opaque pointer to the underlying Rust struct.
-//     Method calls need to read this pointer from the object's state and pass it in to
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
 //     the Rust FFI.
 //
 //   * When an instance is no longer needed, its pointer should be passed to a
@@ -116,7 +116,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.function.Consumer;
-import com.sun.jna.Pointer;
 import java.util.concurrent.CompletableFuture;
 
 {%- call java::docstring(obj, 0) %}
@@ -125,15 +124,19 @@ public class {{ impl_class_name }} extends Exception implements AutoCloseable, {
 {% else -%}
 public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }} {
 {%- endif %}
-  protected Pointer pointer;
+  protected long handle;
   protected UniffiCleaner.Cleanable cleanable;
 
   private AtomicBoolean wasDestroyed = new AtomicBoolean(false);
   private AtomicLong callCounter = new AtomicLong(1);
 
-  public {{ impl_class_name }}(Pointer pointer) {
-    this.pointer = pointer;
-    this.cleanable = UniffiLib.CLEANER.register(this, new UniffiCleanAction(pointer));
+  /**
+   * Internal constructor to wrap a raw handle from FFI.
+   * The UniffiWithHandle marker disambiguates this from other constructors.
+   */
+  public {{ impl_class_name }}(UniffiWithHandle phantom, long handle) {
+    this.handle = handle;
+    this.cleanable = UniffiLib.CLEANER.register(this, new UniffiCleanAction(handle));
   }
 
   /**
@@ -141,9 +144,9 @@ public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }
    * attempt to actually use an object constructed this way will fail as there is no
    * connected Rust object.
    */
-  public {{ impl_class_name }}(NoPointer noPointer) {
-    this.pointer = null;
-    this.cleanable = UniffiLib.CLEANER.register(this, new UniffiCleanAction(pointer));
+  public {{ impl_class_name }}(NoHandle noHandle) {
+    this.handle = 0L;
+    this.cleanable = UniffiLib.CLEANER.register(this, new UniffiCleanAction(handle));
   }
 
   {% match obj.primary_constructor() %}
@@ -153,7 +156,7 @@ public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }
   {%-     else %}
   {%- call java::docstring(cons, 4) %}
   public {{ impl_class_name }}({% call java::arg_list(cons, true) -%}) {% match cons.throws_type() %}{% when Some(throwable) %}throws {{ throwable|type_name(ci, config) }}{% else %}{% endmatch %}{
-    this((Pointer){%- call java::to_ffi_call(cons) -%});
+    this(UniffiWithHandle.INSTANCE, (long){%- call java::to_ffi_call(cons) -%});
   }
   {%-     endif %}
   {%- when None %}
@@ -171,7 +174,7 @@ public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }
     }
   }
 
-  public <R> R callWithPointer(Function<Pointer, R> block) {
+  public <R> R callWithPointer(Function<Long, R> block) {
     // Check and increment the call counter, to keep the object alive.
     // This needs a compare-and-set retry loop in case of concurrent updates.
     long c;
@@ -184,9 +187,9 @@ public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }
         throw new IllegalStateException("{{ impl_class_name }} call counter would overflow");
       }
     } while (! this.callCounter.compareAndSet(c, c + 1L));
-    // Now we can safely do the method call without the pointer being freed concurrently.
+    // Now we can safely do the method call without the handle being freed concurrently.
     try {
-      return block.apply(this.uniffiClonePointer());
+      return block.apply(this.uniffiCloneHandle());
     } finally {
       // This decrement always matches the increment we performed above.
       if (this.callCounter.decrementAndGet() == 0L) {
@@ -195,37 +198,37 @@ public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }
     }
   }
 
-  public void callWithPointer(Consumer<Pointer> block) {
-    callWithPointer((Pointer p) -> {
+  public void callWithPointer(Consumer<Long> block) {
+    callWithPointer((Long p) -> {
       block.accept(p);
       return (Void)null;
     });
   }
 
   private class UniffiCleanAction implements Runnable {
-    private final Pointer pointer;
+    private final long handle;
 
-    public UniffiCleanAction(Pointer pointer) {
-      this.pointer = pointer;
+    public UniffiCleanAction(long handle) {
+      this.handle = handle;
     }
 
     @Override
     public void run() {
-      if (pointer != null) {
+      if (handle != 0L) {
         UniffiHelpers.uniffiRustCall(status -> {
-          UniffiLib.INSTANCE.{{ obj.ffi_object_free().name() }}(pointer, status);
+          UniffiLib.INSTANCE.{{ obj.ffi_object_free().name() }}(handle, status);
           return null;
         });
       }
     }
   }
 
-  Pointer uniffiClonePointer() {
+  long uniffiCloneHandle() {
     return UniffiHelpers.uniffiRustCall(status -> {
-      if (pointer == null) {
+      if (handle == 0L) {
         throw new NullPointerException();
       }
-      return UniffiLib.INSTANCE.{{ obj.ffi_object_clone().name() }}(pointer, status);
+      return UniffiLib.INSTANCE.{{ obj.ffi_object_clone().name() }}(handle, status);
     });
   }
 
@@ -294,9 +297,8 @@ public class {{ impl_class_name }}ErrorHandler implements UniffiRustCallStatusEr
 package {{ config.package_name() }};
 
 import java.nio.ByteBuffer;
-import com.sun.jna.Pointer;
 
-public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, Pointer> {
+public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, Long> {
     INSTANCE;
 
     {%- if obj.has_callback_interface() %}
@@ -304,24 +306,41 @@ public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, Po
     {%- endif %}
 
     @Override
-    public Pointer lower({{ type_name }} value) {
+    public Long lower({{ type_name }} value) {
         {%- if obj.has_callback_interface() %}
-        return new Pointer(handleMap.insert(value));
+        if (value instanceof {{ impl_class_name }}) {
+            // Rust-implemented object. Clone the handle and return it.
+            return (({{ impl_class_name }}) value).uniffiCloneHandle();
+        } else {
+            // Java object, generate a new handle and return that.
+            return handleMap.insert(value);
+        }
         {%- else %}
-        return value.uniffiClonePointer();
+        return value.uniffiCloneHandle();
         {%- endif %}
     }
 
     @Override
-    public {{ type_name }} lift(Pointer value) {
-        return new {{ impl_class_name }}(value);
+    public {{ type_name }} lift(Long value) {
+        {%- if obj.has_callback_interface() %}
+        // Check the LSB: Rust handles have LSB = 0, Java handles have LSB = 1
+        if ((value & 1L) == 0L) {
+            // Rust-generated handle
+            return new {{ impl_class_name }}(UniffiWithHandle.INSTANCE, value);
+        } else {
+            // Java-generated handle - remove from handleMap (handles are single-use)
+            return handleMap.remove(value);
+        }
+        {%- else %}
+        return new {{ impl_class_name }}(UniffiWithHandle.INSTANCE, value);
+        {%- endif %}
     }
 
     @Override
     public {{ type_name }} read(ByteBuffer buf) {
-        // The Rust code always writes pointers as 8 bytes, and will
+        // The Rust code always writes handles as 8 bytes, and will
         // fail to compile if they don't fit.
-        return lift(new Pointer(buf.getLong()));
+        return lift(buf.getLong());
     }
 
     @Override
@@ -331,8 +350,8 @@ public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, Po
 
     @Override
     public void write({{ type_name }} value, ByteBuffer buf) {
-        // The Rust code always expects pointers written as 8 bytes,
+        // The Rust code always expects handles written as 8 bytes,
         // and will fail to compile if they don't fit.
-        buf.putLong(Pointer.nativeValue(lower(value)));
+        buf.putLong(lower(value));
     }
 }

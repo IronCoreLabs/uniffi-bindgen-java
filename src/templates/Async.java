@@ -11,7 +11,7 @@ import java.util.function.Supplier;
 public final class UniffiAsyncHelpers {
     // Async return type handlers
     static final byte UNIFFI_RUST_FUTURE_POLL_READY = (byte) 0;
-    static final byte UNIFFI_RUST_FUTURE_POLL_MAYBE_READY = (byte) 1;
+    static final byte UNIFFI_RUST_FUTURE_POLL_WAKE = (byte) 1;
     static final UniffiHandleMap<CompletableFuture<Byte>> uniffiContinuationHandleMap = new UniffiHandleMap<>();
     static final UniffiHandleMap<CancelableForeignFuture> uniffiForeignFutureHandleMap = new UniffiHandleMap<>();
 
@@ -156,13 +156,14 @@ public final class UniffiAsyncHelpers {
     }
     
     {%- if ci.has_async_callback_interface_definition() %}
-    static <T> UniffiForeignFuture uniffiTraitInterfaceCallAsync(
+    static <T> void uniffiTraitInterfaceCallAsync(
         Supplier<CompletableFuture<T>> makeCall,
         Consumer<T> handleSuccess,
-        Consumer<UniffiRustCallStatus.ByValue> handleError
+        Consumer<UniffiRustCallStatus.ByValue> handleError,
+        UniffiForeignFutureDroppedCallbackStruct uniffiOutDroppedCallback
     ){
         // Uniffi does its best to support structured concurrency across the FFI.
-        // If the Rust future is dropped, `UniffiForeignFutureFreeImpl` is called, which will cancel the Java completable future if it's still running.
+        // If the Rust future is dropped, `uniffiForeignFutureDroppedCallbackImpl` is called, which will cancel the Java completable future if it's still running.
         var foreignFutureCf = makeCall.get();
         CompletableFuture<Void> ffHandler = CompletableFuture.supplyAsync(() -> {
             // Note: it's important we call either `handleSuccess` or `handleError` exactly once.
@@ -193,16 +194,19 @@ public final class UniffiAsyncHelpers {
             return null;
         });
         long handle = uniffiForeignFutureHandleMap.insert(new CancelableForeignFuture(foreignFutureCf, ffHandler));
-        return new UniffiForeignFuture(handle, UniffiForeignFutureFreeImpl.INSTANCE);
+        uniffiOutDroppedCallback.uniffiSetValue(
+            new UniffiForeignFutureDroppedCallbackStruct(handle, uniffiForeignFutureDroppedCallbackImpl.INSTANCE)
+        );
     }
 
     @SuppressWarnings("unchecked")
-    static <T, E extends Throwable> UniffiForeignFuture uniffiTraitInterfaceCallAsyncWithError(
+    static <T, E extends Throwable> void uniffiTraitInterfaceCallAsyncWithError(
         Supplier<CompletableFuture<T>> makeCall,
         Consumer<T> handleSuccess,
         Consumer<UniffiRustCallStatus.ByValue> handleError,
         Function<E, RustBuffer.ByValue> lowerError,
-        Class<E> errorClass
+        Class<E> errorClass,
+        UniffiForeignFutureDroppedCallbackStruct uniffiOutDroppedCallback
     ){
         var foreignFutureCf = makeCall.get();
         CompletableFuture<Void> ffHandler = CompletableFuture.supplyAsync(() -> {
@@ -238,10 +242,12 @@ public final class UniffiAsyncHelpers {
         });
 
         long handle = uniffiForeignFutureHandleMap.insert(new CancelableForeignFuture(foreignFutureCf, ffHandler));
-        return new UniffiForeignFuture(handle, UniffiForeignFutureFreeImpl.INSTANCE);
+        uniffiOutDroppedCallback.uniffiSetValue(
+            new UniffiForeignFutureDroppedCallbackStruct(handle, uniffiForeignFutureDroppedCallbackImpl.INSTANCE)
+        );
     }
 
-    enum UniffiForeignFutureFreeImpl implements UniffiForeignFutureFree {
+    enum uniffiForeignFutureDroppedCallbackImpl implements UniffiForeignFutureDroppedCallback {
         INSTANCE;
 
         @Override

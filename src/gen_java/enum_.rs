@@ -3,8 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use super::{CodeType, Config, potentially_add_external_package};
-use crate::ComponentInterface;
-use uniffi_bindgen::backend::Literal;
+use uniffi_bindgen::interface::{ComponentInterface, DefaultValue, Literal};
 
 #[derive(Debug)]
 pub struct EnumCodeType {
@@ -31,15 +30,16 @@ impl CodeType for EnumCodeType {
         format!("Type{}", self.id)
     }
 
-    fn literal(&self, literal: &Literal, ci: &ComponentInterface, config: &Config) -> String {
-        if let Literal::Enum(v, _) = literal {
-            format!(
+    fn default(&self, default: &DefaultValue, ci: &ComponentInterface, config: &Config) -> Result<String, askama::Error> {
+        match default {
+            DefaultValue::Literal(Literal::Enum(v, _)) => Ok(format!(
                 "{}.{}",
                 self.type_label(ci, config),
                 super::JavaCodeOracle.enum_variant_name(v)
-            )
-        } else {
-            unreachable!();
+            )),
+            _ => Err(uniffi_bindgen::to_askama_error(&format!(
+                "Invalid default for Enum type: {default:?}"
+            ))),
         }
     }
 
