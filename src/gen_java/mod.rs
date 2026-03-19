@@ -337,8 +337,8 @@ impl JavaCodeOracle {
 
     fn convert_error_suffix(&self, nm: &str) -> String {
         match nm.strip_suffix("Error") {
-            None => nm.to_string(),
-            Some(stripped) => format!("{stripped}Exception"),
+            Some(stripped) if !stripped.is_empty() => format!("{stripped}Exception"),
+            _ => nm.to_string(),
         }
     }
 
@@ -985,5 +985,15 @@ mod tests {
             bindings.contains("public class Error extends Exception"),
             "expected generated bindings to preserve the `Error` type name:\n{relevant_lines}"
         );
+        assert!(
+            bindings.contains("public static void alwaysFails() throws Error"),
+            "expected generated bindings to preserve `throws Error`:\n{relevant_lines}"
+        );
+    }
+
+    #[test]
+    fn converts_error_suffix_but_not_bare_error() {
+        assert_eq!(JavaCodeOracle.convert_error_suffix("ExampleError"), "ExampleException");
+        assert_eq!(JavaCodeOracle.convert_error_suffix("Error"), "Error");
     }
 }
