@@ -950,3 +950,40 @@ mod filters {
         Ok(textwrap::indent(&wrapped, &" ".repeat(spaces)))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uniffi_bindgen::interface::ComponentInterface;
+
+    #[test]
+    fn preserves_error_type_named_error() {
+        const UDL: &str = r#"
+            namespace test {
+                [Throws=Error]
+                void alwaysFails();
+            };
+
+            [Error]
+            enum Error { "oops" };
+        "#;
+
+        let ci = ComponentInterface::from_webidl(UDL, "crate_name").unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+        let relevant_lines = bindings
+            .lines()
+            .filter(|line| {
+                line.contains("class Error extends Exception")
+                    || line.contains("class Exception extends Exception")
+                    || line.contains("throws Error")
+                    || line.contains("throws Exception")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert!(
+            bindings.contains("public class Error extends Exception"),
+            "expected generated bindings to preserve the `Error` type name:\n{relevant_lines}"
+        );
+    }
+}
