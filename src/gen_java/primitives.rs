@@ -3,6 +3,7 @@ use paste::paste;
 use uniffi_bindgen::backend::Literal;
 use uniffi_bindgen::interface::{ComponentInterface, Radix, Type};
 
+#[allow(dead_code)]
 fn render_literal(literal: &Literal, _ci: &ComponentInterface, _config: &Config) -> String {
     fn typed_number(type_: &Type, num_str: String) -> String {
         let unwrapped_type = match type_ {
