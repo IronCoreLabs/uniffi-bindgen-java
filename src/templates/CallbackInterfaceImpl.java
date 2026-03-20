@@ -30,8 +30,8 @@ public class {{ trait_impl }} {
     
     // Registers the foreign callback with the Rust side.
     // This method is generated for each callback interface.
-    void register(UniffiLib lib) {
-        lib.{{ ffi_init_callback.name() }}(vtable);
+    void register() {
+        UniffiLib.{{ ffi_init_callback.name() }}(vtable);
     }        
 
     {%- for (ffi_callback, meth) in vtable_methods.iter() %}

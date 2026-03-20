@@ -1,4 +1,5 @@
 {%- let rec = ci.get_record_definition(name).unwrap() %}
+{%- let uniffi_trait_methods = rec.uniffi_trait_methods() %}
 package {{ config.package_name() }};
 
 import java.util.List;
@@ -15,16 +16,18 @@ public record {{ type_name }}(
     {{ field|type_name(ci, config) }} {{ field.name()|var_name -}}
     {% if !loop.last %}, {% endif %}
     {%- endfor %}
-) {% if contains_object_references %}implements AutoCloseable {% endif %}{
+) {% if contains_object_references %}implements AutoCloseable{% endif %}{% if uniffi_trait_methods.ord_cmp.is_some() %}{% if contains_object_references %}, {% else %}implements {% endif %}Comparable<{{ type_name }}>{% endif %} {
     {% if contains_object_references %}
     @Override
     public void close() {
         {% call java::destroy_fields(rec) %}
     }
     {% endif %}
+    {# Add trait implementations for immutable records - these override record's auto-generated methods #}
+    {% call java::uniffi_trait_impls(uniffi_trait_methods, type_name) %}
 }
 {% else %}
-public class {{ type_name }} {% if contains_object_references %}implements AutoCloseable {% endif %}{
+public class {{ type_name }} {% if contains_object_references %}implements AutoCloseable{% if uniffi_trait_methods.ord_cmp.is_some() %}, Comparable<{{ type_name }}>{% endif %}{% else %}{% if uniffi_trait_methods.ord_cmp.is_some() %}implements Comparable<{{ type_name }}> {% endif %}{% endif %}{
     {%- for field in rec.fields() %}
     {%- call java::docstring(field, 4) %}
     private {{ field|type_name(ci, config) }} {{ field.name()|var_name -}};
@@ -62,7 +65,9 @@ public class {{ type_name }} {% if contains_object_references %}implements AutoC
         {% call java::destroy_fields(rec) %}
     }
     {% endif %}
-    
+
+    {# Use trait-based implementations if available, otherwise use hardcoded #}
+    {%- if uniffi_trait_methods.eq_eq.is_none() %}
     @Override
     public boolean equals(Object other) {
         if (other instanceof {{ type_name }}) {
@@ -75,24 +80,37 @@ public class {{ type_name }} {% if contains_object_references %}implements AutoC
         };
         return false;
     }
+    {%- endif %}
 
+    {%- if uniffi_trait_methods.hash_hash.is_none() %}
     @Override
     public int hashCode() {
         return Objects.hash({% for field in rec.fields() %}{{ field.name()|var_name }}{% if !loop.last%}, {% endif %}{% endfor %});
     }
+    {%- endif %}
+
+    {# Add trait implementations #}
+    {% call java::uniffi_trait_impls(uniffi_trait_methods, type_name) %}
 }
 {% endif %}
 {%- else %}
-public class {{ type_name }} {
+public class {{ type_name }}{% if uniffi_trait_methods.ord_cmp.is_some() %} implements Comparable<{{ type_name }}>{% endif %} {
+    {%- if uniffi_trait_methods.eq_eq.is_none() %}
     @Override
     public boolean equals(Object other) {
         return other instanceof {{ type_name }};
     }
+    {%- endif %}
 
+    {%- if uniffi_trait_methods.hash_hash.is_none() %}
     @Override
     public int hashCode() {
         return getClass().hashCode();
     }
+    {%- endif %}
+
+    {# Add trait implementations #}
+    {% call java::uniffi_trait_impls(uniffi_trait_methods, type_name) %}
 }
 {%- endif %}
 

@@ -55,16 +55,6 @@ trait CodeType: Debug {
     /// with this type only.
     fn canonical_name(&self) -> String;
 
-    fn default(&self, default: &DefaultValue, ci: &ComponentInterface, config: &Config) -> Result<String, askama::Error> {
-        match default {
-            DefaultValue::Default => Ok(format!("new {}()", self.type_label(ci, config))),
-            DefaultValue::Literal(_) => Err(to_askama_error(&format!(
-                "Literals for {} are not supported",
-                self.type_label(ci, config)
-            ))),
-        }
-    }
-
     /// Instance of the FfiConverter
     ///
     /// This is the object that contains the lower, write, lift, and read methods for this type.
@@ -85,12 +75,6 @@ trait CodeType: Debug {
     /// read CodeType methods.
     fn ffi_converter_instance(&self, _config: &Config, _ci: &ComponentInterface) -> String {
         format!("{}.INSTANCE", self.ffi_converter_name())
-    }
-
-    /// A list of imports that are needed if this type is in use.
-    /// Classes are imported exactly once.
-    fn imports(&self) -> Option<Vec<String>> {
-        None
     }
 
     /// Function to run at startup
@@ -164,6 +148,8 @@ pub struct Config {
     pub(super) cdylib_name: Option<String>,
     generate_immutable_records: Option<bool>,
     #[serde(default)]
+    omit_checksums: bool,
+    #[serde(default)]
     custom_types: HashMap<String, CustomTypeConfig>,
     #[serde(default)]
     pub(super) external_packages: HashMap<String, String>,
@@ -176,6 +162,10 @@ pub struct Config {
 impl Config {
     pub(crate) fn android_cleaner(&self) -> bool {
         self.android_cleaner.unwrap_or(self.android)
+    }
+
+    pub fn omit_checksums(&self) -> bool {
+        self.omit_checksums
     }
 }
 
@@ -202,7 +192,7 @@ impl Config {
     }
 
     // Get the package name for an external type
-    fn external_type_package_name(&self, module_path: &str, namespace: &str) -> String {
+    pub fn external_type_package_name(&self, module_path: &str, namespace: &str) -> String {
         // config overrides are keyed by the crate name, default fallback is the namespace.
         let crate_name = module_path.split("::").next().unwrap();
         match self.external_packages.get(crate_name) {
@@ -311,6 +301,11 @@ impl<'a> TypeRenderer<'a> {
         self.include_once_names
             .borrow_mut()
             .insert(name.to_string())
+    }
+
+    // Get the package name for an external type (used by ExternalTypeTemplate.java)
+    fn external_type_package_name(&self, module_path: &str, namespace: &str) -> String {
+        self.config.external_type_package_name(module_path, namespace)
     }
 }
 
@@ -668,15 +663,6 @@ impl AsCodeType for &'_ uniffi_bindgen::interface::CallbackInterface {
     }
 }
 
-// A work around for #2392 - we can't handle functions with external errors.
-fn can_render_callable(callable: &dyn Callable, ci: &ComponentInterface) -> bool {
-    // can't handle external errors.
-    callable
-        .throws_type()
-        .map(|t| !ci.is_external(t))
-        .unwrap_or(true)
-}
-
 mod filters {
     use super::*;
     use uniffi_bindgen::interface::ffi::ExternalFfiMetadata;
@@ -696,6 +682,14 @@ mod filters {
 
     pub(super) fn canonical_name(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
         Ok(as_ct.as_codetype().canonical_name())
+    }
+
+    /// Check if a type is external (from another crate)
+    pub(super) fn is_external(
+        as_type: &impl AsType,
+        ci: &ComponentInterface,
+    ) -> Result<bool, askama::Error> {
+        Ok(ci.is_external(&as_type.as_type()))
     }
 
     pub(super) fn ffi_converter_instance(
@@ -810,12 +804,80 @@ mod filters {
         Ok(JavaCodeOracle.ffi_default_value(&type_))
     }
 
-    /// Get the idiomatic Java rendering of a class name.
+    /// FFI type name preferring primitive types (for JNA direct mapping native methods)
+    pub fn ffi_type_name_primitive(
+        type_: &FfiType,
+        config: &Config,
+        ci: &ComponentInterface,
+    ) -> Result<String, askama::Error> {
+        Ok(JavaCodeOracle.ffi_type_label_by_value(type_, true, config, ci))
+    }
+
+    /// Get the interface name for a trait implementation (for external trait interfaces).
+    pub fn trait_interface_name(
+        trait_ty: &Type,
+        ci: &ComponentInterface,
+    ) -> Result<String, askama::Error> {
+        let Some(module_path) = trait_ty.module_path() else {
+            return Err(to_askama_error(&format!("Invalid trait_type: {trait_ty:?}")));
+        };
+        let Some(ci_look) = ci.find_component_interface(module_path) else {
+            return Err(to_askama_error(&format!(
+                "no interface with module_path: {}",
+                module_path
+            )));
+        };
+
+        let (obj_name, has_callback_interface) = match trait_ty {
+            Type::Object { name, .. } => {
+                let Some(obj) = ci_look.get_object_definition(name) else {
+                    return Err(to_askama_error(&format!(
+                        "trait interface not found: {}",
+                        name
+                    )));
+                };
+                (name, obj.has_callback_interface())
+            }
+            Type::CallbackInterface { name, .. } => (name, true),
+            _ => {
+                return Err(to_askama_error(&format!("Invalid trait_type: {trait_ty:?}")));
+            }
+        };
+
+        let class_name = JavaCodeOracle.class_name(ci_look, obj_name);
+        if has_callback_interface {
+            Ok(class_name)
+        } else {
+            Ok(format!("{}Interface", class_name))
+        }
+    }
+
+    /// Get the idiomatic Java rendering of a class name from a string.
     pub fn class_name<S: AsRef<str>>(
         nm: S,
         ci: &ComponentInterface,
     ) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.class_name(ci, nm.as_ref()))
+    }
+
+    /// Get the idiomatic Java rendering of a class name from a Type.
+    pub fn class_name_from_type(
+        as_type: &impl AsType,
+        ci: &ComponentInterface,
+    ) -> Result<String, askama::Error> {
+        let type_ = as_type.as_type();
+        let name = match &type_ {
+            Type::Enum { name, .. } => name,
+            Type::Object { name, .. } => name,
+            Type::Record { name, .. } => name,
+            Type::Custom { name, .. } => name,
+            Type::CallbackInterface { name, .. } => name,
+            _ => return Err(to_askama_error(&format!(
+                "class_name_from_type: unsupported type {:?}",
+                type_
+            ))),
+        };
+        Ok(JavaCodeOracle.class_name(ci, name))
     }
 
     /// Get the idiomatic Java rendering of a function name.
@@ -895,7 +957,7 @@ mod filters {
     ) -> Result<String, askama::Error> {
         let ffi_func = callable.ffi_rust_future_poll(ci);
         Ok(format!(
-            "(future, callback, continuation) -> UniffiLib.INSTANCE.{ffi_func}(future, callback, continuation)"
+            "(future, callback, continuation) -> UniffiLib.{ffi_func}(future, callback, continuation)"
         ))
     }
 
@@ -905,7 +967,7 @@ mod filters {
         config: &Config,
     ) -> Result<String, askama::Error> {
         let ffi_func = callable.ffi_rust_future_complete(ci);
-        let call = format!("UniffiLib.INSTANCE.{ffi_func}(future, continuation)");
+        let call = format!("UniffiLib.{ffi_func}(future, continuation)");
         let call = match callable.return_type() {
             Some(return_type) if ci.is_external(return_type) => {
                 let ffi_type = FfiType::from(return_type);
@@ -936,7 +998,7 @@ mod filters {
         ci: &ComponentInterface,
     ) -> Result<String, askama::Error> {
         let ffi_func = callable.ffi_rust_future_free(ci);
-        Ok(format!("(future) -> UniffiLib.INSTANCE.{ffi_func}(future)"))
+        Ok(format!("(future) -> UniffiLib.{ffi_func}(future)"))
     }
 
     /// Remove the "`" chars we put around function/variable names

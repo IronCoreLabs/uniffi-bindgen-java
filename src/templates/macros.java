@@ -6,7 +6,7 @@
 
 {%- macro to_ffi_call(func) -%}
     {%- if func.self_type().is_some() %}
-    callWithPointer(it -> {
+    callWithHandle(uniffiHandle -> {
         try {
     {% if func.return_type().is_some() %}
             return {%- call to_raw_ffi_call(func) %};
@@ -25,19 +25,22 @@
 {%- macro to_raw_ffi_call(func) -%}
     {%- match func.throws_type() %}
     {%- when Some(e) %}
-    UniffiHelpers.uniffiRustCallWithError(new {{ e|type_name(ci, config) }}ErrorHandler(), 
+    {%- if e|is_external(ci) %}
+    UniffiHelpers.uniffiRustCallWithError(new {{ e|class_name_from_type(ci) }}ExternalErrorHandler(),
+    {%- else %}
+    UniffiHelpers.uniffiRustCallWithError(new {{ e|type_name(ci, config) }}ErrorHandler(),
+    {%- endif %}
     {%- else %}
     UniffiHelpers.uniffiRustCall(
     {%- endmatch %} _status -> {
-        {% if func.return_type().is_some() %}return {% endif %}UniffiLib.INSTANCE.{{ func.ffi_func().name() }}(
-            {% if func.self_type().is_some() %}it, {% endif -%}
+        {% if func.return_type().is_some() %}return {% endif %}UniffiLib.{{ func.ffi_func().name() }}(
+            {% if func.self_type().is_some() %}uniffiHandle, {% endif -%}
             {% if func.arguments().len() != 0 %}{% call arg_list_lowered(func) -%}, {% endif -%}
             _status);
     })
 {%- endmacro -%}
 
 {%- macro func_decl(func_decl, annotation, callable, indent) %}
-    {%- if self::can_render_callable(callable, ci) %}
     {%- call docstring(callable, indent) %}
     {%- if annotation != "" %}
     @{{ annotation }}
@@ -73,22 +76,19 @@
             }
     }
     {% endif %}
-    {%- else %}
-    // Sorry, the callable "{{ callable.name() }}" isn't supported.
-    {%- endif %}
 {% endmacro %}
 
 {%- macro call_async(callable) -%}
     UniffiAsyncHelpers.uniffiRustCallAsync(
 {%- if callable.self_type().is_some() %}
-        callWithPointer(thisPtr -> {
-            return UniffiLib.INSTANCE.{{ callable.ffi_func().name() }}(
-                thisPtr{% if callable.arguments().len() != 0 %},{% endif %}
+        callWithHandle(uniffiHandle -> {
+            return UniffiLib.{{ callable.ffi_func().name() }}(
+                uniffiHandle{% if callable.arguments().len() != 0 %},{% endif %}
                 {% call arg_list_lowered(callable) %}
             );
         }),
 {%- else %}
-        UniffiLib.INSTANCE.{{ callable.ffi_func().name() }}({% call arg_list_lowered(callable) %}),
+        UniffiLib.{{ callable.ffi_func().name() }}({% call arg_list_lowered(callable) %}),
 {%- endif %}
         {{ callable|async_poll(ci) }},
         {{ callable|async_complete(ci, config) }},
@@ -103,7 +103,11 @@
         // Error FFI converter
         {%- match callable.throws_type() %}
         {%- when Some(e) %}
+        {%- if e|is_external(ci) %}
+        new {{ e|class_name_from_type(ci) }}ExternalErrorHandler()
+        {%- else %}
         new {{ e|type_name(ci, config) }}ErrorHandler()
+        {%- endif %}
         {%- when None %}
         new UniffiNullRustCallStatusErrorHandler()
         {%- endmatch %}
@@ -137,6 +141,17 @@
 {%- macro arg_list_ffi_decl(func) %}
     {%- for arg in func.arguments() %}
         {{- arg.type_().borrow()|ffi_type_name_by_value(config, ci) }} {{arg.name()|var_name -}}{%- if !loop.last %}, {% endif -%}
+    {%- endfor %}
+    {%- if func.has_rust_call_status_arg() %}{% if func.arguments().len() != 0 %}, {% endif %}UniffiRustCallStatus uniffi_out_errmk{% endif %}
+{%- endmacro -%}
+
+{#-
+// Arglist for JNA direct mapping native method declarations.
+// Uses primitive types instead of boxed types.
+-#}
+{%- macro arg_list_ffi_decl_primitive(func) %}
+    {%- for arg in func.arguments() %}
+        {{- arg.type_().borrow()|ffi_type_name_primitive(config, ci) }} {{arg.name()|var_name -}}{%- if !loop.last %}, {% endif -%}
     {%- endfor %}
     {%- if func.has_rust_call_status_arg() %}{% if func.arguments().len() != 0 %}, {% endif %}UniffiRustCallStatus uniffi_out_errmk{% endif %}
 {%- endmacro -%}
@@ -175,4 +190,37 @@ v{{- field_num -}}
 
 {%- macro docstring(defn, indent_spaces) %}
 {%- call docstring_value(defn.docstring(), indent_spaces) %}
+{%- endmacro %}
+
+{# Macro for uniffi_trait implementations - Display, Eq, Hash, Ord #}
+{%- macro uniffi_trait_impls(uniffi_trait_methods, type_name) %}
+{# Prefer Display, fall back to Debug #}
+{%- if let Some(fmt) = uniffi_trait_methods.display_fmt.or(uniffi_trait_methods.debug_fmt.clone()) %}
+    @Override
+    public String toString() {
+        return {{ fmt.return_type().unwrap()|lift_fn(config, ci) }}({% call to_ffi_call(fmt) %});
+    }
+{%- endif %}
+{%- if let Some(eq) = uniffi_trait_methods.eq_eq %}
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) return true;
+        if (!(obj instanceof {{ type_name }})) return false;
+        {{ type_name }} other = ({{ type_name }}) obj;
+        return {{ eq.return_type().unwrap()|lift_fn(config, ci) }}({% call to_ffi_call(eq) %});
+    }
+{%- endif %}
+{%- if let Some(hash) = uniffi_trait_methods.hash_hash %}
+    @Override
+    public int hashCode() {
+        return {{ hash.return_type().unwrap()|lift_fn(config, ci) }}({%- call to_ffi_call(hash) %}).intValue();
+    }
+{%- endif %}
+{%- if let Some(cmp) = uniffi_trait_methods.ord_cmp %}
+    @Override
+    public int compareTo({{ type_name }} other) {
+        if (other == null) throw new NullPointerException();
+        return {{ cmp.return_type().unwrap()|lift_fn(config, ci) }}({%- call to_ffi_call(cmp) %}).intValue();
+    }
+{%- endif %}
 {%- endmacro %}

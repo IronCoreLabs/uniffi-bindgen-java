@@ -1,3 +1,4 @@
+{%- let uniffi_trait_methods = e.uniffi_trait_methods() %}
 package {{ config.package_name() }};
 
 import java.util.List;
@@ -12,6 +13,9 @@ public enum {{ type_name }} {
   {%- call java::docstring(variant, 4) %}
   {{ variant|variant_name}}{% if loop.last %};{% else %},{% endif %}
   {%- endfor %}
+
+  {# Add trait implementations for flat enums #}
+  {% call java::uniffi_trait_impls(uniffi_trait_methods, type_name) %}
 }
 {% when Some with (variant_discr_type) %}
 public enum {{ type_name }} {
@@ -24,6 +28,9 @@ public enum {{ type_name }} {
   {{type_name}}({{ variant_discr_type|type_name(ci, config) }} value) {
     this.value = value;
   }
+
+  {# Add trait implementations for flat enums with discriminant #}
+  {% call java::uniffi_trait_impls(uniffi_trait_methods, type_name) %}
 }
 {% endmatch %}
 
@@ -57,7 +64,7 @@ public enum {{ e|ffi_converter_name}} implements FfiConverterRustBuffer<{{ type_
 {% else %}
 
 {%- call java::docstring(e, 0) %}
-public sealed interface {{ type_name }}{% if contains_object_references %} extends AutoCloseable {% endif %} {
+public sealed interface {{ type_name }}{% if contains_object_references %} extends AutoCloseable{% if uniffi_trait_methods.ord_cmp.is_some() %}, Comparable<{{ type_name }}>{% endif %}{% else %}{% if uniffi_trait_methods.ord_cmp.is_some() %} extends Comparable<{{ type_name }}>{% endif %}{% endif %} {
   {% for variant in e.variants() -%}
   {%- call java::docstring(variant, 4) %}
   {% if !variant.has_fields() -%}
@@ -85,6 +92,9 @@ public sealed interface {{ type_name }}{% if contains_object_references %} exten
   }
   {%- endif %}
   {% endfor %}
+
+  {# Add trait implementations as default methods in the sealed interface #}
+  {% call java::uniffi_trait_impls(uniffi_trait_methods, type_name) %}
 }
 
 package {{ config.package_name() }};
