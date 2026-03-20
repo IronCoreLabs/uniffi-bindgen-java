@@ -55,6 +55,7 @@ trait CodeType: Debug {
     /// with this type only.
     fn canonical_name(&self) -> String;
 
+    #[allow(dead_code)]
     fn literal(&self, _literal: &Literal, ci: &ComponentInterface, config: &Config) -> String {
         unimplemented!("Unimplemented for {}", self.type_label(ci, config))
     }
@@ -83,6 +84,7 @@ trait CodeType: Debug {
 
     /// A list of imports that are needed if this type is in use.
     /// Classes are imported exactly once.
+    #[allow(dead_code)]
     fn imports(&self) -> Option<Vec<String>> {
         None
     }
@@ -328,11 +330,11 @@ impl JavaCodeOracle {
     fn class_name(&self, ci: &ComponentInterface, nm: &str) -> String {
         let name = nm.to_string().to_upper_camel_case();
         // fixup errors.
-        fixup_keyword(
-            ci.is_name_used_as_error(nm)
-                .then(|| self.convert_error_suffix(&name))
-                .unwrap_or(name),
-        )
+        fixup_keyword(if ci.is_name_used_as_error(nm) {
+            self.convert_error_suffix(&name)
+        } else {
+            name
+        })
     }
 
     fn convert_error_suffix(&self, nm: &str) -> String {
