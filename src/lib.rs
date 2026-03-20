@@ -1,103 +1,145 @@
-use anyhow::Result;
-use camino::Utf8PathBuf;
+use anyhow::{Context, Result};
+use camino::{Utf8Path, Utf8PathBuf};
 use clap::{Parser, Subcommand};
-use std::{
-    collections::HashMap,
-    fs::{self},
-};
-use uniffi_bindgen::{BindingGenerator, Component, ComponentInterface, GenerationSettings};
+use std::collections::HashMap;
+use std::fs;
+use uniffi_bindgen::{BindgenLoader, BindgenPaths, Component, ComponentInterface};
 
 mod gen_java;
+use gen_java::Config;
 
-pub struct JavaBindingGenerator;
-impl BindingGenerator for JavaBindingGenerator {
-    type Config = gen_java::Config;
+/// Options for generating Java bindings
+pub struct GenerateOptions {
+    /// Path to the source file (UDL or library)
+    pub source: Utf8PathBuf,
+    /// Directory to write generated files
+    pub out_dir: Utf8PathBuf,
+    /// Whether to format generated code (currently not implemented)
+    pub format: bool,
+    /// Optional crate filter - only generate bindings for this crate
+    pub crate_filter: Option<String>,
+}
 
-    fn new_config(&self, root_toml: &toml::Value) -> Result<Self::Config> {
-        Ok(
-            match root_toml.get("bindings").and_then(|b| b.get("java")) {
-                Some(v) => v.clone().try_into()?,
-                None => Default::default(),
-            },
-        )
+pub fn generate(loader: &BindgenLoader, options: &GenerateOptions) -> Result<()> {
+    let metadata = loader.load_metadata(&options.source)?;
+    let cis = loader.load_cis(metadata)?;
+    let cdylib = loader.library_name(&options.source).map(|l| l.to_string());
+    let mut components =
+        loader.load_components(cis, |ci, toml| parse_config(ci, toml, cdylib.clone()))?;
+
+    // Derive FFI functions for each component
+    for c in components.iter_mut() {
+        c.ci.derive_ffi_funcs()?;
     }
 
-    fn update_component_configs(
-        &self,
-        settings: &GenerationSettings,
-        components: &mut Vec<Component<Self::Config>>,
-    ) -> Result<()> {
-        for c in &mut *components {
-            c.config
-                .package_name
-                .get_or_insert_with(|| format!("uniffi.{}", c.ci.namespace()));
-            c.config.cdylib_name.get_or_insert_with(|| {
-                settings
-                    .cdylib
-                    .clone()
-                    .unwrap_or_else(|| format!("uniffi_{}", c.ci.namespace()))
-            });
+    // Update external package mappings across components
+    update_external_packages(&mut components);
+
+    // Generate and write bindings for each component
+    let filename_capture = regex::Regex::new(
+        r"(?m)^(?:public\s)?(?:final\s)?(?:sealed\s)?(?:abstract\s)?(?:static\s)?(?:class|interface|enum|record)\s(\w+)",
+    )
+    .unwrap();
+
+    for Component { ci, config, .. } in components {
+        if let Some(crate_filter) = &options.crate_filter {
+            if ci.crate_name() != crate_filter {
+                continue;
+            }
         }
-        // We need to update package names
-        let packages = HashMap::<String, String>::from_iter(
-            components
-                .iter()
-                .map(|c| (c.ci.crate_name().to_string(), c.config.package_name())),
+
+        let bindings_str = gen_java::generate_bindings(&config, &ci)?;
+        let java_package_out_dir = options.out_dir.join(
+            config
+                .package_name()
+                .split('.')
+                .collect::<Vec<_>>()
+                .join("/"),
         );
-        for c in components {
-            for (ext_crate, ext_package) in &packages {
-                if ext_crate != c.ci.crate_name()
-                    && !c.config.external_packages.contains_key(ext_crate)
-                {
-                    c.config
-                        .external_packages
-                        .insert(ext_crate.to_string(), ext_package.clone());
-                }
+        fs::create_dir_all(&java_package_out_dir)?;
+
+        let package_line = format!("package {};", config.package_name());
+        let split_classes = bindings_str.split(&package_line);
+        let writable = split_classes
+            .map(|file| (filename_capture.captures(file), file))
+            .filter(|(x, _)| x.is_some())
+            .map(|(captures, file)| (captures.unwrap().get(1).unwrap().as_str(), file))
+            .collect::<Vec<_>>();
+
+        for (filename, file) in writable {
+            let java_file_location = java_package_out_dir.join(format!("{}.java", filename));
+            fs::write(&java_file_location, format!("{}\n{}", package_line, file))?;
+        }
+
+        if options.format {
+            // TODO: if there's a CLI formatter that makes sense to use here, use it, PRs welcome
+            // seems like palantir-java-format is popular, but it's only exposed through plugins
+            // google-java-format is legacy popular and does have an executable all-deps JAR, but
+            // must be called with the full jar path including version numbers
+            // prettier sorta works but requires npm and packages be around for a java generator
+        }
+    }
+    Ok(())
+}
+
+/// Parse Java configuration from TOML
+fn parse_config(
+    ci: &ComponentInterface,
+    root_toml: toml::Value,
+    cdylib: Option<String>,
+) -> Result<Config> {
+    let mut config: Config = match root_toml.get("bindings").and_then(|b| b.get("java")) {
+        Some(v) => v.clone().try_into()?,
+        None => Default::default(),
+    };
+    config
+        .package_name
+        .get_or_insert_with(|| format!("uniffi.{}", ci.namespace()));
+    config.cdylib_name.get_or_insert_with(|| {
+        cdylib
+            .clone()
+            .unwrap_or_else(|| format!("uniffi_{}", ci.namespace()))
+    });
+    Ok(config)
+}
+
+/// Update external package mappings across all components
+fn update_external_packages(components: &mut Vec<Component<Config>>) {
+    let packages = HashMap::<String, String>::from_iter(
+        components
+            .iter()
+            .map(|c| (c.ci.crate_name().to_string(), c.config.package_name())),
+    );
+    for c in components {
+        for (ext_crate, ext_package) in &packages {
+            if ext_crate != c.ci.crate_name() && !c.config.external_packages.contains_key(ext_crate)
+            {
+                c.config
+                    .external_packages
+                    .insert(ext_crate.to_string(), ext_package.clone());
             }
         }
-        Ok(())
+    }
+}
+
+/// Create BindgenPaths with cargo metadata layer and optional config override
+fn create_bindgen_paths(
+    config_override: Option<&Utf8Path>,
+    metadata_no_deps: bool,
+) -> Result<BindgenPaths> {
+    let mut paths = BindgenPaths::default();
+
+    // Add config override layer first (takes precedence)
+    if let Some(config_path) = config_override {
+        paths.add_config_override_layer(config_path.to_path_buf());
     }
 
-    fn write_bindings(
-        &self,
-        settings: &GenerationSettings,
-        components: &[Component<Self::Config>],
-    ) -> anyhow::Result<()> {
-        let filename_capture = regex::Regex::new(
-            r"(?m)^(?:public\s)?(?:final\s)?(?:sealed\s)?(?:abstract\s)?(?:static\s)?(?:class|interface|enum|record)\s(\w+)",
-        )
-        .unwrap();
-        for Component { ci, config, .. } in components {
-            let bindings_str = gen_java::generate_bindings(config, ci)?;
-            let java_package_out_dir = &settings.out_dir.join(
-                config
-                    .package_name()
-                    .split('.')
-                    .collect::<Vec<_>>()
-                    .join("/"),
-            );
-            fs::create_dir_all(java_package_out_dir)?;
-            let package_line = format!("package {};", config.package_name());
-            let split_classes = bindings_str.split(&package_line);
-            let writable = split_classes
-                .map(|file| (filename_capture.captures(file), file))
-                .filter(|(x, _)| x.is_some())
-                .map(|(captures, file)| (captures.unwrap().get(1).unwrap().as_str(), file))
-                .collect::<Vec<_>>();
-            for (filename, file) in writable {
-                let java_file_location = java_package_out_dir.join(format!("{}.java", filename));
-                fs::write(&java_file_location, format!("{}\n{}", package_line, file))?;
-            }
-            if settings.try_format_code {
-                // TODO: if there's a CLI formatter that makes sense to use here, use it, PRs welcome
-                // seems like palantir-java-format is popular, but it's only exposed through plugins
-                // google-java-format is legacy popular and does have an executable all-deps JAR, but
-                // must be called with the full jar path including version numbers
-                // prettier sorta works but requires npm and packages be around for a java generator
-            }
-        }
-        Ok(())
-    }
+    // Add cargo metadata layer for finding crate configs
+    paths
+        .add_cargo_metadata_layer(metadata_no_deps)
+        .context("Failed to load cargo metadata")?;
+
+    Ok(paths)
 }
 
 #[derive(Parser)]
@@ -125,14 +167,6 @@ enum Commands {
         /// Path to optional uniffi config file. This config is merged with the `uniffi.toml` config present in each crate, with its values taking precedence.
         #[clap(long, short)]
         config: Option<Utf8PathBuf>,
-
-        /// Extract proc-macro metadata from a native lib (cdylib or staticlib) for this crate.
-        #[clap(long)]
-        lib_file: Option<Utf8PathBuf>,
-
-        /// Pass in a cdylib path rather than a UDL file
-        #[clap(long = "library")]
-        library_mode: bool,
 
         /// When `--library` is passed, only generate bindings for one crate.
         /// When `--library` is not passed, use this as the crate name instead of attempting to
@@ -178,50 +212,32 @@ pub fn run_main() -> Result<()> {
             out_dir,
             no_format,
             config,
-            lib_file,
-            library_mode,
             crate_name,
             source,
             metadata_no_deps,
         } => {
-            if library_mode {
-                use uniffi_bindgen::library_mode::generate_bindings;
-                if lib_file.is_some() {
-                    panic!("--lib-file is not compatible with --library.")
-                }
-                let out_dir = out_dir.expect("--out-dir is required when using --library");
+            let out_dir = out_dir.unwrap_or_else(|| {
+                source
+                    .parent()
+                    .map(|p| p.to_path_buf())
+                    .unwrap_or_else(|| Utf8PathBuf::from("."))
+            });
 
-                let config_supplier = {
-                    use uniffi_bindgen::cargo_metadata::CrateConfigSupplier;
-                    let mut cmd = cargo_metadata::MetadataCommand::new();
-                    if metadata_no_deps {
-                        cmd.no_deps();
-                    }
-                    let metadata = cmd.exec()?;
-                    CrateConfigSupplier::from(metadata)
-                };
+            // Create BindgenPaths with cargo metadata and optional config override
+            let paths = create_bindgen_paths(config.as_deref(), metadata_no_deps)?;
+            let loader = BindgenLoader::new(paths);
 
-                generate_bindings(
-                    &source,
-                    crate_name,
-                    &JavaBindingGenerator,
-                    &config_supplier,
-                    config.as_deref(),
-                    &out_dir,
-                    !no_format,
-                )?;
-            } else {
-                use uniffi_bindgen::generate_bindings;
-                generate_bindings(
-                    &source,
-                    config.as_deref(),
-                    JavaBindingGenerator,
-                    out_dir.as_deref(),
-                    lib_file.as_deref(),
-                    crate_name.as_deref(),
-                    !no_format,
-                )?;
-            }
+            fs::create_dir_all(&out_dir)?;
+
+            generate(
+                &loader,
+                &GenerateOptions {
+                    source,
+                    out_dir,
+                    format: !no_format,
+                    crate_filter: crate_name,
+                },
+            )?;
         }
         Commands::Scaffolding {
             out_dir,

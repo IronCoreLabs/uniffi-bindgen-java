@@ -185,7 +185,7 @@ public final class UniffiAsyncHelpers {
                 handleError.accept(
                     UniffiRustCallStatus.create(
                         UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR,
-                        {{ Type::String.borrow()|lower_fn(config, ci) }}(e.toString())
+                        {{ Type::String.borrow()|lower_fn(config, ci) }}(uniffiStackTraceToString(e))
                     )
                 );
                 return null;
@@ -231,7 +231,7 @@ public final class UniffiAsyncHelpers {
                     handleError.accept(
                         UniffiRustCallStatus.create(
                             UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR,
-                            {{ Type::String.borrow()|lower_fn(config, ci) }}(e.getMessage())
+                            {{ Type::String.borrow()|lower_fn(config, ci) }}(uniffiStackTraceToString(e))
                         )
                     );
                 }
@@ -262,6 +262,16 @@ public final class UniffiAsyncHelpers {
       return uniffiForeignFutureHandleMap.size();
     }
     {%- endif %}
+
+    private static String uniffiStackTraceToString(Throwable e) {
+        try {
+            java.io.StringWriter sw = new java.io.StringWriter();
+            e.printStackTrace(new java.io.PrintWriter(sw));
+            return sw.toString();
+        } catch (Throwable t) {
+            return e.toString();
+        }
+    }
 }
 
 

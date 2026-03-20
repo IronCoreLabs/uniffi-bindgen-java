@@ -30,8 +30,7 @@
 // Public interface members begin here.
 {{ type_helper_code }}
 
-{# Only generate namespace class if there are top-level functions.
-   Otherwise it may collide with type names (e.g., namespace "trait_methods" + interface "TraitMethods"). #}
+{# Only generate namespace class if there are top-level functions. #}
 {%- if !ci.function_definitions().is_empty() %}
 package {{ config.package_name() }};
 
@@ -40,7 +39,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 {%- call java::docstring_value(ci.namespace_docstring(), 0) %}
-public class {{ ci.namespace()|class_name(ci) }} {
+public class {{ self.namespace_class_name() }} {
   {%- for func in ci.function_definitions() %}
   {% call java::func_decl("public static", "", func, 4) %}
   {%- endfor %}

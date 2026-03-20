@@ -47,12 +47,13 @@ Arguments:
   <SOURCE>  Path to the UDL file, or cdylib if `library-mode` is specified
 
 Options:
-  -o, --out-dir <OUT_DIR>    Directory in which to write generated files. Default is same folder as .udl file
-  -n, --no-format            Do not try to format the generated bindings
-  -c, --config <CONFIG>      Path to optional uniffi config file. This config is merged with the `uniffi.toml` config present in each crate, with its values taking precedence
-  --lib-file <LIB_FILE>      Extract proc-macro metadata from a native lib (cdylib or staticlib) for this crate
-  --library                  Pass in a cdylib path rather than a UDL file
-  --crate <CRATE_NAME>       When `--library` is passed, only generate bindings for one crate. When `--library` is not passed, use this as the crate name instead of attempting to locate and parse Cargo.toml
+  -o, --out-dir <OUT_DIR>   Directory in which to write generated files. Default is same folder as .udl file
+  -n, --no-format           Do not try to format the generated bindings
+  -c, --config <CONFIG>     Path to optional uniffi config file. This config is merged with the `uniffi.toml` config present in each crate, with its values taking precedence
+      --crate <CRATE_NAME>  When `--library` is passed, only generate bindings for one crate. When `--library` is not passed, use this as the crate name instead of attempting to locate and parse Cargo.toml
+      --metadata-no-deps    Whether we should exclude dependencies when running "cargo metadata". This will mean external types may not be resolved if they are implemented in crates outside of this workspace. This can be used in environments when all types are in the namespace and fetching all sub-dependencies causes obscure platform specific problems
+  -h, --help                Print help
+  -V, --version             Print version
 ```
 
 As an example:
@@ -179,3 +180,7 @@ Note that if you need additional toml entries for your test, you can put a `unif
 `uniffi-bindgen-java` is versioned separately from `uniffi-rs`. We follow the [Cargo SemVer rules](https://doc.rust-lang.org/cargo/reference/resolver.html#semver-compatibility), so versions are compatible if their left-most non-zero major/minor/patch component is the same. Any modification to the generator that causes a consumer of the generated code to need to make changes is considered breaking.
 
 `uniffi-bindgen-java` is currently unstable and being developed by IronCore Labs to target features required by [`ironcore-alloy`](https://github.com/IronCoreLabs/ironcore-alloy/). The major version is currently 0, and most changes are likely to bump the minor version. 
+
+### Compatibility
+
+This table is an attempt to keep which versions of `uniffi-bindgen-java` used which versions of `uniffi-rs` so that if you're locked into a version of uniffi by other libraries, you can use a compatible one of `uniffi-bindgen-java`.

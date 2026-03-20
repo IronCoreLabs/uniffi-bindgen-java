@@ -21,7 +21,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1"
-askama = { version = "0.13", default-features = false, features = ["config"] }
+askama = { version = "0.14", default-features = false, features = ["config", "derive"] }
 camino = "1.1.6"
 cargo_metadata = "0.19"
 clap = { version = "4", default-features = false, features = [
@@ -37,20 +37,21 @@ regex = "1.10.4"
 serde = "1"
 textwrap = "0.16.1"
 toml = ">=0.8, <=0.9" # must match uniffi_bindgen's toml version
-uniffi_bindgen = "0.30.0"
-uniffi_meta = "0.30.0"
+uniffi_bindgen = "0.31.0"
+uniffi_meta = "0.31.0"
 
 [dev-dependencies]
 glob = "0.3"
 itertools = "0.14.0"
-uniffi-example-arithmetic = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.30.0" }
-uniffi-example-custom-types = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.30.0" }
-uniffi-example-futures = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.30.0" }
-uniffi-example-geometry = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.30.0" }
-uniffi-example-rondpoint = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.30.0" }
-uniffi-fixture-coverall = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.30.0" }
-uniffi-fixture-ext-types = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.30.0" }
-uniffi-fixture-futures = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.30.0" }
-uniffi-fixture-time = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.30.0" }
-uniffi-fixture-trait-methods = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.30.0" }
-uniffi_testing = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.30.0" }
+uniffi-example-arithmetic = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
+uniffi-example-custom-types = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
+uniffi-example-futures = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
+uniffi-example-geometry = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
+uniffi-example-rondpoint = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
+uniffi-fixture-coverall = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
+uniffi-fixture-ext-types = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
+uniffi-fixture-futures = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
+uniffi-fixture-time = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
+uniffi-fixture-trait-methods = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
+uniffi-fixture-proc-macro = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
+uniffi_testing = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }

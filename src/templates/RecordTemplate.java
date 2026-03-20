@@ -23,6 +23,9 @@ public record {{ type_name }}(
         {% call java::destroy_fields(rec) %}
     }
     {% endif %}
+    {% for meth in rec.methods() -%}
+    {%- call java::func_decl("public", "", meth, 4) %}
+    {% endfor %}
     {# Add trait implementations for immutable records - these override record's auto-generated methods #}
     {% call java::uniffi_trait_impls(uniffi_trait_methods, type_name) %}
 }
@@ -89,6 +92,9 @@ public class {{ type_name }} {% if contains_object_references %}implements AutoC
     }
     {%- endif %}
 
+    {% for meth in rec.methods() -%}
+    {%- call java::func_decl("public", "", meth, 4) %}
+    {% endfor %}
     {# Add trait implementations #}
     {% call java::uniffi_trait_impls(uniffi_trait_methods, type_name) %}
 }
@@ -109,6 +115,9 @@ public class {{ type_name }}{% if uniffi_trait_methods.ord_cmp.is_some() %} impl
     }
     {%- endif %}
 
+    {% for meth in rec.methods() -%}
+    {%- call java::func_decl("public", "", meth, 4) %}
+    {% endfor %}
     {# Add trait implementations #}
     {% call java::uniffi_trait_impls(uniffi_trait_methods, type_name) %}
 }

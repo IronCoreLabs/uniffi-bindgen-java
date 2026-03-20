@@ -14,6 +14,9 @@ public enum {{ type_name }} {
   {{ variant|variant_name}}{% if loop.last %};{% else %},{% endif %}
   {%- endfor %}
 
+  {% for meth in e.methods() -%}
+  {%- call java::func_decl("public", "", meth, 4) %}
+  {% endfor %}
   {# Add trait implementations for flat enums #}
   {% call java::uniffi_trait_impls(uniffi_trait_methods, type_name) %}
 }
@@ -21,7 +24,7 @@ public enum {{ type_name }} {
 public enum {{ type_name }} {
   {% for variant in e.variants() -%}
   {%- call java::docstring(variant, 4) %}
-  {{ variant|variant_name}}({{ e|variant_discr_literal(loop.index0)}}){% if loop.last %};{% else %},{% endif %}}
+  {{ variant|variant_name}}({{ e|variant_discr_literal(loop.index0)}}){% if loop.last %};{% else %},{% endif %}
   {%- endfor %}
 
   private final {{ variant_discr_type|type_name(ci, config) }} value;
@@ -29,6 +32,9 @@ public enum {{ type_name }} {
     this.value = value;
   }
 
+  {% for meth in e.methods() -%}
+  {%- call java::func_decl("public", "", meth, 4) %}
+  {% endfor %}
   {# Add trait implementations for flat enums with discriminant #}
   {% call java::uniffi_trait_impls(uniffi_trait_methods, type_name) %}
 }
@@ -83,7 +89,7 @@ public sealed interface {{ type_name }}{% if uniffi_trait_methods.ord_cmp.is_som
   record {{ variant|type_name(ci, config)}}(
     {%- for field in variant.fields()  -%}
     {%- call java::docstring(field, 8) %}
-    {{ field|type_name(ci, config)}} {% call java::field_name(field, loop.index) %}{% if loop.last %}{% else %}, {% endif %}
+    {{ field|qualified_type_name(ci, config)}} {% call java::field_name(field, loop.index) %}{% if loop.last %}{% else %}, {% endif %}
     {%- endfor -%}
   ) implements {{ type_name }} {
     {% if contains_object_references %}
@@ -97,6 +103,10 @@ public sealed interface {{ type_name }}{% if uniffi_trait_methods.ord_cmp.is_som
     {% call java::uniffi_trait_impls(variant_trait_methods, type_name) %}
   }
   {%- endif %}
+  {% endfor %}
+
+  {% for meth in e.methods() -%}
+  {%- call java::func_decl("default", "", meth, 4) %}
   {% endfor %}
 }
 

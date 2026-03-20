@@ -132,7 +132,17 @@ public final class UniffiHelpers {
           writeReturn.accept(makeCall.get());
       } catch (java.lang.Exception e) {
           callStatus.setCode(UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR);
-          callStatus.setErrorBuf({{ Type::String.borrow()|lower_fn(config, ci) }}(e.toString()));
+          callStatus.setErrorBuf({{ Type::String.borrow()|lower_fn(config, ci) }}(uniffiStackTraceToString(e)));
+      }
+  }
+
+  private static String uniffiStackTraceToString(Throwable e) {
+      try {
+          java.io.StringWriter sw = new java.io.StringWriter();
+          e.printStackTrace(new java.io.PrintWriter(sw));
+          return sw.toString();
+      } catch (Throwable t) {
+          return e.toString();
       }
   }
 
@@ -153,7 +163,7 @@ public final class UniffiHelpers {
               callStatus.setErrorBuf(lowerError.apply(castedE));
           } else {
               callStatus.setCode(UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR);
-              callStatus.setErrorBuf({{ Type::String.borrow()|lower_fn(config, ci) }}(e.toString()));
+              callStatus.setErrorBuf({{ Type::String.borrow()|lower_fn(config, ci) }}(uniffiStackTraceToString(e)));
           }
       }
   }
