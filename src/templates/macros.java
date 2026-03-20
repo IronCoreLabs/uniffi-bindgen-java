@@ -5,7 +5,8 @@
 #}
 
 {%- macro to_ffi_call(func) -%}
-    {%- if func.self_type().is_some() %}
+    {%- match func.self_type() %}
+    {%- when Some with (Type::Object { .. }) %}
     callWithHandle(uniffiHandle -> {
         try {
     {% if func.return_type().is_some() %}
@@ -19,7 +20,7 @@
     })
     {% else %}
         {%- call to_raw_ffi_call(func) %}
-    {% endif %}
+    {% endmatch %}
 {%- endmacro %}
 
 {%- macro to_raw_ffi_call(func) -%}
@@ -34,7 +35,11 @@
     UniffiHelpers.uniffiRustCall(
     {%- endmatch %} _status -> {
         {% if func.return_type().is_some() %}return {% endif %}UniffiLib.{{ func.ffi_func().name() }}(
-            {% if func.self_type().is_some() %}uniffiHandle, {% endif -%}
+            {%- match func.self_type() %}
+            {%- when Some with (Type::Object { .. }) %}uniffiHandle,
+            {%- when Some(t) %}{{ t|lower_fn(config, ci) }}(this),
+            {%- when None %}
+            {%- endmatch %}
             {% if func.arguments().len() != 0 %}{% call arg_list_lowered(func) -%}, {% endif -%}
             _status);
     })
@@ -80,16 +85,22 @@
 
 {%- macro call_async(callable) -%}
     UniffiAsyncHelpers.uniffiRustCallAsync(
-{%- if callable.self_type().is_some() %}
+{%- match callable.self_type() %}
+{%- when Some with (Type::Object { .. }) %}
         callWithHandle(uniffiHandle -> {
             return UniffiLib.{{ callable.ffi_func().name() }}(
                 uniffiHandle{% if callable.arguments().len() != 0 %},{% endif %}
                 {% call arg_list_lowered(callable) %}
             );
         }),
-{%- else %}
+{%- when Some(t) %}
+        UniffiLib.{{ callable.ffi_func().name() }}(
+            {{ t|lower_fn(config, ci) }}(this){% if callable.arguments().len() != 0 %},{% endif %}
+            {% call arg_list_lowered(callable) %}
+        ),
+{%- when None %}
         UniffiLib.{{ callable.ffi_func().name() }}({% call arg_list_lowered(callable) %}),
-{%- endif %}
+{%- endmatch %}
         {{ callable|async_poll(ci) }},
         {{ callable|async_complete(ci, config) }},
         {{ callable|async_free(ci) }},
@@ -219,6 +230,35 @@ v{{- field_num -}}
 {%- if let Some(cmp) = uniffi_trait_methods.ord_cmp %}
     @Override
     public int compareTo({{ type_name }} other) {
+        if (other == null) throw new NullPointerException();
+        return {{ cmp.return_type().unwrap()|lift_fn(config, ci) }}({%- call to_ffi_call(cmp) %}).intValue();
+    }
+{%- endif %}
+{%- endmacro %}
+
+{# Macro for uniffi_trait implementations as default interface methods (for sealed interfaces) #}
+{%- macro uniffi_trait_impls_interface(uniffi_trait_methods, type_name) %}
+{# Prefer Display, fall back to Debug #}
+{%- if let Some(fmt) = uniffi_trait_methods.display_fmt.or(uniffi_trait_methods.debug_fmt.clone()) %}
+    default String toStringTrait() {
+        return {{ fmt.return_type().unwrap()|lift_fn(config, ci) }}({% call to_ffi_call(fmt) %});
+    }
+{%- endif %}
+{%- if let Some(eq) = uniffi_trait_methods.eq_eq %}
+    default boolean equalsTrait(Object obj) {
+        if (this == obj) return true;
+        if (!(obj instanceof {{ type_name }})) return false;
+        {{ type_name }} other = ({{ type_name }}) obj;
+        return {{ eq.return_type().unwrap()|lift_fn(config, ci) }}({% call to_ffi_call(eq) %});
+    }
+{%- endif %}
+{%- if let Some(hash) = uniffi_trait_methods.hash_hash %}
+    default int hashCodeTrait() {
+        return {{ hash.return_type().unwrap()|lift_fn(config, ci) }}({%- call to_ffi_call(hash) %}).intValue();
+    }
+{%- endif %}
+{%- if let Some(cmp) = uniffi_trait_methods.ord_cmp %}
+    default int compareTo({{ type_name }} other) {
         if (other == null) throw new NullPointerException();
         return {{ cmp.return_type().unwrap()|lift_fn(config, ci) }}({%- call to_ffi_call(cmp) %}).intValue();
     }

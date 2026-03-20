@@ -264,4 +264,6 @@ fixture_tests! {
     (test_external_types, "uniffi-fixture-ext-types", "scripts/TestImportedTypes/TestImportedTypes.java"),
     (test_futures, "uniffi-example-futures", "scripts/TestFutures.java"),
     (test_futures_fixtures, "uniffi-fixture-futures", "scripts/TestFixtureFutures/TestFixtureFutures.java"),
+    (test_trait_methods, "uniffi-fixture-trait-methods", "scripts/TestTraitMethods.java"),
+    (test_omit_checksums, "uniffi-example-arithmetic", "scripts/TestOmitChecksums/TestOmitChecksums.java"),
 }

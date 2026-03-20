@@ -8,6 +8,7 @@ import uniffi.uniffi_one_ns.*;
 import uniffi.ext_types_custom.*;
 import uniffi.custom_types.*;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Stream;
 
 public class TestImportedTypes {
@@ -60,5 +61,34 @@ public class TestImportedTypes {
 
     assert ct.ecd().sval().equals("ecd");
     assert ImportedTypesLib.getExternalCrateInterface("foo").value().equals("foo");
+
+    // Test external error types crossing crate boundaries (ExternalErrorHandler)
+
+    // 1. Flat error from external crate
+    try {
+      ImportedTypesLib.throwUniffiOneError();
+      assert false : "Should have thrown UniffiOneError";
+    } catch (UniffiOneException.Oops e) {
+      assert e.v1().equals("oh no") : "Wrong error value: " + e.v1();
+    }
+
+    // 2. Async version - error wrapped in ExecutionException
+    try {
+      ImportedTypesLib.throwUniffiOneErrorAsync().get();
+      assert false : "Should have thrown UniffiOneError (async)";
+    } catch (ExecutionException e) {
+      assert e.getCause() instanceof UniffiOneException.Oops : "Wrong exception type: " + e.getCause().getClass();
+      assert ((UniffiOneException.Oops) e.getCause()).v1().equals("oh no - async") : "Wrong error value";
+    }
+
+    // 3. Interface/object error from external crate
+    try {
+      ImportedTypesLib.throwUniffiOneErrorInterface();
+      assert false : "Should have thrown UniffiOneErrorInterface";
+    } catch (UniffiOneErrorInterface e) {
+      assert e.message().equals("interface oops") : "Wrong error message: " + e.message();
+    }
+
+    System.out.println("All imported types tests passed (including external error handling)!");
   }
 }

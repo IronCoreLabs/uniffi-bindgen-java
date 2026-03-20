@@ -30,6 +30,9 @@
 // Public interface members begin here.
 {{ type_helper_code }}
 
+{# Only generate namespace class if there are top-level functions.
+   Otherwise it may collide with type names (e.g., namespace "trait_methods" + interface "TraitMethods"). #}
+{%- if !ci.function_definitions().is_empty() %}
 package {{ config.package_name() }};
 
 import java.util.List;
@@ -42,5 +45,6 @@ public class {{ ci.namespace()|class_name(ci) }} {
   {% call java::func_decl("public static", "", func, 4) %}
   {%- endfor %}
 }
+{%- endif %}
 
 {% import "macros.java" as java %}

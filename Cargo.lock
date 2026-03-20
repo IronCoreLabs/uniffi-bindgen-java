@@ -1349,6 +1349,7 @@ dependencies = [
  "uniffi-fixture-ext-types",
  "uniffi-fixture-futures",
  "uniffi-fixture-time",
+ "uniffi-fixture-trait-methods",
  "uniffi_bindgen 0.30.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "uniffi_meta 0.30.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "uniffi_testing",
@@ -1482,6 +1483,16 @@ version = "0.22.0"
 source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.30.0#47cb43774d7d4dc2fb13225fb95fb1eb24efa893"
 dependencies = [
  "chrono",
+ "thiserror",
+ "uniffi",
+]
+
+[[package]]
+name = "uniffi-fixture-trait-methods"
+version = "0.22.0"
+source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.30.0#47cb43774d7d4dc2fb13225fb95fb1eb24efa893"
+dependencies = [
+ "once_cell",
  "thiserror",
  "uniffi",
 ]

@@ -64,7 +64,7 @@ public enum {{ e|ffi_converter_name}} implements FfiConverterRustBuffer<{{ type_
 {% else %}
 
 {%- call java::docstring(e, 0) %}
-public sealed interface {{ type_name }}{% if contains_object_references %} extends AutoCloseable{% if uniffi_trait_methods.ord_cmp.is_some() %}, Comparable<{{ type_name }}>{% endif %}{% else %}{% if uniffi_trait_methods.ord_cmp.is_some() %} extends Comparable<{{ type_name }}>{% endif %}{% endif %} {
+public sealed interface {{ type_name }}{% if uniffi_trait_methods.ord_cmp.is_some() %}{% if contains_object_references %} extends AutoCloseable, Comparable<{{ type_name }}>{% else %} extends Comparable<{{ type_name }}>{% endif %}{% else %}{% if contains_object_references %} extends AutoCloseable{% endif %}{% endif %} {
   {% for variant in e.variants() -%}
   {%- call java::docstring(variant, 4) %}
   {% if !variant.has_fields() -%}
@@ -75,6 +75,9 @@ public sealed interface {{ type_name }}{% if contains_object_references %} exten
       // Nothing to destroy
     }
     {% endif %}
+    {# Re-get trait methods for each variant to avoid move issues #}
+    {%- let variant_trait_methods = e.uniffi_trait_methods() %}
+    {% call java::uniffi_trait_impls(variant_trait_methods, type_name) %}
   }
   {% else -%}
   record {{ variant|type_name(ci, config)}}(
@@ -89,12 +92,12 @@ public sealed interface {{ type_name }}{% if contains_object_references %} exten
       {% call java::destroy_fields(variant) %}
     }
     {% endif %}
+    {# Re-get trait methods for each variant to avoid move issues #}
+    {%- let variant_trait_methods = e.uniffi_trait_methods() %}
+    {% call java::uniffi_trait_impls(variant_trait_methods, type_name) %}
   }
   {%- endif %}
   {% endfor %}
-
-  {# Add trait implementations as default methods in the sealed interface #}
-  {% call java::uniffi_trait_impls(uniffi_trait_methods, type_name) %}
 }
 
 package {{ config.package_name() }};
