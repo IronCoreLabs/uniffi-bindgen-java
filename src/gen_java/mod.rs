@@ -329,9 +329,7 @@ impl JavaCodeOracle {
         let name = nm.to_string().to_upper_camel_case();
         // fixup errors.
         fixup_keyword(
-            ci.is_name_used_as_error(nm)
-                .then(|| self.convert_error_suffix(&name))
-                .unwrap_or(name),
+            if ci.is_name_used_as_error(nm) { self.convert_error_suffix(&name) } else { name },
         )
     }
 

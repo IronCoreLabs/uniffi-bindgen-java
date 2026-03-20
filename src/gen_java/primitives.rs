@@ -87,7 +87,7 @@ impl CodeType for BytesCodeType {
     }
 
     fn literal(&self, literal: &Literal, ci: &ComponentInterface, config: &Config) -> String {
-        render_literal(&literal, ci, config)
+        render_literal(literal, ci, config)
     }
 }
 

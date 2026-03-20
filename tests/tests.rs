@@ -36,13 +36,13 @@ fn run_test(fixture_name: &str, test_file: &str) -> Result<()> {
                 maybe_extra_uniffi_toml_string,
             ]
             .into_iter()
-            .filter_map(|s| s),
+            .flatten(),
             "\n".to_string(),
         )
         .collect();
 
         // If there wasn't anything read from the files, just return none so the default config file can be used.
-        if final_string == "" {
+        if final_string.is_empty() {
             None
         } else {
             //Create a unique(ish) filename for the fixture. We'll just accept that nanosecond uniqueness is good enough per fixture_name.
@@ -87,7 +87,7 @@ fn run_test(fixture_name: &str, test_file: &str) -> Result<()> {
     fs::copy(&cdylib_path, &cdylib_dest)?;
 
     // compile generated bindings and form jar
-    let jar_file = build_jar(&fixture_name, &out_dir)?;
+    let jar_file = build_jar(fixture_name, &out_dir)?;
 
     // compile test
     let status = Command::new("javac")
