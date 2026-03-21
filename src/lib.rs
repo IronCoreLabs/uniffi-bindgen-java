@@ -3,7 +3,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use clap::{Parser, Subcommand};
 use std::collections::HashMap;
 use std::fs;
-use uniffi_bindgen::{BindgenLoader, BindgenPaths, Component, ComponentInterface};
+use uniffi_bindgen::{interface::rename, BindgenLoader, BindgenPaths, Component, ComponentInterface};
 
 mod gen_java;
 use gen_java::Config;
@@ -27,13 +27,13 @@ pub fn generate(loader: &BindgenLoader, options: &GenerateOptions) -> Result<()>
     let mut components =
         loader.load_components(cis, |ci, toml| parse_config(ci, toml, cdylib.clone()))?;
 
-    // Derive FFI functions for each component
+    // Apply renames and update external package mappings (must happen before derive_ffi_funcs)
+    apply_renames_and_external_packages(&mut components);
+
+    // Derive FFI functions for each component (after renames)
     for c in components.iter_mut() {
         c.ci.derive_ffi_funcs()?;
     }
-
-    // Update external package mappings across components
-    update_external_packages(&mut components);
 
     // Generate and write bindings for each component
     let filename_capture = regex::Regex::new(
@@ -103,8 +103,26 @@ fn parse_config(
     Ok(config)
 }
 
-/// Update external package mappings across all components
-fn update_external_packages(components: &mut Vec<Component<Config>>) {
+/// Apply rename configurations and update external package mappings across all components.
+/// This must be called before derive_ffi_funcs() since renames affect FFI function names.
+fn apply_renames_and_external_packages(components: &mut Vec<Component<Config>>) {
+    // Collect all rename configurations from all components, keyed by module_path (crate name)
+    let mut module_renames = HashMap::new();
+    for c in components.iter() {
+        if !c.config.rename.is_empty() {
+            let module_path = c.ci.crate_name().to_string();
+            module_renames.insert(module_path, c.config.rename.clone());
+        }
+    }
+
+    // Apply rename configurations to all components
+    if !module_renames.is_empty() {
+        for c in &mut *components {
+            rename(&mut c.ci, &module_renames);
+        }
+    }
+
+    // Update external package mappings
     let packages = HashMap::<String, String>::from_iter(
         components
             .iter()

@@ -1355,6 +1355,7 @@ dependencies = [
  "uniffi-fixture-ext-types",
  "uniffi-fixture-futures",
  "uniffi-fixture-proc-macro",
+ "uniffi-fixture-rename",
  "uniffi-fixture-time",
  "uniffi-fixture-trait-methods",
  "uniffi_bindgen 0.31.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1490,6 +1491,15 @@ version = "0.22.0"
 source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.31.0#309762f55db3f0548194a9ceba3027fa64b18a93"
 dependencies = [
  "lazy_static",
+ "thiserror",
+ "uniffi",
+]
+
+[[package]]
+name = "uniffi-fixture-rename"
+version = "0.22.0"
+source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.31.0#309762f55db3f0548194a9ceba3027fa64b18a93"
+dependencies = [
  "thiserror",
  "uniffi",
 ]

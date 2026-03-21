@@ -13,7 +13,7 @@ We highly reccommend you use [UniFFI's proc-macro definition](https://mozilla.gi
 
 ## Installation
 
-MSRV is `1.77.0`.
+MSRV is `1.87.0`.
 
 `cargo install uniffi-bindgen-java --git https://github.com/IronCoreLabs/uniffi-bindgen-java`
 

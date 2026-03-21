@@ -5,7 +5,8 @@
 - support methods on records and enums
 - multiple bugfixes ported from Kotlin changes
 - fully qualified all `java.lang` type use in templates to simplify imports and avoid potential name collisions
-- added `omit_checksums` config option
+- added `omit_checksums` config option, see [the kotlin doc about it](https://mozilla.github.io/uniffi-rs/latest/kotlin/configuration.html#available-options).
+- support the `rename` config option, see [the docs](https://mozilla.github.io/uniffi-rs/latest/renaming.html).
 - Uniffi trait methods
 
 ### Breaking

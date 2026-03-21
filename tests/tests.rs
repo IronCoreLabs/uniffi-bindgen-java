@@ -268,4 +268,5 @@ fixture_tests! {
     (test_trait_methods, "uniffi-fixture-trait-methods", "scripts/TestTraitMethods.java"),
     (test_omit_checksums, "uniffi-example-arithmetic", "scripts/TestOmitChecksums/TestOmitChecksums.java"),
     (test_proc_macro, "uniffi-fixture-proc-macro", "scripts/TestProcMacro.java"),
+    (test_rename, "uniffi-fixture-rename", "scripts/TestRename/TestRename.java"),
 }

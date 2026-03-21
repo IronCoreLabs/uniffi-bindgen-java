@@ -157,6 +157,10 @@ pub struct Config {
     android: bool,
     #[serde(default)]
     android_cleaner: Option<bool>,
+    /// Renames for types, fields, methods, variants, and arguments.
+    /// Uses dot notation: "OldRecord" = "NewRecord", "OldRecord.field" = "new_field"
+    #[serde(default)]
+    pub(super) rename: toml::Table,
 }
 
 impl Config {
