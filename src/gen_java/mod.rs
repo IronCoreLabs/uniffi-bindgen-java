@@ -741,10 +741,9 @@ mod filters {
         config: &Config,
     ) -> anyhow::Result<String> {
         match ty {
-            Type::Optional { inner_type } => Ok(format!(
-                "{}",
-                fully_qualified_type_label(inner_type, ci, config)?
-            )),
+            Type::Optional { inner_type } => {
+                Ok(fully_qualified_type_label(inner_type, ci, config)?.to_string())
+            }
             Type::Sequence { inner_type } => Ok(format!(
                 "java.util.List<{}>",
                 fully_qualified_type_label(inner_type, ci, config)?
@@ -1051,15 +1050,18 @@ mod filters {
     }
 
     /// Get a String representing the name used for an individual enum variant.
-    pub fn variant_name(v: &Variant, _v: &dyn askama::Values) -> Result<String, askama::Error> {
-        Ok(JavaCodeOracle.enum_variant_name(v.name()))
+    pub fn variant_name(
+        variant: &Variant,
+        _v: &dyn askama::Values,
+    ) -> Result<String, askama::Error> {
+        Ok(JavaCodeOracle.enum_variant_name(variant.name()))
     }
 
     pub fn error_variant_name(
-        v: &Variant,
+        variant: &Variant,
         _v: &dyn askama::Values,
     ) -> Result<String, askama::Error> {
-        let name = v.name().to_string().to_upper_camel_case();
+        let name = variant.name().to_string().to_upper_camel_case();
         Ok(JavaCodeOracle.convert_error_suffix(&name))
     }
 

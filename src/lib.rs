@@ -3,7 +3,9 @@ use camino::{Utf8Path, Utf8PathBuf};
 use clap::{Parser, Subcommand};
 use std::collections::HashMap;
 use std::fs;
-use uniffi_bindgen::{interface::rename, BindgenLoader, BindgenPaths, Component, ComponentInterface};
+use uniffi_bindgen::{
+    BindgenLoader, BindgenPaths, Component, ComponentInterface, interface::rename,
+};
 
 mod gen_java;
 use gen_java::Config;
@@ -42,10 +44,10 @@ pub fn generate(loader: &BindgenLoader, options: &GenerateOptions) -> Result<()>
     .unwrap();
 
     for Component { ci, config, .. } in components {
-        if let Some(crate_filter) = &options.crate_filter {
-            if ci.crate_name() != crate_filter {
-                continue;
-            }
+        if let Some(crate_filter) = &options.crate_filter
+            && ci.crate_name() != crate_filter
+        {
+            continue;
         }
 
         let bindings_str = gen_java::generate_bindings(&config, &ci)?;
