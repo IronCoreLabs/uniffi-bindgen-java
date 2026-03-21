@@ -26,6 +26,5 @@ public class TestProcMacro {
         MixedEnum meNone = new MixedEnum.None();
         assert meNone.isNotNone() == false : "Complex enum method isNotNone() for None variant failed";
 
-        System.out.println("TestProcMacro: All tests passed!");
     }
 }

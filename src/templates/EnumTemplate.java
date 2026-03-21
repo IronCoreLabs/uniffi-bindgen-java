@@ -15,7 +15,7 @@ public enum {{ type_name }} {
   {%- call java::func_decl("public", "", meth, 4) %}
   {% endfor %}
   {# Add trait implementations for flat enums #}
-  {% call java::uniffi_trait_impls(uniffi_trait_methods, type_name) %}
+  {% call java::uniffi_trait_impls(uniffi_trait_methods) %}
 }
 {% when Some with (variant_discr_type) %}
 public enum {{ type_name }} {
@@ -33,7 +33,7 @@ public enum {{ type_name }} {
   {%- call java::func_decl("public", "", meth, 4) %}
   {% endfor %}
   {# Add trait implementations for flat enums with discriminant #}
-  {% call java::uniffi_trait_impls(uniffi_trait_methods, type_name) %}
+  {% call java::uniffi_trait_impls(uniffi_trait_methods) %}
 }
 {% endmatch %}
 
@@ -78,7 +78,7 @@ public sealed interface {{ type_name }}{% if uniffi_trait_methods.ord_cmp.is_som
     {% endif %}
     {# Re-get trait methods for each variant to avoid move issues #}
     {%- let variant_trait_methods = e.uniffi_trait_methods() %}
-    {% call java::uniffi_trait_impls(variant_trait_methods, type_name) %}
+    {% call java::uniffi_trait_impls(variant_trait_methods) %}
   }
   {% else -%}
   record {{ variant|type_name(ci, config)}}(
@@ -95,7 +95,7 @@ public sealed interface {{ type_name }}{% if uniffi_trait_methods.ord_cmp.is_som
     {% endif %}
     {# Re-get trait methods for each variant to avoid move issues #}
     {%- let variant_trait_methods = e.uniffi_trait_methods() %}
-    {% call java::uniffi_trait_impls(variant_trait_methods, type_name) %}
+    {% call java::uniffi_trait_impls(variant_trait_methods) %}
   }
   {%- endif %}
   {% endfor %}

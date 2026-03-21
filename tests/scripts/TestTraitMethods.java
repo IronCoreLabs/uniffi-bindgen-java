@@ -54,6 +54,5 @@ public class TestTraitMethods {
         assert new TraitEnum.I((byte) 1).equals(new TraitEnum.I((byte) 2)) : "TraitEnum.I equals different content failed";
         assert new TraitEnum.S("hello").compareTo(new TraitEnum.I((byte) 0)) < 0 : "TraitEnum S < I failed";
 
-        System.out.println("All trait methods tests passed!");
     }
 }

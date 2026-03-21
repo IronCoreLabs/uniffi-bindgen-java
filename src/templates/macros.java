@@ -206,7 +206,7 @@ v{{- field_num -}}
 {%- endmacro %}
 
 {# Macro for uniffi_trait implementations - Display, Eq, Hash, Ord #}
-{%- macro uniffi_trait_impls(uniffi_trait_methods, type_name) %}
+{%- macro uniffi_trait_impls(uniffi_trait_methods) %}
 {# Prefer Display, fall back to Debug #}
 {%- if let Some(fmt) = uniffi_trait_methods.display_fmt.or(uniffi_trait_methods.debug_fmt.clone()) %}
     @Override
@@ -218,8 +218,8 @@ v{{- field_num -}}
     @Override
     public boolean equals(java.lang.Object obj) {
         if (this == obj) return true;
-        if (!(obj instanceof {{ type_name }})) return false;
-        {{ type_name }} other = ({{ type_name }}) obj;
+        if (!(obj instanceof {{ eq.object_name()|class_name(ci) }})) return false;
+        {{ eq.object_name()|class_name(ci) }} other = ({{ eq.object_name()|class_name(ci) }}) obj;
         return {{ eq.return_type().unwrap()|lift_fn(config, ci) }}({% call to_ffi_call(eq) %});
     }
 {%- endif %}
@@ -231,7 +231,7 @@ v{{- field_num -}}
 {%- endif %}
 {%- if let Some(cmp) = uniffi_trait_methods.ord_cmp %}
     @Override
-    public int compareTo({{ type_name }} other) {
+    public int compareTo({{ cmp.object_name()|class_name(ci) }} other) {
         if (other == null) throw new java.lang.NullPointerException();
         return {{ cmp.return_type().unwrap()|lift_fn(config, ci) }}({%- call to_ffi_call(cmp) %}).intValue();
     }
@@ -239,7 +239,7 @@ v{{- field_num -}}
 {%- endmacro %}
 
 {# Macro for uniffi_trait implementations as default interface methods (for sealed interfaces) #}
-{%- macro uniffi_trait_impls_interface(uniffi_trait_methods, type_name) %}
+{%- macro uniffi_trait_impls_interface(uniffi_trait_methods) %}
 {# Prefer Display, fall back to Debug #}
 {%- if let Some(fmt) = uniffi_trait_methods.display_fmt.or(uniffi_trait_methods.debug_fmt.clone()) %}
     default java.lang.String toStringTrait() {
@@ -249,8 +249,8 @@ v{{- field_num -}}
 {%- if let Some(eq) = uniffi_trait_methods.eq_eq %}
     default boolean equalsTrait(java.lang.Object obj) {
         if (this == obj) return true;
-        if (!(obj instanceof {{ type_name }})) return false;
-        {{ type_name }} other = ({{ type_name }}) obj;
+        if (!(obj instanceof {{ eq.object_name()|class_name(ci) }})) return false;
+        {{ eq.object_name()|class_name(ci) }} other = ({{ eq.object_name()|class_name(ci) }}) obj;
         return {{ eq.return_type().unwrap()|lift_fn(config, ci) }}({% call to_ffi_call(eq) %});
     }
 {%- endif %}
@@ -260,7 +260,7 @@ v{{- field_num -}}
     }
 {%- endif %}
 {%- if let Some(cmp) = uniffi_trait_methods.ord_cmp %}
-    default int compareTo({{ type_name }} other) {
+    default int compareTo({{ cmp.object_name()|class_name(ci) }} other) {
         if (other == null) throw new java.lang.NullPointerException();
         return {{ cmp.return_type().unwrap()|lift_fn(config, ci) }}({%- call to_ffi_call(cmp) %}).intValue();
     }

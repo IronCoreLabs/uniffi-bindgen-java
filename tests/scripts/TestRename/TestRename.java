@@ -35,8 +35,6 @@ public class TestRename {
         Trait traitImpl = UniffiFixtureRename.createTraitImpl(5);
         assert traitImpl.renamedTraitMethod(10) == 50 : "5 * 10 = 50";
 
-        System.out.println("Proc-macro rename tests passed!");
-
         //
         // Test TOML-based renaming ([bindings.java.rename])
         // These are Java-specific renames
@@ -80,7 +78,5 @@ public class TestRename {
         JavaTrait javaTraitImpl = UniffiFixtureRename.createBindingTraitImpl(3);
         assert javaTraitImpl.javaTraitMethod(4) == 12 : "3 * 4 = 12";
 
-        System.out.println("TOML-based rename tests passed!");
-        System.out.println("TestRename: All tests passed!");
     }
 }

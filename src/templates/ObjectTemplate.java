@@ -234,7 +234,7 @@ public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }
   {%- call java::func_decl("public", "Override", meth, 4) %}
   {% endfor %}
 
-  {% call java::uniffi_trait_impls(uniffi_trait_methods, impl_class_name) %}
+  {% call java::uniffi_trait_impls(uniffi_trait_methods) %}
 
   {% if !obj.alternate_constructors().is_empty() -%}
   {% for cons in obj.alternate_constructors() -%}

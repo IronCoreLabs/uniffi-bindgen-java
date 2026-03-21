@@ -89,6 +89,5 @@ public class TestImportedTypes {
       assert e.message().equals("interface oops") : "Wrong error message: " + e.message();
     }
 
-    System.out.println("All imported types tests passed (including external error handling)!");
   }
 }

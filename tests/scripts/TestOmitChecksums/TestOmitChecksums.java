@@ -24,6 +24,5 @@ public class TestOmitChecksums {
             // Expected
         }
 
-        System.out.println("omit_checksums test passed - library works without checksum verification!");
     }
 }
