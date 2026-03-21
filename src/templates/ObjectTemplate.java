@@ -139,7 +139,7 @@ public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }
    */
   public {{ impl_class_name }}(NoHandle noHandle) {
     this.handle = 0L;
-    this.cleanable = UniffiLib.CLEANER.register(this, new UniffiCleanAction(handle));
+    this.cleanable = null;
   }
 
   {% match obj.primary_constructor() %}
@@ -162,7 +162,9 @@ public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }
     if (this.wasDestroyed.compareAndSet(false, true)) {
       // This decrement always matches the initial count of 1 given at creation time.
       if (this.callCounter.decrementAndGet() == 0L) {
-        cleanable.clean();
+        if (cleanable != null) {
+          cleanable.clean();
+        }
       }
     }
   }
@@ -186,7 +188,9 @@ public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }
     } finally {
       // This decrement always matches the increment we performed above.
       if (this.callCounter.decrementAndGet() == 0L) {
+        if (cleanable != null) {
           cleanable.clean();
+        }
       }
     }
   }
