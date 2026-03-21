@@ -2,11 +2,6 @@
 {%- let uniffi_trait_methods = rec.uniffi_trait_methods() %}
 package {{ config.package_name() }};
 
-import java.util.List;
-import java.util.Map;
-import java.nio.ByteBuffer;
-import java.util.Objects;
-
 {%- call java::docstring(rec, 0) %}
 {%- if rec.has_fields() %}
 {%- if config.generate_immutable_records() %}
@@ -72,12 +67,12 @@ public class {{ type_name }} {% if contains_object_references %}implements AutoC
     {# Use trait-based implementations if available, otherwise use hardcoded #}
     {%- if uniffi_trait_methods.eq_eq.is_none() %}
     @Override
-    public boolean equals(Object other) {
+    public boolean equals(java.lang.Object other) {
         if (other instanceof {{ type_name }}) {
             {{ type_name }} t = ({{ type_name }}) other;
             return ({% for field in rec.fields() %}{% let field_var_name = field.name()|var_name %}
               {#- currently all primitives are already referenced by their boxed values in generated code, so `.equals` works for everything #}
-              Objects.equals({{ field_var_name }}, t.{{ field_var_name }}){% if !loop.last%} && {% endif %}
+              java.util.Objects.equals({{ field_var_name }}, t.{{ field_var_name }}){% if !loop.last%} && {% endif %}
               {% endfor %}
             );
         };
@@ -88,7 +83,7 @@ public class {{ type_name }} {% if contains_object_references %}implements AutoC
     {%- if uniffi_trait_methods.hash_hash.is_none() %}
     @Override
     public int hashCode() {
-        return Objects.hash({% for field in rec.fields() %}{{ field.name()|var_name }}{% if !loop.last%}, {% endif %}{% endfor %});
+        return java.util.Objects.hash({% for field in rec.fields() %}{{ field.name()|var_name }}{% if !loop.last%}, {% endif %}{% endfor %});
     }
     {%- endif %}
 
@@ -103,7 +98,7 @@ public class {{ type_name }} {% if contains_object_references %}implements AutoC
 public class {{ type_name }}{% if uniffi_trait_methods.ord_cmp.is_some() %} implements Comparable<{{ type_name }}>{% endif %} {
     {%- if uniffi_trait_methods.eq_eq.is_none() %}
     @Override
-    public boolean equals(Object other) {
+    public boolean equals(java.lang.Object other) {
         return other instanceof {{ type_name }};
     }
     {%- endif %}
@@ -125,13 +120,11 @@ public class {{ type_name }}{% if uniffi_trait_methods.ord_cmp.is_some() %} impl
 
 package {{ config.package_name() }};
 
-import java.nio.ByteBuffer;
-
 public enum {{ rec|ffi_converter_name }} implements FfiConverterRustBuffer<{{ type_name }}> {
   INSTANCE;
 
   @Override
-  public {{ type_name }} read(ByteBuffer buf) {
+  public {{ type_name }} read(java.nio.ByteBuffer buf) {
     {%- if rec.has_fields() %}
     return new {{ type_name }}(
     {%- for field in rec.fields() %}
@@ -157,7 +150,7 @@ public enum {{ rec|ffi_converter_name }} implements FfiConverterRustBuffer<{{ ty
   }
 
   @Override
-  public void write({{ type_name }} value, ByteBuffer buf) {
+  public void write({{ type_name }} value, java.nio.ByteBuffer buf) {
     {%- for field in rec.fields() %}
       {{ field|write_fn(config, ci) }}(value.{{ field.name()|var_name }}(), buf);
     {%- endfor %}

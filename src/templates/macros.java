@@ -14,8 +14,8 @@
     {% else %}
             {%- call to_raw_ffi_call(func) %};
     {% endif %}
-        } catch (java.lang.Exception e) {
-            throw new RuntimeException(e);
+        } catch (java.lang.Exception _uniffi_ex) {
+            throw new java.lang.RuntimeException(_uniffi_ex);
         }
     })
     {% else %}
@@ -51,7 +51,7 @@
     @{{ annotation }}
     {% endif %}
     {%- if callable.is_async() %}
-    {{ func_decl }} CompletableFuture<{% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|type_name(ci, config) }}{%- when None %}Void{%- endmatch %}> {{ callable.name()|fn_name }}(
+    {{ func_decl }} java.util.concurrent.CompletableFuture<{% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|type_name(ci, config) }}{%- when None %}java.lang.Void{%- endmatch %}> {{ callable.name()|fn_name }}(
         {%- call arg_list(callable, !callable.self_type().is_some()) -%}
     ){
         return {% call call_async(callable) %};
@@ -66,7 +66,7 @@
         {%- endmatch %} {
             try {
                 {% match callable.return_type() -%}{%- when Some with (return_type) -%}return {{ return_type|lift_fn(config, ci) }}({% call to_ffi_call(callable) %}){%- when None %}{% call to_ffi_call(callable) %}{%- endmatch %};
-            } catch (RuntimeException _e) {
+            } catch (java.lang.RuntimeException _e) {
                 {% match callable.throws_type() %}
                 {% when Some(throwable) %}
                 if ({{ throwable|type_name(ci, config) }}.class.isInstance(_e.getCause())) {
@@ -208,13 +208,13 @@ v{{- field_num -}}
 {# Prefer Display, fall back to Debug #}
 {%- if let Some(fmt) = uniffi_trait_methods.display_fmt.or(uniffi_trait_methods.debug_fmt.clone()) %}
     @Override
-    public String toString() {
+    public java.lang.String toString() {
         return {{ fmt.return_type().unwrap()|lift_fn(config, ci) }}({% call to_ffi_call(fmt) %});
     }
 {%- endif %}
 {%- if let Some(eq) = uniffi_trait_methods.eq_eq %}
     @Override
-    public boolean equals(Object obj) {
+    public boolean equals(java.lang.Object obj) {
         if (this == obj) return true;
         if (!(obj instanceof {{ type_name }})) return false;
         {{ type_name }} other = ({{ type_name }}) obj;
@@ -230,7 +230,7 @@ v{{- field_num -}}
 {%- if let Some(cmp) = uniffi_trait_methods.ord_cmp %}
     @Override
     public int compareTo({{ type_name }} other) {
-        if (other == null) throw new NullPointerException();
+        if (other == null) throw new java.lang.NullPointerException();
         return {{ cmp.return_type().unwrap()|lift_fn(config, ci) }}({%- call to_ffi_call(cmp) %}).intValue();
     }
 {%- endif %}
@@ -240,12 +240,12 @@ v{{- field_num -}}
 {%- macro uniffi_trait_impls_interface(uniffi_trait_methods, type_name) %}
 {# Prefer Display, fall back to Debug #}
 {%- if let Some(fmt) = uniffi_trait_methods.display_fmt.or(uniffi_trait_methods.debug_fmt.clone()) %}
-    default String toStringTrait() {
+    default java.lang.String toStringTrait() {
         return {{ fmt.return_type().unwrap()|lift_fn(config, ci) }}({% call to_ffi_call(fmt) %});
     }
 {%- endif %}
 {%- if let Some(eq) = uniffi_trait_methods.eq_eq %}
-    default boolean equalsTrait(Object obj) {
+    default boolean equalsTrait(java.lang.Object obj) {
         if (this == obj) return true;
         if (!(obj instanceof {{ type_name }})) return false;
         {{ type_name }} other = ({{ type_name }}) obj;
@@ -259,7 +259,7 @@ v{{- field_num -}}
 {%- endif %}
 {%- if let Some(cmp) = uniffi_trait_methods.ord_cmp %}
     default int compareTo({{ type_name }} other) {
-        if (other == null) throw new NullPointerException();
+        if (other == null) throw new java.lang.NullPointerException();
         return {{ cmp.return_type().unwrap()|lift_fn(config, ci) }}({%- call to_ffi_call(cmp) %}).intValue();
     }
 {%- endif %}

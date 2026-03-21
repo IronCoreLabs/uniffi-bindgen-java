@@ -28,7 +28,7 @@ public class RustBuffer extends Structure {
             return (RustBuffer.ByValue) UniffiLib.{{ ci.ffi_rustbuffer_alloc().name() }}(size, status);
         });
         if (buffer.data == null) {
-            throw new RuntimeException("RustBuffer.alloc() returned null data pointer (size=" + size + ")");
+            throw new java.lang.RuntimeException("RustBuffer.alloc() returned null data pointer (size=" + size + ")");
         }
         return buffer;
     }

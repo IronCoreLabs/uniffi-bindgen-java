@@ -1,32 +1,30 @@
 package {{ config.package_name() }};
 
-import java.nio.ByteBuffer;
-
-public enum FfiConverterBoolean implements FfiConverter<Boolean, Byte> {
+public enum FfiConverterBoolean implements FfiConverter<java.lang.Boolean, java.lang.Byte> {
   INSTANCE;
 
   @Override
-  public Boolean lift(Byte value) {
+  public java.lang.Boolean lift(java.lang.Byte value) {
     return (int) value != 0;
   }
 
   @Override
-  public Boolean read(ByteBuffer buf) {
+  public java.lang.Boolean read(java.nio.ByteBuffer buf) {
     return lift(buf.get());
   }
 
   @Override
-  public Byte lower(Boolean value) {
+  public java.lang.Byte lower(java.lang.Boolean value) {
     return value ? (byte) 1 : (byte) 0;
   }
 
   @Override
-  public long allocationSize(Boolean value) {
+  public long allocationSize(java.lang.Boolean value) {
     return 1L;
   }
 
   @Override
-  public void write(Boolean value, ByteBuffer buf) {
+  public void write(java.lang.Boolean value, java.nio.ByteBuffer buf) {
     buf.put(lower(value));
   }
 }

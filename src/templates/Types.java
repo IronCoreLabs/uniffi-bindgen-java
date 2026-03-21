@@ -7,7 +7,8 @@ import java.util.Map;
 import java.util.stream.Stream;
 
 public interface AutoCloseableHelper {
-    static void close(Object... args) {
+    // Use java.lang.Object to avoid conflict with user-defined Object types
+    static void close(java.lang.Object... args) {
         Stream
             .of(args)
             .forEach(obj -> {
@@ -15,18 +16,18 @@ public interface AutoCloseableHelper {
                 if (obj instanceof AutoCloseable) {
                     try {
                         ((AutoCloseable) obj).close();
-                    } catch (java.lang.Exception e) {
-                        throw new RuntimeException(e);
+                    } catch (java.lang.Exception ex) {
+                        throw new RuntimeException(ex);
                     }
                 }
                 if (obj instanceof List<?>) {
                     for (int i = 0; i < ((List) obj).size(); i++) {
-                        Object element = ((List) obj).get(i);
+                        java.lang.Object element = ((List) obj).get(i);
                         if (element instanceof AutoCloseable) {
                             try {
                                 ((AutoCloseable) element).close();
-                            } catch (java.lang.Exception e) {
-                                throw new RuntimeException(e);
+                            } catch (java.lang.Exception ex) {
+                                throw new RuntimeException(ex);
                             }
                         }
                     }
@@ -36,8 +37,8 @@ public interface AutoCloseableHelper {
                         if (value instanceof AutoCloseable) {
                             try {
                                 ((AutoCloseable) value).close();
-                            } catch (java.lang.Exception e) {
-                                throw new RuntimeException(e);
+                            } catch (java.lang.Exception ex) {
+                                throw new RuntimeException(ex);
                             }
                         }
                     }
@@ -47,8 +48,8 @@ public interface AutoCloseableHelper {
                         if (value instanceof AutoCloseable) {
                             try {
                                 ((AutoCloseable) value).close();
-                            } catch (java.lang.Exception e) {
-                                throw new RuntimeException(e);
+                            } catch (java.lang.Exception ex) {
+                                throw new RuntimeException(ex);
                             }
                         }
                     }

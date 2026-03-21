@@ -53,7 +53,7 @@ impl SequenceCodeType {
 impl CodeType for SequenceCodeType {
     fn type_label(&self, ci: &ComponentInterface, config: &Config) -> String {
         format!(
-            "List<{}>",
+            "java.util.List<{}>",
             super::JavaCodeOracle
                 .find(self.inner())
                 .type_label(ci, config)
@@ -91,7 +91,7 @@ impl MapCodeType {
 impl CodeType for MapCodeType {
     fn type_label(&self, ci: &ComponentInterface, config: &Config) -> String {
         format!(
-            "Map<{}, {}>",
+            "java.util.Map<{}, {}>",
             super::JavaCodeOracle
                 .find(self.key())
                 .type_label(ci, config),

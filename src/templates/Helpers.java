@@ -44,15 +44,15 @@ public class UniffiRustCallStatus extends Structure {
 
 package {{ config.package_name() }};
 
-public class InternalException extends RuntimeException {
-    public InternalException(String message) {
+public class InternalException extends java.lang.RuntimeException {
+    public InternalException(java.lang.String message) {
         super(message);
     }
 }
 
 package {{ config.package_name() }};
 
-public interface UniffiRustCallStatusErrorHandler<E extends Exception> {
+public interface UniffiRustCallStatusErrorHandler<E extends java.lang.Exception> {
     E lift(RustBuffer.ByValue errorBuf);
 }
 
@@ -69,32 +69,27 @@ class UniffiNullRustCallStatusErrorHandler implements UniffiRustCallStatusErrorH
 
 package {{ config.package_name() }};
 
-import java.util.function.Function;
-import java.util.function.Consumer;
-import java.util.function.Supplier;
-import java.util.concurrent.Callable;
-
 // Helpers for calling Rust
 // In practice we usually need to be synchronized to call this safely, so it doesn't
 // synchronize itself
 public final class UniffiHelpers {
   // Call a rust function that returns a Result<>.  Pass in the Error class companion that corresponds to the Err
-  static <U, E extends Exception> U uniffiRustCallWithError(UniffiRustCallStatusErrorHandler<E> errorHandler, Function<UniffiRustCallStatus, U> callback) throws E {
+  static <U, E extends java.lang.Exception> U uniffiRustCallWithError(UniffiRustCallStatusErrorHandler<E> errorHandler, java.util.function.Function<UniffiRustCallStatus, U> callback) throws E {
       UniffiRustCallStatus status = new UniffiRustCallStatus();
       U returnValue = callback.apply(status);
       uniffiCheckCallStatus(errorHandler, status);
       return returnValue;
   }
-  
+
   // Overload to call a rust function that returns a Result<()>, because void is outside Java's type system.  Pass in the Error class companion that corresponds to the Err
-  static <E extends Exception> void uniffiRustCallWithError(UniffiRustCallStatusErrorHandler<E> errorHandler, Consumer<UniffiRustCallStatus> callback) throws E {
+  static <E extends java.lang.Exception> void uniffiRustCallWithError(UniffiRustCallStatusErrorHandler<E> errorHandler, java.util.function.Consumer<UniffiRustCallStatus> callback) throws E {
       UniffiRustCallStatus status = new UniffiRustCallStatus();
       callback.accept(status);
       uniffiCheckCallStatus(errorHandler, status);
   }
 
   // Check UniffiRustCallStatus and throw an error if the call wasn't successful
-  static <E extends Exception> void uniffiCheckCallStatus(UniffiRustCallStatusErrorHandler<E> errorHandler, UniffiRustCallStatus status) throws E {
+  static <E extends java.lang.Exception> void uniffiCheckCallStatus(UniffiRustCallStatusErrorHandler<E> errorHandler, UniffiRustCallStatus status) throws E {
       if (status.isSuccess()) {
           return;
       } else if (status.isError()) {
@@ -114,56 +109,56 @@ public final class UniffiHelpers {
   }
 
   // Call a rust function that returns a plain value
-  static <U> U uniffiRustCall(Function<UniffiRustCallStatus, U> callback) {
+  static <U> U uniffiRustCall(java.util.function.Function<UniffiRustCallStatus, U> callback) {
       return uniffiRustCallWithError(new UniffiNullRustCallStatusErrorHandler(), callback);
   }
-  
+
   // Call a rust function that returns nothing
-  static void uniffiRustCall(Consumer<UniffiRustCallStatus> callback) {
+  static void uniffiRustCall(java.util.function.Consumer<UniffiRustCallStatus> callback) {
       uniffiRustCallWithError(new UniffiNullRustCallStatusErrorHandler(), callback);
   }
 
   static <T> void uniffiTraitInterfaceCall(
       UniffiRustCallStatus callStatus,
-      Supplier<T> makeCall,
-      Consumer<T> writeReturn
+      java.util.function.Supplier<T> makeCall,
+      java.util.function.Consumer<T> writeReturn
   ) {
       try {
           writeReturn.accept(makeCall.get());
-      } catch (java.lang.Exception e) {
+      } catch (java.lang.Exception _e) {
           callStatus.setCode(UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR);
-          callStatus.setErrorBuf({{ Type::String.borrow()|lower_fn(config, ci) }}(uniffiStackTraceToString(e)));
+          callStatus.setErrorBuf({{ Type::String.borrow()|lower_fn(config, ci) }}(uniffiStackTraceToString(_e)));
       }
   }
 
-  private static String uniffiStackTraceToString(Throwable e) {
+  private static java.lang.String uniffiStackTraceToString(java.lang.Throwable _e) {
       try {
           java.io.StringWriter sw = new java.io.StringWriter();
-          e.printStackTrace(new java.io.PrintWriter(sw));
+          _e.printStackTrace(new java.io.PrintWriter(sw));
           return sw.toString();
-      } catch (Throwable t) {
-          return e.toString();
+      } catch (java.lang.Throwable _t) {
+          return _e.toString();
       }
   }
 
-  static <T, E extends Throwable> void uniffiTraitInterfaceCallWithError(
+  static <T, E extends java.lang.Throwable> void uniffiTraitInterfaceCallWithError(
       UniffiRustCallStatus callStatus,
-      Callable<T> makeCall,
-      Consumer<T> writeReturn,
-      Function<E, RustBuffer.ByValue> lowerError,
-      Class<E> errorClazz
+      java.util.concurrent.Callable<T> makeCall,
+      java.util.function.Consumer<T> writeReturn,
+      java.util.function.Function<E, RustBuffer.ByValue> lowerError,
+      java.lang.Class<E> errorClazz
   ) {
       try {
           writeReturn.accept(makeCall.call());
-      } catch (java.lang.Exception e) {
-          if (errorClazz.isAssignableFrom(e.getClass())) {
+      } catch (java.lang.Exception _e) {
+          if (errorClazz.isAssignableFrom(_e.getClass())) {
               @SuppressWarnings("unchecked")
-              E castedE = (E) e;
+              E castedE = (E) _e;
               callStatus.setCode(UniffiRustCallStatus.UNIFFI_CALL_ERROR);
               callStatus.setErrorBuf(lowerError.apply(castedE));
           } else {
               callStatus.setCode(UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR);
-              callStatus.setErrorBuf({{ Type::String.borrow()|lower_fn(config, ci) }}(uniffiStackTraceToString(e)));
+              callStatus.setErrorBuf({{ Type::String.borrow()|lower_fn(config, ci) }}(uniffiStackTraceToString(_e)));
           }
       }
   }

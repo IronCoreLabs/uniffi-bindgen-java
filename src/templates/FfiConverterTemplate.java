@@ -1,8 +1,5 @@
 package {{ config.package_name() }};
 
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-
 // The FfiConverter interface handles converter types to and from the FFI
 //
 // All implementing objects should be public to support external types.  When a
@@ -15,7 +12,7 @@ public interface FfiConverter<JavaType, FfiType> {
     FfiType lower(JavaType value);
 
     // Read a Java type from a `ByteBuffer`
-    JavaType read(ByteBuffer buf);
+    JavaType read(java.nio.ByteBuffer buf);
 
     // Calculate bytes to allocate when creating a `RustBuffer`
     //
@@ -28,7 +25,7 @@ public interface FfiConverter<JavaType, FfiType> {
     long allocationSize(JavaType value);
 
     // Write a Java type to a `ByteBuffer`
-    void write(JavaType value, ByteBuffer buf);
+    void write(JavaType value, java.nio.ByteBuffer buf);
 
     // Lower a value into a `RustBuffer`
     //
@@ -39,14 +36,14 @@ public interface FfiConverter<JavaType, FfiType> {
     default RustBuffer.ByValue lowerIntoRustBuffer(JavaType value) {
         RustBuffer.ByValue rbuf = RustBuffer.alloc(allocationSize(value));
         try {
-            ByteBuffer bbuf = rbuf.data.getByteBuffer(0, rbuf.capacity);
-            bbuf.order(ByteOrder.BIG_ENDIAN);
+            java.nio.ByteBuffer bbuf = rbuf.data.getByteBuffer(0, rbuf.capacity);
+            bbuf.order(java.nio.ByteOrder.BIG_ENDIAN);
             write(value, bbuf);
             rbuf.writeField("len", (long)bbuf.position());
             return rbuf;
-        } catch (Throwable e) {
+        } catch (java.lang.Throwable _e) {
             RustBuffer.free(rbuf);
-            throw e;
+            throw _e;
         }
     }
 
@@ -55,11 +52,11 @@ public interface FfiConverter<JavaType, FfiType> {
     // This here mostly because of the symmetry with `lowerIntoRustBuffer()`.
     // It's currently only used by the `FfiConverterRustBuffer` class below.
     default JavaType liftFromRustBuffer(RustBuffer.ByValue rbuf) {
-        ByteBuffer byteBuf = rbuf.asByteBuffer();
+        java.nio.ByteBuffer byteBuf = rbuf.asByteBuffer();
         try {
            JavaType item = read(byteBuf);
            if (byteBuf.hasRemaining()) {
-               throw new RuntimeException("junk remaining in buffer after lifting, something is very wrong!!");
+               throw new java.lang.RuntimeException("junk remaining in buffer after lifting, something is very wrong!!");
            }
            return item;
         } finally {

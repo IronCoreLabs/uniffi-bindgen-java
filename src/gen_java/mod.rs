@@ -502,7 +502,7 @@ impl JavaCodeOracle {
             FfiType::Float64 => "Double".to_string(),
             FfiType::Handle => "Long".to_string(),
             FfiType::RustBuffer(maybe_external) => match maybe_external {
-                Some(external_meta) if external_meta.module_path != ci.crate_name() => {
+                Some(external_meta) if external_meta.crate_name() != ci.crate_name() => {
                     format!(
                         "{}.RustBuffer",
                         config.external_type_package_name(
@@ -543,7 +543,7 @@ impl JavaCodeOracle {
             FfiType::Float64 => "double".to_string(),
             FfiType::Handle => "long".to_string(),
             FfiType::RustBuffer(maybe_external) => match maybe_external {
-                Some(external_meta) => {
+                Some(external_meta) if external_meta.crate_name() != ci.crate_name() => {
                     format!(
                         "{}.RustBuffer",
                         config.external_type_package_name(
@@ -552,7 +552,7 @@ impl JavaCodeOracle {
                         )
                     )
                 }
-                None => "RustBuffer".to_string(),
+                _ => "RustBuffer".to_string(),
             },
             FfiType::RustCallStatus => "UniffiRustCallStatus.ByValue".to_string(),
             FfiType::ForeignBytes => "ForeignBytes.ByValue".to_string(),
@@ -732,14 +732,14 @@ mod filters {
                 fully_qualified_type_label(inner_type, ci, config)?
             )),
             Type::Sequence { inner_type } => Ok(format!(
-                "List<{}>",
+                "java.util.List<{}>",
                 fully_qualified_type_label(inner_type, ci, config)?
             )),
             Type::Map {
                 key_type,
                 value_type,
             } => Ok(format!(
-                "Map<{}, {}>",
+                "java.util.Map<{}, {}>",
                 fully_qualified_type_label(key_type, ci, config)?,
                 fully_qualified_type_label(value_type, ci, config)?
             )),
@@ -861,9 +861,11 @@ mod filters {
     fn int_literal(t: &Option<Type>, base10: String) -> Result<String, askama::Error> {
         if let Some(t) = t {
             match t {
-                Type::Int8 | Type::Int16 | Type::Int32 | Type::Int64 => Ok(base10),
-                // Java doesn't have unsigned literals, just use the numeric value
-                Type::UInt8 | Type::UInt16 | Type::UInt32 | Type::UInt64 => Ok(base10),
+                // Byte and Short need explicit casts in Java
+                Type::Int8 | Type::UInt8 => Ok(format!("(byte){}", base10)),
+                Type::Int16 | Type::UInt16 => Ok(format!("(short){}", base10)),
+                Type::Int32 | Type::UInt32 => Ok(base10),
+                Type::Int64 | Type::UInt64 => Ok(base10),
                 _ => Err(to_askama_error("Only ints are supported.")),
             }
         } else {
@@ -1048,7 +1050,7 @@ mod filters {
     ) -> Result<String, askama::Error> {
         callable
             .return_type()
-            .map_or(Ok("Void".to_string()), |t| type_name(t, _v, ci, config))
+            .map_or(Ok("java.lang.Void".to_string()), |t| type_name(t, _v, ci, config))
     }
 
     pub fn async_return_type(
@@ -1060,7 +1062,7 @@ mod filters {
         let is_async = callable.is_async();
         let inner_type = async_inner_return_type(callable, _v, ci, config)?;
         if is_async {
-            Ok(format!("CompletableFuture<{inner_type}>"))
+            Ok(format!("java.util.concurrent.CompletableFuture<{inner_type}>"))
         } else {
             Ok(inner_type)
         }
@@ -1196,11 +1198,12 @@ mod tests {
         let bindings = generate_bindings(&Config::default(), &ci).unwrap();
 
         // show that the generated bindings preserve the name
+        // Note: we use java.lang.Exception to avoid collisions with user types
         let relevant_lines = bindings
             .lines()
             .filter(|line| {
-                line.contains("class Error extends Exception")
-                    || line.contains("class Exception extends Exception")
+                line.contains("class Error extends java.lang.Exception")
+                    || line.contains("class Exception extends java.lang.Exception")
                     || line.contains("throws Error")
                     || line.contains("throws Exception")
             })
@@ -1208,7 +1211,7 @@ mod tests {
             .join("\n");
 
         assert!(
-            bindings.contains("public class Error extends Exception"),
+            bindings.contains("public class Error extends java.lang.Exception"),
             "expected generated bindings to preserve the `Error` type name:\n{relevant_lines}"
         );
         assert!(

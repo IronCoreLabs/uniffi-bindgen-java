@@ -111,14 +111,6 @@
 
 package {{ config.package_name() }};
 
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Function;
-import java.util.function.Consumer;
-import java.util.concurrent.CompletableFuture;
-
 {%- call java::docstring(obj, 0) %}
 {% if (is_error) %}
 public class {{ impl_class_name }} extends Exception implements AutoCloseable, {{ interface_name }}{% for t in obj.trait_impls() %}, {{ t.trait_ty|trait_interface_name(ci) }}{% endfor %}{% if uniffi_trait_methods.ord_cmp.is_some() %}, Comparable<{{ impl_class_name }}>{% endif %} {
@@ -128,8 +120,8 @@ public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }
   protected long handle;
   protected UniffiCleaner.Cleanable cleanable;
 
-  private AtomicBoolean wasDestroyed = new AtomicBoolean(false);
-  private AtomicLong callCounter = new AtomicLong(1);
+  private java.util.concurrent.atomic.AtomicBoolean wasDestroyed = new java.util.concurrent.atomic.AtomicBoolean(false);
+  private java.util.concurrent.atomic.AtomicLong callCounter = new java.util.concurrent.atomic.AtomicLong(1);
 
   /**
    * Internal constructor to wrap a raw handle from FFI.
@@ -175,17 +167,17 @@ public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }
     }
   }
 
-  public <R> R callWithHandle(Function<Long, R> block) {
+  public <R> R callWithHandle(java.util.function.Function<java.lang.Long, R> block) {
     // Check and increment the call counter, to keep the object alive.
     // This needs a compare-and-set retry loop in case of concurrent updates.
     long c;
     do {
       c = this.callCounter.get();
       if (c == 0L) {
-        throw new IllegalStateException("{{ impl_class_name }} object has already been destroyed");
+        throw new java.lang.IllegalStateException("{{ impl_class_name }} object has already been destroyed");
       }
-      if (c == Long.MAX_VALUE) {
-        throw new IllegalStateException("{{ impl_class_name }} call counter would overflow");
+      if (c == java.lang.Long.MAX_VALUE) {
+        throw new java.lang.IllegalStateException("{{ impl_class_name }} call counter would overflow");
       }
     } while (! this.callCounter.compareAndSet(c, c + 1L));
     // Now we can safely do the method call without the handle being freed concurrently.
@@ -199,10 +191,10 @@ public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }
     }
   }
 
-  public void callWithHandle(Consumer<Long> block) {
-    callWithHandle((Long uniffiHandle) -> {
+  public void callWithHandle(java.util.function.Consumer<java.lang.Long> block) {
+    callWithHandle((java.lang.Long uniffiHandle) -> {
       block.accept(uniffiHandle);
-      return (Void)null;
+      return (java.lang.Void)null;
     });
   }
 
@@ -228,7 +220,7 @@ public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }
   long uniffiCloneHandle() {
     return UniffiHelpers.uniffiRustCall(status -> {
       if (handle == 0L) {
-        throw new NullPointerException();
+        throw new java.lang.NullPointerException();
       }
       return UniffiLib.{{ obj.ffi_object_clone().name() }}(handle, status);
     });
@@ -268,23 +260,21 @@ public class {{ impl_class_name }}ErrorHandler implements UniffiRustCallStatusEr
 
 package {{ config.package_name() }};
 
-import java.nio.ByteBuffer;
-
-public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, Long> {
+public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, java.lang.Long> {
     INSTANCE;
 
     @Override
-    public Long lower({{ type_name }} value) {
+    public java.lang.Long lower({{ type_name }} value) {
         return value.uniffiCloneHandle();
     }
 
     @Override
-    public {{ type_name }} lift(Long value) {
+    public {{ type_name }} lift(java.lang.Long value) {
         return new {{ impl_class_name }}(UniffiWithHandle.INSTANCE, value);
     }
 
     @Override
-    public {{ type_name }} read(ByteBuffer buf) {
+    public {{ type_name }} read(java.nio.ByteBuffer buf) {
         // The Rust code always writes handles as 8 bytes, and will
         // fail to compile if they don't fit.
         return lift(buf.getLong());
@@ -296,7 +286,7 @@ public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, Lo
     }
 
     @Override
-    public void write({{ type_name }} value, ByteBuffer buf) {
+    public void write({{ type_name }} value, java.nio.ByteBuffer buf) {
         // The Rust code always expects handles written as 8 bytes,
         // and will fail to compile if they don't fit.
         buf.putLong(lower(value));
@@ -315,15 +305,13 @@ public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, Lo
 
 package {{ config.package_name() }};
 
-import java.nio.ByteBuffer;
-
-public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, Long> {
+public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, java.lang.Long> {
     INSTANCE;
 
     public final UniffiHandleMap<{{ type_name }}> handleMap = new UniffiHandleMap<>();
 
     @Override
-    public Long lower({{ type_name }} value) {
+    public java.lang.Long lower({{ type_name }} value) {
         if (value instanceof {{ impl_class_name }}) {
             // Rust-implemented object. Clone the handle and return it.
             return (({{ impl_class_name }}) value).uniffiCloneHandle();
@@ -334,7 +322,7 @@ public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, Lo
     }
 
     @Override
-    public {{ type_name }} lift(Long value) {
+    public {{ type_name }} lift(java.lang.Long value) {
         // Check the LSB: Rust handles have LSB = 0, Java handles have LSB = 1
         if ((value & 1L) == 0L) {
             // Rust-generated handle
@@ -346,7 +334,7 @@ public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, Lo
     }
 
     @Override
-    public {{ type_name }} read(ByteBuffer buf) {
+    public {{ type_name }} read(java.nio.ByteBuffer buf) {
         // The Rust code always writes handles as 8 bytes, and will
         // fail to compile if they don't fit.
         return lift(buf.getLong());
@@ -358,7 +346,7 @@ public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, Lo
     }
 
     @Override
-    public void write({{ type_name }} value, ByteBuffer buf) {
+    public void write({{ type_name }} value, java.nio.ByteBuffer buf) {
         // The Rust code always expects handles written as 8 bytes,
         // and will fail to compile if they don't fit.
         buf.putLong(lower(value));

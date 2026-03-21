@@ -1,9 +1,6 @@
 {%- let uniffi_trait_methods = e.uniffi_trait_methods() %}
 package {{ config.package_name() }};
 
-import java.util.List;
-import java.util.Map;
-
 {%- if e.is_flat() %}
 {% call java::docstring(e, 0) %}
 {% match e.variant_discr_type() %}
@@ -42,17 +39,15 @@ public enum {{ type_name }} {
 
 package {{ config.package_name() }};
 
-import java.nio.ByteBuffer;
-
 public enum {{ e|ffi_converter_name}} implements FfiConverterRustBuffer<{{ type_name }}> {
     INSTANCE;
 
     @Override
-    public {{ type_name }} read(ByteBuffer buf) {
+    public {{ type_name }} read(java.nio.ByteBuffer buf) {
         try {
             return {{ type_name }}.values()[buf.getInt() - 1];
-        } catch (IndexOutOfBoundsException e) {
-            throw new RuntimeException("invalid enum value, something is very wrong!!", e);
+        } catch (java.lang.IndexOutOfBoundsException _e) {
+            throw new java.lang.RuntimeException("invalid enum value, something is very wrong!!", _e);
         }
     }
 
@@ -62,7 +57,7 @@ public enum {{ e|ffi_converter_name}} implements FfiConverterRustBuffer<{{ type_
     }
 
     @Override
-    public void write({{ type_name }} value, ByteBuffer buf) {
+    public void write({{ type_name }} value, java.nio.ByteBuffer buf) {
         buf.putInt(value.ordinal() + 1);
     }
 }
@@ -112,13 +107,11 @@ public sealed interface {{ type_name }}{% if uniffi_trait_methods.ord_cmp.is_som
 
 package {{ config.package_name() }};
 
-import java.nio.ByteBuffer;
-
 public enum {{ e|ffi_converter_name}} implements FfiConverterRustBuffer<{{ type_name }}> {
     INSTANCE;
 
     @Override
-    public {{ type_name }} read(ByteBuffer buf) {
+    public {{ type_name }} read(java.nio.ByteBuffer buf) {
       return switch (buf.getInt()) {
         {%- for variant in e.variants() %}
         case {{ loop.index }} -> new {{ type_name }}.{{variant|type_name(ci, config)}}(
@@ -129,7 +122,7 @@ public enum {{ e|ffi_converter_name}} implements FfiConverterRustBuffer<{{ type_
           {%- endif %});
         {%- endfor %}
         default ->
-          throw new RuntimeException("invalid enum value, something is very wrong!");
+          throw new java.lang.RuntimeException("invalid enum value, something is very wrong!");
       };
     }
 
@@ -147,7 +140,7 @@ public enum {{ e|ffi_converter_name}} implements FfiConverterRustBuffer<{{ type_
     }
 
     @Override
-    public void write({{ type_name }} value, ByteBuffer buf) {
+    public void write({{ type_name }} value, java.nio.ByteBuffer buf) {
       switch (value) {
         {%- for variant in e.variants() %}
         case {{ type_name }}.{{ variant|type_name(ci, config) }}({%- for field in variant.fields() %}var {% call java::field_name(field, loop.index) -%}{% if !loop.last%}, {% endif %}{% endfor %}) -> {

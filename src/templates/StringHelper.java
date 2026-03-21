@@ -1,51 +1,44 @@
 package {{ config.package_name() }};
 
-import java.nio.ByteBuffer;
-import java.nio.CharBuffer;
-import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CharsetEncoder;
-import java.nio.charset.CodingErrorAction;
-import java.nio.charset.StandardCharsets;
-
-public enum FfiConverterString implements FfiConverter<String, RustBuffer.ByValue> {
+public enum FfiConverterString implements FfiConverter<java.lang.String, RustBuffer.ByValue> {
     INSTANCE;
 
     // Note: we don't inherit from FfiConverterRustBuffer, because we use a
     // special encoding when lowering/lifting.  We can use `RustBuffer.len` to
     // store our length and avoid writing it out to the buffer.
     @Override
-    public String lift(RustBuffer.ByValue value) {
+    public java.lang.String lift(RustBuffer.ByValue value) {
         try {
             byte[] byteArr = new byte[(int) value.len];
             value.asByteBuffer().get(byteArr);
-            return new String(byteArr, StandardCharsets.UTF_8);
+            return new java.lang.String(byteArr, java.nio.charset.StandardCharsets.UTF_8);
         } finally {
             RustBuffer.free(value);
         }
     }
 
     @Override
-    public String read(ByteBuffer buf) {
+    public java.lang.String read(java.nio.ByteBuffer buf) {
         int len = buf.getInt();
         byte[] byteArr = new byte[len];
         buf.get(byteArr);
-        return new String(byteArr, StandardCharsets.UTF_8);
+        return new java.lang.String(byteArr, java.nio.charset.StandardCharsets.UTF_8);
     }
 
-    private ByteBuffer toUtf8(String value) {
+    private java.nio.ByteBuffer toUtf8(java.lang.String value) {
         // Make sure we don't have invalid UTF-16, check for lone surrogates.
-        CharsetEncoder encoder = StandardCharsets.UTF_8.newEncoder();
-        encoder.onMalformedInput(CodingErrorAction.REPORT);
+        java.nio.charset.CharsetEncoder encoder = java.nio.charset.StandardCharsets.UTF_8.newEncoder();
+        encoder.onMalformedInput(java.nio.charset.CodingErrorAction.REPORT);
         try {
-            return encoder.encode(CharBuffer.wrap(value));
-        } catch (CharacterCodingException e) {
-            throw new RuntimeException(e);
+            return encoder.encode(java.nio.CharBuffer.wrap(value));
+        } catch (java.nio.charset.CharacterCodingException _e) {
+            throw new java.lang.RuntimeException(_e);
         }
     }
 
     @Override
-    public RustBuffer.ByValue lower(String value) {
-        ByteBuffer byteBuf = toUtf8(value);
+    public RustBuffer.ByValue lower(java.lang.String value) {
+        java.nio.ByteBuffer byteBuf = toUtf8(value);
         // Ideally we'd pass these bytes to `ffi_bytebuffer_from_bytes`, but doing so would require us
         // to copy them into a JNA `Memory`. So we might as well directly copy them into a `RustBuffer`.
         RustBuffer.ByValue rbuf = RustBuffer.alloc((long) byteBuf.limit());
@@ -57,15 +50,15 @@ public enum FfiConverterString implements FfiConverter<String, RustBuffer.ByValu
     // encoded.  Allocate 3 bytes per UTF-16 code unit which will always be
     // enough.
     @Override
-    public long allocationSize(String value) {
+    public long allocationSize(java.lang.String value) {
         long sizeForLength = 4L;
         long sizeForString = (long) value.length() * 3L;
         return sizeForLength + sizeForString;
     }
 
     @Override
-    public void write(String value, ByteBuffer buf) {
-        ByteBuffer byteBuf = toUtf8(value);
+    public void write(java.lang.String value, java.nio.ByteBuffer buf) {
+        java.nio.ByteBuffer byteBuf = toUtf8(value);
         buf.putInt(byteBuf.limit());
         buf.put(byteBuf);
     }

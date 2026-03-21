@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import uniffi.fixture_proc_macro.*;
+import uniffi.proc_macro.*;
 
 public class TestProcMacro {
     public static void main(String[] args) {
@@ -23,7 +23,7 @@ public class TestProcMacro {
         MixedEnum meInt = new MixedEnum.Int(123L);
         assert meInt.isNotNone() == true : "Complex enum method isNotNone() for Int variant failed";
 
-        MixedEnum meNone = MixedEnum.NONE;
+        MixedEnum meNone = new MixedEnum.None();
         assert meNone.isNotNone() == false : "Complex enum method isNotNone() for None variant failed";
 
         System.out.println("TestProcMacro: All tests passed!");

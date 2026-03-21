@@ -1,13 +1,7 @@
 {%- let inner_type_name = inner_type|type_name(ci, config) %}
 package {{ config.package_name() }};
 
-import java.nio.ByteBuffer;
-import java.util.List;
-import java.util.Map;
-
-// public class TestForOptionals {}
-
-{#- 
+{#-
   Swift, Python, and Go bindings all use nullable/nilable optionals instead of `Optional` types where they exist.
   Kotlin and C# bindings use their type system to directly express nullability with `?`.
   Java has an `Optional` type that some FP Java folks use, but we'll lean on the more straightforward Java way here
@@ -17,7 +11,7 @@ public enum {{ ffi_converter_name }} implements FfiConverterRustBuffer<{{ inner_
   INSTANCE;
 
   @Override
-  public {{ inner_type_name }} read(ByteBuffer buf) {
+  public {{ inner_type_name }} read(java.nio.ByteBuffer buf) {
     if (buf.get() == (byte)0) {
       return null;
     }
@@ -34,7 +28,7 @@ public enum {{ ffi_converter_name }} implements FfiConverterRustBuffer<{{ inner_
   }
 
   @Override
-  public void write({{ inner_type_name }} value, ByteBuffer buf) {
+  public void write({{ inner_type_name }} value, java.nio.ByteBuffer buf) {
     if (value == null) {
       buf.put((byte)0);
     } else {

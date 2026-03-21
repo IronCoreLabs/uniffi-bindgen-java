@@ -6,9 +6,6 @@
 
 package {{ package_name }};
 
-import java.util.List;
-import java.util.Map;
-
 public record {{ type_name }}(
   {{ builtin|type_name(ci, config) }} value
 ) {
@@ -16,7 +13,6 @@ public record {{ type_name }}(
 
 package {{ package_name }};
 
-import java.nio.ByteBuffer;
 import com.sun.jna.Pointer;
 
 public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, {{ ffi_type_name}}> {
@@ -32,7 +28,7 @@ public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, {{
       return {{ builtin|lower_fn(config, ci) }}(builtinValue);
   }
   @Override
-  public {{ type_name }} read(ByteBuffer buf) {
+  public {{ type_name }} read(java.nio.ByteBuffer buf) {
       var builtinValue = {{ builtin|read_fn(config, ci) }}(buf);
       return new {{ type_name }}(builtinValue);
   }
@@ -42,7 +38,7 @@ public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, {{
       return {{ builtin|allocation_size_fn(config, ci) }}(builtinValue);
   }
   @Override
-  public void write({{ type_name }} value, ByteBuffer buf) {
+  public void write({{ type_name }} value, java.nio.ByteBuffer buf) {
       var builtinValue = value.value();
       {{ builtin|write_fn(config, ci) }}(builtinValue, buf);
   }
@@ -66,8 +62,6 @@ import {{ import_name }};
 {%- endfor %}
 {%- else %}
 {%- endmatch %}
-import java.util.List;
-import java.util.Map;
 
 public record {{ type_name }}(
   {{ concrete_type_name }} value
@@ -78,7 +72,6 @@ public record {{ type_name }}(
 
 package {{ package_name }};
 
-import java.nio.ByteBuffer;
 import com.sun.jna.Pointer;
 
 {%- match custom_type_config.imports %}
@@ -96,8 +89,8 @@ public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, {{
         var builtinValue = {{ builtin|lift_fn(config, ci) }}(value);
         try{
           return new {{ type_name}}({{ custom_type_config.lift("builtinValue") }});
-        } catch(java.lang.Exception e){
-          throw new RuntimeException(e);
+        } catch(java.lang.Exception _e){
+          throw new java.lang.RuntimeException(_e);
         }
     }
     @Override
@@ -105,17 +98,17 @@ public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, {{
       try{
         var builtinValue = {{ custom_type_config.lower("value.value()") }};
         return {{ builtin|lower_fn(config, ci) }}(builtinValue);
-      } catch(java.lang.Exception e){
-        throw new RuntimeException(e);
+      } catch(java.lang.Exception _e){
+        throw new java.lang.RuntimeException(_e);
       }
     }
     @Override
-    public {{ type_name }} read(ByteBuffer buf) {
+    public {{ type_name }} read(java.nio.ByteBuffer buf) {
       try{
         var builtinValue = {{ builtin|read_fn(config, ci) }}(buf);
         return new {{ type_name }}({{ custom_type_config.lift("builtinValue") }});
-      } catch(java.lang.Exception e){
-        throw new RuntimeException(e);
+      } catch(java.lang.Exception _e){
+        throw new java.lang.RuntimeException(_e);
       }
     }
     @Override
@@ -123,17 +116,17 @@ public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, {{
       try {
         var builtinValue = {{ custom_type_config.lower("value.value()") }};
         return {{ builtin|allocation_size_fn(config, ci) }}(builtinValue);
-      } catch(java.lang.Exception e){
-        throw new RuntimeException(e);
-      } 
+      } catch(java.lang.Exception _e){
+        throw new java.lang.RuntimeException(_e);
+      }
     }
     @Override
-    public void write({{ type_name }} value, ByteBuffer buf) {
+    public void write({{ type_name }} value, java.nio.ByteBuffer buf) {
       try {
         var builtinValue = {{ custom_type_config.lower("value.value()") }};
         {{ builtin|write_fn(config, ci) }}(builtinValue, buf);
-      } catch(java.lang.Exception e){
-        throw new RuntimeException(e);
+      } catch(java.lang.Exception _e){
+        throw new java.lang.RuntimeException(_e);
       }
     }
 }

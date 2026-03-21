@@ -1,8 +1,6 @@
 package {{ config.package_name() }};
 
-import java.nio.ByteBuffer;
-
-public abstract class FfiConverterCallbackInterface<CallbackInterface extends Object> implements FfiConverter<CallbackInterface, Long> {
+public abstract class FfiConverterCallbackInterface<CallbackInterface extends java.lang.Object> implements FfiConverter<CallbackInterface, java.lang.Long> {
     // Magic number for the Rust proxy to call using the same mechanism as every other method,
     // to free the callback once it's dropped by Rust.
     static final int IDX_CALLBACK_FREE = 0;
@@ -18,17 +16,17 @@ public abstract class FfiConverterCallbackInterface<CallbackInterface extends Ob
     }
 
     @Override
-    public CallbackInterface lift(Long value) {
+    public CallbackInterface lift(java.lang.Long value) {
         return handleMap.get(value);
     }
 
     @Override
-    public CallbackInterface read(ByteBuffer buf) {
+    public CallbackInterface read(java.nio.ByteBuffer buf) {
       return lift(buf.getLong());
     }
 
     @Override
-    public Long lower(CallbackInterface value) {
+    public java.lang.Long lower(CallbackInterface value) {
       return handleMap.insert(value);
     }
 
@@ -38,7 +36,7 @@ public abstract class FfiConverterCallbackInterface<CallbackInterface extends Ob
     }
 
     @Override
-    public void write(CallbackInterface value, ByteBuffer buf) {
+    public void write(CallbackInterface value, java.nio.ByteBuffer buf) {
         buf.putLong(lower(value));
     }
 }

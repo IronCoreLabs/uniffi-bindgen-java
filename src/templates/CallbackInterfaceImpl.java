@@ -2,12 +2,6 @@
 
 package {{ config.package_name() }};
 
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Callable;
-import java.util.function.Function;
-import java.util.function.Consumer;
-import java.util.function.Supplier;
-import java.util.List;
 import com.sun.jna.*;
 import com.sun.jna.ptr.*;
 
@@ -50,7 +44,7 @@ public class {{ trait_impl }} {
             {%- endif -%}
         ) {
             var uniffiObj = {{ ffi_converter_name }}.INSTANCE.handleMap.get(uniffiHandle);
-            {% if !meth.is_async() && meth.throws_type().is_some() %}Callable{% else %}Supplier{%endif%}<{% if meth.is_async() %}{{ meth|async_return_type(ci, config) }}{% else %}{% match meth.return_type() %}{% when Some(return_type)%}{{ return_type|type_name(ci, config)}}{% when None %}Void{% endmatch %}{% endif %}> makeCall = () -> {
+            {% if !meth.is_async() && meth.throws_type().is_some() %}java.util.concurrent.Callable{% else %}java.util.function.Supplier{%endif%}<{% if meth.is_async() %}{{ meth|async_return_type(ci, config) }}{% else %}{% match meth.return_type() %}{% when Some(return_type)%}{{ return_type|type_name(ci, config)}}{% when None %}java.lang.Void{% endmatch %}{% endif %}> makeCall = () -> {
                 {% if meth.return_type().is_some() || meth.is_async() %}return {% endif %}uniffiObj.{{ meth.name()|fn_name() }}(
                     {%- for arg in meth.arguments() %}
                     {{ arg|lift_fn(config, ci) }}({{ arg.name()|var_name }}){% if !loop.last %},{% endif %}
@@ -61,9 +55,9 @@ public class {{ trait_impl }} {
             {%- if !meth.is_async() %}
             {%- match meth.return_type() %}
             {%- when Some(return_type) %}
-            Consumer<{{ return_type|type_name(ci, config)}}> writeReturn = ({{ return_type|type_name(ci, config) }} value) -> { uniffiOutReturn.setValue({{ return_type|lower_fn(config, ci) }}(value)); };
+            java.util.function.Consumer<{{ return_type|type_name(ci, config)}}> writeReturn = ({{ return_type|type_name(ci, config) }} uniffiValue) -> { uniffiOutReturn.setValue({{ return_type|lower_fn(config, ci) }}(uniffiValue)); };
             {%- when None %}
-            Consumer<Void> writeReturn = (nothing) -> {};
+            java.util.function.Consumer<java.lang.Void> writeReturn = (nothing) -> {};
             {%- endmatch %}
 
             {%- match meth.throws_type() %}
@@ -80,7 +74,7 @@ public class {{ trait_impl }} {
             {%- endmatch %}
 
             {%- else %}
-            Consumer<{{ meth|async_inner_return_type(ci, config) }}> uniffiHandleSuccess = ({% match meth.return_type() %}{%- when Some(return_type) %}returnValue{%- when None %}nothing{% endmatch %}) -> {
+            java.util.function.Consumer<{{ meth|async_inner_return_type(ci, config) }}> uniffiHandleSuccess = ({% match meth.return_type() %}{%- when Some(return_type) %}returnValue{%- when None %}nothing{% endmatch %}) -> {
                 var uniffiResult = new {{ meth.foreign_future_ffi_result_struct().name()|ffi_struct_name }}.UniffiByValue(
                     {%- match meth.return_type() %}
                     {%- when Some(return_type) %}
@@ -92,7 +86,7 @@ public class {{ trait_impl }} {
                 uniffiResult.write();
                 uniffiFutureCallback.callback(uniffiCallbackData, uniffiResult);
             };
-            Consumer<UniffiRustCallStatus.ByValue> uniffiHandleError = (callStatus) -> {
+            java.util.function.Consumer<UniffiRustCallStatus.ByValue> uniffiHandleError = (callStatus) -> {
                 uniffiFutureCallback.callback(
                     uniffiCallbackData,
                     new {{ meth.foreign_future_ffi_result_struct().name()|ffi_struct_name }}.UniffiByValue(

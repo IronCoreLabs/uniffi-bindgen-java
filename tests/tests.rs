@@ -267,7 +267,5 @@ fixture_tests! {
     (test_futures_fixtures, "uniffi-fixture-futures", "scripts/TestFixtureFutures/TestFixtureFutures.java"),
     (test_trait_methods, "uniffi-fixture-trait-methods", "scripts/TestTraitMethods.java"),
     (test_omit_checksums, "uniffi-example-arithmetic", "scripts/TestOmitChecksums/TestOmitChecksums.java"),
-    // TODO: proc-macro fixture has types named `Object` and `One` that conflict with Java
-    // conventions (java.lang.Object, package name interpretation). Needs name collision handling.
-    // (test_proc_macro, "uniffi-fixture-proc-macro", "scripts/TestProcMacro.java"),
+    (test_proc_macro, "uniffi-fixture-proc-macro", "scripts/TestProcMacro.java"),
 }

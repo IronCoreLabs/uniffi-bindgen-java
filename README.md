@@ -163,6 +163,8 @@ rust-crate-name = "java.package.name"
 
 - failures in CompletableFutures will cause them to `completeExceptionally`. The error that caused the failure can be checked with `e.getCause()`. When implementing an async Rust trait in Java, you'll need to `completeExceptionally` instead of throwing. See `TestFixtureFutures.java` for an example trait implementation with errors.
 - all primitives are signed in Java by default. Rust correctly interprets the a signed primitive value from Java as unsigned when told to. Callers of Uniffi functions need to be aware when making comparisons (`compareUnsigned`) or printing when a value is actually unsigned to code around footguns on this side.
+- this is an internal note for development but because Enum variants are not cases/hanging off their parent in Java, their named standalone, they can conflict with any/all `java.lang` types. We could do extensive checking and forced renaming around this, but instead we use fully qualified names for all `java.lang` types in all templates. Ensure that when you're making changes you're not dropping those qualified names or adding generated code without them.
+
 
 ## Unsupported features
 

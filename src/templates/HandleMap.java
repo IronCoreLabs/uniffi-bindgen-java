@@ -1,16 +1,13 @@
 package {{ config.package_name() }};
 
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.ConcurrentHashMap;
-
 // This is used pass an opaque 64-bit handle representing a foreign object to the Rust code.
 // Handles are always odd numbers (LSB = 1) to distinguish them from Rust handles (which are even).
-class UniffiHandleMap<T extends Object> {
-    private final ConcurrentHashMap<Long, T> map = new ConcurrentHashMap<>();
+class UniffiHandleMap<T extends java.lang.Object> {
+    private final java.util.concurrent.ConcurrentHashMap<java.lang.Long, T> map = new java.util.concurrent.ConcurrentHashMap<>();
     // Start at 1 and increment by 2 to always produce odd handles
     private static final long UNIFFI_HANDLEMAP_INITIAL = 1L;
     private static final long UNIFFI_HANDLEMAP_DELTA = 2L;
-    private final AtomicLong counter = new AtomicLong(UNIFFI_HANDLEMAP_INITIAL);
+    private final java.util.concurrent.atomic.AtomicLong counter = new java.util.concurrent.atomic.AtomicLong(UNIFFI_HANDLEMAP_INITIAL);
 
     public int size() {
         return map.size();
