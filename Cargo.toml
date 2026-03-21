@@ -43,6 +43,7 @@ uniffi_meta = "0.31.0"
 [dev-dependencies]
 glob = "0.3"
 itertools = "0.14.0"
+uniffi-fixture-primitive-arrays = { path = "fixtures/primitive-arrays" }
 uniffi-example-arithmetic = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
 uniffi-example-custom-types = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
 uniffi-example-futures = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
