@@ -11,7 +11,7 @@ interface UniffiCleaner {
         void clean();
     }
 
-    UniffiCleaner.Cleanable register(Object value, Runnable cleanUpTask);
+    UniffiCleaner.Cleanable register(java.lang.Object value, java.lang.Runnable cleanUpTask);
 
     public static UniffiCleaner create() {
         {% if config.android_cleaner() %}
@@ -26,9 +26,9 @@ interface UniffiCleaner {
             // mode, but is being run on Android, then we still need to think about
             // Android API versions.
             // So we check if java.lang.ref.Cleaner is there, and use that…
-            Class.forName("java.lang.ref.Cleaner");
+            java.lang.Class.forName("java.lang.ref.Cleaner");
             return new JavaLangRefCleaner();
-        } catch (ClassNotFoundException e) {
+        } catch (java.lang.ClassNotFoundException _e) {
             // … otherwise, fallback to the JNA cleaner.
             return new UniffiJnaCleaner();
         }
@@ -45,7 +45,7 @@ class UniffiJnaCleaner implements UniffiCleaner {
     private final Cleaner cleaner = Cleaner.getCleaner();
 
     @Override
-    public UniffiCleaner.Cleanable register(Object value, Runnable cleanUpTask) {
+    public UniffiCleaner.Cleanable register(java.lang.Object value, java.lang.Runnable cleanUpTask) {
         return new UniffiJnaCleanable(cleaner.register(value, cleanUpTask));
     }
 }

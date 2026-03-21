@@ -1,75 +1,24 @@
 use super::{CodeType, Config};
 use paste::paste;
-use uniffi_bindgen::backend::Literal;
-use uniffi_bindgen::interface::{ComponentInterface, Radix, Type};
-
-#[allow(dead_code)]
-fn render_literal(literal: &Literal, _ci: &ComponentInterface, _config: &Config) -> String {
-    fn typed_number(type_: &Type, num_str: String) -> String {
-        let unwrapped_type = match type_ {
-            Type::Optional { inner_type } => inner_type,
-            t => t,
-        };
-        match unwrapped_type {
-            // Bytes, Shorts and Ints can all be inferred from the type.
-            Type::Int8 | Type::Int16 | Type::Int32 => num_str,
-            Type::Int64 => format!("{num_str}L"),
-
-            // Java has pretty hacky unsigned support, see https://docs.oracle.com/javase/8/docs/api/java/lang/Long.html (search for unsigned)
-            // and https://docs.oracle.com/javase/8/docs/api/java/lang/Integer.html search for unsigned.
-            Type::UInt8 | Type::UInt16 | Type::UInt32 => {
-                format!("Integer.parseUnsignedInt({num_str})")
-            }
-            Type::UInt64 => format!("Long.parseUnsignedLong({num_str})"),
-
-            Type::Float32 => format!("{num_str}f"),
-            Type::Float64 => num_str,
-            _ => panic!("Unexpected literal: {num_str} for type: {type_:?}"),
-        }
-    }
-
-    match literal {
-        Literal::Boolean(v) => format!("{v}"),
-        Literal::String(s) => format!("\"{s}\""),
-        Literal::Int(i, radix, type_) => typed_number(
-            type_,
-            match radix {
-                Radix::Octal => format!("{i:#x}"),
-                Radix::Decimal => format!("{i}"),
-                Radix::Hexadecimal => format!("{i:#x}"),
-            },
-        ),
-        Literal::UInt(i, radix, type_) => typed_number(
-            type_,
-            match radix {
-                Radix::Octal => format!("{i:#x}"),
-                Radix::Decimal => format!("{i}"),
-                Radix::Hexadecimal => format!("{i:#x}"),
-            },
-        ),
-        Literal::Float(string, type_) => typed_number(type_, string.clone()),
-
-        _ => unreachable!("Literal"),
-    }
-}
+use uniffi_bindgen::interface::ComponentInterface;
 
 macro_rules! impl_code_type_for_primitive {
-    ($T:ty, $class_name:literal) => {
+    ($T:ty, $type_label:literal, $canonical_name:literal, $primitive_label:literal) => {
         paste! {
             #[derive(Debug)]
             pub struct $T;
 
             impl CodeType for $T  {
                 fn type_label(&self, _ci: &ComponentInterface, _config: &Config) -> String {
-                    format!("{}", $class_name)
+                    $type_label.into()
+                }
+
+                fn type_label_primitive(&self) -> Option<String> {
+                    Some($primitive_label.into())
                 }
 
                 fn canonical_name(&self) -> String {
-                    $class_name.into()
-                }
-
-                fn literal(&self, literal: &Literal, ci: &ComponentInterface, config: &Config) -> String {
-                    render_literal(&literal, ci, config)
+                    $canonical_name.into()
                 }
             }
         }
@@ -86,17 +35,24 @@ impl CodeType for BytesCodeType {
     fn canonical_name(&self) -> String {
         "ByteArray".to_string()
     }
+}
 
-    fn literal(&self, literal: &Literal, ci: &ComponentInterface, config: &Config) -> String {
-        render_literal(literal, ci, config)
+#[derive(Debug)]
+pub struct StringCodeType;
+impl CodeType for StringCodeType {
+    fn type_label(&self, _ci: &ComponentInterface, _config: &Config) -> String {
+        "java.lang.String".to_string()
+    }
+
+    fn canonical_name(&self) -> String {
+        "String".to_string()
     }
 }
 
-impl_code_type_for_primitive!(BooleanCodeType, "Boolean");
-impl_code_type_for_primitive!(StringCodeType, "String");
-impl_code_type_for_primitive!(Int8CodeType, "Byte");
-impl_code_type_for_primitive!(Int16CodeType, "Short");
-impl_code_type_for_primitive!(Int32CodeType, "Integer");
-impl_code_type_for_primitive!(Int64CodeType, "Long");
-impl_code_type_for_primitive!(Float32CodeType, "Float");
-impl_code_type_for_primitive!(Float64CodeType, "Double");
+impl_code_type_for_primitive!(BooleanCodeType, "java.lang.Boolean", "Boolean", "boolean");
+impl_code_type_for_primitive!(Int8CodeType, "java.lang.Byte", "Byte", "byte");
+impl_code_type_for_primitive!(Int16CodeType, "java.lang.Short", "Short", "short");
+impl_code_type_for_primitive!(Int32CodeType, "java.lang.Integer", "Integer", "int");
+impl_code_type_for_primitive!(Int64CodeType, "java.lang.Long", "Long", "long");
+impl_code_type_for_primitive!(Float32CodeType, "java.lang.Float", "Float", "float");
+impl_code_type_for_primitive!(Float64CodeType, "java.lang.Double", "Double", "double");

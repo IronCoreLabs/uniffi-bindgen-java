@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.*;
 import java.lang.ref.WeakReference;
 import java.text.MessageFormat;
@@ -265,12 +266,12 @@ public class TestFixtureCoverall {
     // Java Getter trait implementation for tests.
     class JavaGetters implements Getters {
       @Override
-      public Boolean getBool(Boolean v, Boolean arg2) {
+      public boolean getBool(boolean v, boolean arg2) {
         return v != arg2;
       }
-      
+
       @Override
-      public String getString(String v, Boolean arg2) throws CoverallException {
+      public String getString(String v, boolean arg2) throws CoverallException {
         if (v.equals("too-many-holes")) {
           throw new CoverallException.TooManyHoles("too many holes");
         } else if (v.equals("unexpected-error")) {
@@ -281,9 +282,9 @@ public class TestFixtureCoverall {
           return v;
         }
       }
-      
+
       @Override
-      public String getOption(String v, Boolean arg2) throws ComplexException {
+      public String getOption(String v, boolean arg2) throws ComplexException {
         if (v.equals("os-error")) {
           throw new ComplexException.OsException((short)100, (short)200);
         } else if (v.equals("unknown-error")) {
@@ -298,16 +299,16 @@ public class TestFixtureCoverall {
           return v;
         }
       }
-      
+
       @Override
-      public List<Integer> getList(List<Integer> v, Boolean arg2) {
+      public java.util.List<java.lang.Integer> getList(java.util.List<java.lang.Integer> v, boolean arg2) {
         if (arg2) {
           return v;
         } else {
           return List.of();
         }
       }
-      
+
       @Override
       public void getNothing(String v) {}
       
@@ -350,7 +351,7 @@ public class TestFixtureCoverall {
       }
 
       @Override
-      public Long strongCount() {
+      public long strongCount() {
         return 0L;
       }
     }
@@ -366,12 +367,12 @@ public class TestFixtureCoverall {
       assert traits.get(1).name().equals("node-2");
       assert traits.get(1).strongCount() == 2L;
 
-      // Note: this doesn't increase the Rust strong count, since we wrap the Rust impl with a
-      // Swift impl before passing it to `setParent()`
+      // Passing a Rust-backed trait object clones the handle,  which increases the Rust strong count by 1.
       traits.get(0).setParent(traits.get(1));
       assert Coverall.ancestorNames(traits.get(0)).equals(Arrays.asList("node-2"));
       assert Coverall.ancestorNames(traits.get(1)).isEmpty();
-      assert traits.get(1).strongCount() == 2L;
+      // strongCount is 3: 1 for Java wrapper + 1 for method call clone + 1 for setParent's clone
+      assert traits.get(1).strongCount() == 3L;
       assert traits.get(0).getParent().name().equals("node-2");
 
       JavaNode javaNode = new JavaNode();
@@ -446,10 +447,12 @@ public class TestFixtureCoverall {
     // assert d.category() == null;
     // assert d.integer() == 31L;
 
-    DictWithDefaults d = new DictWithDefaults("this", "that", 42L);
+    DictWithDefaults d = new DictWithDefaults("this", "that", 42L, List.of(), Map.of());
     assert d.name().equals("this");
     assert d.category().equals("that");
     assert d.integer() == 42L;
+    assert d.itemList().isEmpty();
+    assert d.itemMap().isEmpty();
 
     // Test bytes
     try (Coveralls coveralls = new Coveralls("test_bytes")) {
@@ -461,7 +464,7 @@ public class TestFixtureCoverall {
       private Color color;
   
       public FakePatch(Color color) {
-        super(NoPointer.INSTANCE);
+        super(NoHandle.INSTANCE);
         this.color = color;
       }
 
@@ -476,7 +479,7 @@ public class TestFixtureCoverall {
       private ArrayList<Repair> repairs = new ArrayList(List.of());
 
       public FakeCoveralls(String name) {
-        super(NoPointer.INSTANCE);
+        super(NoHandle.INSTANCE);
         this.name = name;
       }
 

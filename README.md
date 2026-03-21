@@ -13,7 +13,7 @@ We highly reccommend you use [UniFFI's proc-macro definition](https://mozilla.gi
 
 ## Installation
 
-MSRV is `1.77.0`.
+MSRV is `1.87.0`.
 
 `cargo install uniffi-bindgen-java --git https://github.com/IronCoreLabs/uniffi-bindgen-java`
 
@@ -47,12 +47,13 @@ Arguments:
   <SOURCE>  Path to the UDL file, or cdylib if `library-mode` is specified
 
 Options:
-  -o, --out-dir <OUT_DIR>    Directory in which to write generated files. Default is same folder as .udl file
-  -n, --no-format            Do not try to format the generated bindings
-  -c, --config <CONFIG>      Path to optional uniffi config file. This config is merged with the `uniffi.toml` config present in each crate, with its values taking precedence
-  --lib-file <LIB_FILE>      Extract proc-macro metadata from a native lib (cdylib or staticlib) for this crate
-  --library                  Pass in a cdylib path rather than a UDL file
-  --crate <CRATE_NAME>       When `--library` is passed, only generate bindings for one crate. When `--library` is not passed, use this as the crate name instead of attempting to locate and parse Cargo.toml
+  -o, --out-dir <OUT_DIR>   Directory in which to write generated files. Default is same folder as .udl file
+  -n, --no-format           Do not try to format the generated bindings
+  -c, --config <CONFIG>     Path to optional uniffi config file. This config is merged with the `uniffi.toml` config present in each crate, with its values taking precedence
+      --crate <CRATE_NAME>  When `--library` is passed, only generate bindings for one crate. When `--library` is not passed, use this as the crate name instead of attempting to locate and parse Cargo.toml
+      --metadata-no-deps    Whether we should exclude dependencies when running "cargo metadata". This will mean external types may not be resolved if they are implemented in crates outside of this workspace. This can be used in environments when all types are in the namespace and fetching all sub-dependencies causes obscure platform specific problems
+  -h, --help                Print help
+  -V, --version             Print version
 ```
 
 As an example:
@@ -78,7 +79,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 public class Arithmeticpm {
-  public static Long add(Long a, Long b) throws ArithmeticException {
+  public static long add(long a, long b) throws ArithmeticException {
             try {
 ...
 
@@ -129,8 +130,10 @@ The generated Java can be configured using a `uniffi.toml` configuration file.
 | `generate_immutable_records` | `false` | Whether to generate records with immutable fields (`record` instead of `class`). |
 | `custom_types` | | A map which controls how custom types are exposed to Java. See the [custom types section of the UniFFI manual](https://mozilla.github.io/uniffi-rs/latest/udl/custom_types.html#custom-types-in-the-bindings-code) |
 | `external_packages` | | A map of packages to be used for the specified external crates. The key is the Rust crate name, the value is the Java package which will be used referring to types in that crate. See the [external types section of the manual](https://mozilla.github.io/uniffi-rs/latest/udl/ext_types_external.html#kotlin) |
+| `rename` | | A map to rename types, functions, methods, and their members in the generated Java bindings. See the [renaming section](https://mozilla.github.io/uniffi-rs/latest/renaming.html). |
 | `android` | `false` | Used to toggle on Android specific optimizations (warning: not well tested yet) |
 | `android_cleaner` | `android` | Use the `android.system.SystemCleaner` instead of `java.lang.ref.Cleaner`. Fallback in both instances is the one shipped with JNA. |
+| `omit_checksums` | `false` | Whether to omit checking the library checksums as the library is initialized. Changing this will shoot yourself in the foot if you mixup your build pipeline in any way, but might speed up initialization. |
 
 ### Example
 
@@ -162,6 +165,8 @@ rust-crate-name = "java.package.name"
 
 - failures in CompletableFutures will cause them to `completeExceptionally`. The error that caused the failure can be checked with `e.getCause()`. When implementing an async Rust trait in Java, you'll need to `completeExceptionally` instead of throwing. See `TestFixtureFutures.java` for an example trait implementation with errors.
 - all primitives are signed in Java by default. Rust correctly interprets the a signed primitive value from Java as unsigned when told to. Callers of Uniffi functions need to be aware when making comparisons (`compareUnsigned`) or printing when a value is actually unsigned to code around footguns on this side.
+- this is an internal note for development but because Enum variants are not cases/hanging off their parent in Java, their named standalone, they can conflict with any/all `java.lang` types. We could do extensive checking and forced renaming around this, but instead we use fully qualified names for all `java.lang` types in all templates. Ensure that when you're making changes you're not dropping those qualified names or adding generated code without them.
+
 
 ## Unsupported features
 
@@ -178,4 +183,8 @@ Note that if you need additional toml entries for your test, you can put a `unif
 
 `uniffi-bindgen-java` is versioned separately from `uniffi-rs`. We follow the [Cargo SemVer rules](https://doc.rust-lang.org/cargo/reference/resolver.html#semver-compatibility), so versions are compatible if their left-most non-zero major/minor/patch component is the same. Any modification to the generator that causes a consumer of the generated code to need to make changes is considered breaking.
 
-`uniffi-bindgen-java` is currently unstable and being developed by IronCore Labs to target features required by [`ironcore-alloy`](https://github.com/IronCoreLabs/ironcore-alloy/). The major version is currently 0, and most changes are likely to bump the minor version. 
+`uniffi-bindgen-java` is currently unstable and being developed by IronCore Labs to target features required by [`ironcore-alloy`](https://github.com/IronCoreLabs/ironcore-alloy/). The major version is currently 0, and most changes are likely to bump the minor version.
+
+### Compatibility
+
+Keeping this testable requires fully pinned `uniffi-rs` versions. The version of `uniffi-rs` will always be called out in the changelog when it changes, so if you're stuck on a specific version due to other bindings, you can stay on a compatible version of these bindings.

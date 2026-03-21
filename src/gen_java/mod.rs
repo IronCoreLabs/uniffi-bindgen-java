@@ -9,7 +9,7 @@ use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
 };
-use uniffi_bindgen::{backend::Literal, interface::*};
+use uniffi_bindgen::{interface::*, to_askama_error};
 
 mod callback_interface;
 mod compounds;
@@ -48,17 +48,18 @@ trait CodeType: Debug {
     /// method signatures and property declarations.
     fn type_label(&self, ci: &ComponentInterface, config: &Config) -> String;
 
+    /// The primitive type label if this type is a primitive (int, long, boolean, etc.).
+    /// Returns None for non-primitive types.
+    fn type_label_primitive(&self) -> Option<String> {
+        None
+    }
+
     /// A representation of this type label that can be used as part of another
     /// identifier. e.g. `read_foo()`, or `FooInternals`.
     ///
     /// This is especially useful when creating specialized objects or methods to deal
     /// with this type only.
     fn canonical_name(&self) -> String;
-
-    #[allow(dead_code)]
-    fn literal(&self, _literal: &Literal, ci: &ComponentInterface, config: &Config) -> String {
-        unimplemented!("Unimplemented for {}", self.type_label(ci, config))
-    }
 
     /// Instance of the FfiConverter
     ///
@@ -80,13 +81,6 @@ trait CodeType: Debug {
     /// read CodeType methods.
     fn ffi_converter_instance(&self, _config: &Config, _ci: &ComponentInterface) -> String {
         format!("{}.INSTANCE", self.ffi_converter_name())
-    }
-
-    /// A list of imports that are needed if this type is in use.
-    /// Classes are imported exactly once.
-    #[allow(dead_code)]
-    fn imports(&self) -> Option<Vec<String>> {
-        None
     }
 
     /// Function to run at startup
@@ -160,6 +154,8 @@ pub struct Config {
     pub(super) cdylib_name: Option<String>,
     generate_immutable_records: Option<bool>,
     #[serde(default)]
+    omit_checksums: bool,
+    #[serde(default)]
     custom_types: HashMap<String, CustomTypeConfig>,
     #[serde(default)]
     pub(super) external_packages: HashMap<String, String>,
@@ -167,11 +163,19 @@ pub struct Config {
     android: bool,
     #[serde(default)]
     android_cleaner: Option<bool>,
+    /// Renames for types, fields, methods, variants, and arguments.
+    /// Uses dot notation: "OldRecord" = "NewRecord", "OldRecord.field" = "new_field"
+    #[serde(default)]
+    pub(super) rename: toml::Table,
 }
 
 impl Config {
     pub(crate) fn android_cleaner(&self) -> bool {
         self.android_cleaner.unwrap_or(self.android)
+    }
+
+    pub fn omit_checksums(&self) -> bool {
+        self.omit_checksums
     }
 }
 
@@ -198,7 +202,7 @@ impl Config {
     }
 
     // Get the package name for an external type
-    fn external_type_package_name(&self, module_path: &str, namespace: &str) -> String {
+    pub fn external_type_package_name(&self, module_path: &str, namespace: &str) -> String {
         // config overrides are keyed by the crate name, default fallback is the namespace.
         let crate_name = module_path.split("::").next().unwrap();
         match self.external_packages.get(crate_name) {
@@ -273,6 +277,27 @@ impl<'a> JavaWrapper<'a> {
             .filter_map(|ct| ct.initialization_fn())
             .collect()
     }
+
+    /// Get the namespace class name, avoiding collisions with type names.
+    /// If the namespace name (after camelCase conversion) collides with any type,
+    /// append "Lib" suffix repeatedly until there's no collision.
+    pub fn namespace_class_name(&self) -> String {
+        let base_name = JavaCodeOracle.class_name(self.ci, self.ci.namespace());
+
+        // Collect all type names for collision checking
+        let type_names: HashSet<String> = self
+            .ci
+            .iter_local_types()
+            .map(|t| JavaCodeOracle.find(t).type_label(self.ci, &self.config))
+            .collect();
+
+        // Keep adding "Lib" suffix until there's no collision
+        let mut candidate = base_name;
+        while type_names.contains(&candidate) {
+            candidate = format!("{}Lib", candidate);
+        }
+        candidate
+    }
 }
 
 /// Renders Java helper code for all types
@@ -307,6 +332,12 @@ impl<'a> TypeRenderer<'a> {
         self.include_once_names
             .borrow_mut()
             .insert(name.to_string())
+    }
+
+    // Get the package name for an external type (used by ExternalTypeTemplate.java)
+    fn external_type_package_name(&self, module_path: &str, namespace: &str) -> String {
+        self.config
+            .external_type_package_name(module_path, namespace)
     }
 }
 
@@ -428,7 +459,7 @@ impl JavaCodeOracle {
             FfiType::UInt64 | FfiType::Int64 => "0L".to_owned(),
             FfiType::Float32 => "0.0f".to_owned(),
             FfiType::Float64 => "0.0".to_owned(),
-            FfiType::RustArcPtr(_) => "Pointer.NULL".to_owned(),
+            FfiType::Handle => "0L".to_owned(),
             FfiType::RustBuffer(_) => "new RustBuffer.ByValue()".to_owned(),
             FfiType::Callback(_) => "null".to_owned(),
             FfiType::RustCallStatus => "new UniffiRustCallStatus.ByValue()".to_owned(),
@@ -454,7 +485,7 @@ impl JavaCodeOracle {
             | FfiType::Float64 => {
                 format!("{}ByReference", self.ffi_type_label(ffi_type, config, ci))
             }
-            FfiType::RustArcPtr(_) => "PointerByReference".to_owned(),
+            FfiType::Handle => "LongByReference".to_owned(),
             // JNA structs default to ByReference
             FfiType::RustBuffer(_) | FfiType::Struct(_) => {
                 self.ffi_type_label(ffi_type, config, ci)
@@ -481,9 +512,8 @@ impl JavaCodeOracle {
             FfiType::Float32 => "Float".to_string(),
             FfiType::Float64 => "Double".to_string(),
             FfiType::Handle => "Long".to_string(),
-            FfiType::RustArcPtr(_) => "Pointer".to_string(),
             FfiType::RustBuffer(maybe_external) => match maybe_external {
-                Some(external_meta) if external_meta.module_path != ci.crate_name() => {
+                Some(external_meta) if external_meta.crate_name() != ci.crate_name() => {
                     format!(
                         "{}.RustBuffer",
                         config.external_type_package_name(
@@ -523,9 +553,8 @@ impl JavaCodeOracle {
             FfiType::Float32 => "float".to_string(),
             FfiType::Float64 => "double".to_string(),
             FfiType::Handle => "long".to_string(),
-            FfiType::RustArcPtr(_) => "Pointer".to_string(),
             FfiType::RustBuffer(maybe_external) => match maybe_external {
-                Some(external_meta) => {
+                Some(external_meta) if external_meta.crate_name() != ci.crate_name() => {
                     format!(
                         "{}.RustBuffer",
                         config.external_type_package_name(
@@ -534,7 +563,7 @@ impl JavaCodeOracle {
                         )
                     )
                 }
-                None => "RustBuffer".to_string(),
+                _ => "RustBuffer".to_string(),
             },
             FfiType::RustCallStatus => "UniffiRustCallStatus.ByValue".to_string(),
             FfiType::ForeignBytes => "ForeignBytes.ByValue".to_string(),
@@ -666,47 +695,134 @@ impl AsCodeType for &'_ uniffi_bindgen::interface::CallbackInterface {
     }
 }
 
-// A work around for #2392 - we can't handle functions with external errors.
-fn can_render_callable(callable: &dyn Callable, ci: &ComponentInterface) -> bool {
-    // can't handle external errors.
-    callable
-        .throws_type()
-        .map(|t| !ci.is_external(t))
-        .unwrap_or(true)
-}
-
 mod filters {
+    #![allow(unused_variables)]
     use super::*;
-    pub use uniffi_bindgen::backend::filters::*;
     use uniffi_bindgen::interface::ffi::ExternalFfiMetadata;
-    use uniffi_meta::LiteralMetadata;
+    use uniffi_meta::AsType;
+
+    // Askama 0.14 passes a Values parameter to all filters. We use `_v` to accept but ignore it.
+
+    pub(super) fn ffi_type(
+        type_: &impl AsType,
+        _v: &dyn askama::Values,
+    ) -> Result<FfiType, askama::Error> {
+        Ok(type_.as_type().into())
+    }
 
     pub(super) fn type_name(
         as_ct: &impl AsCodeType,
+        _v: &dyn askama::Values,
         ci: &ComponentInterface,
         config: &Config,
     ) -> Result<String, askama::Error> {
         Ok(as_ct.as_codetype().type_label(ci, config))
     }
 
-    pub(super) fn canonical_name(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
+    /// Generate a fully qualified type name including the package.
+    /// This is needed for enum variant fields to avoid naming collisions
+    /// when a variant field type has the same name as the enum itself.
+    pub(super) fn qualified_type_name<T>(
+        as_type: &T,
+        _v: &dyn askama::Values,
+        ci: &ComponentInterface,
+        config: &Config,
+    ) -> Result<String, askama::Error>
+    where
+        T: AsCodeType + AsType,
+    {
+        fully_qualified_type_label(&as_type.as_type(), ci, config)
+            .map_err(|e| askama::Error::Custom(e.into()))
+    }
+
+    fn fully_qualified_type_label(
+        ty: &Type,
+        ci: &ComponentInterface,
+        config: &Config,
+    ) -> anyhow::Result<String> {
+        match ty {
+            Type::Optional { inner_type } => {
+                Ok(fully_qualified_type_label(inner_type, ci, config)?.to_string())
+            }
+            Type::Sequence { inner_type } => Ok(format!(
+                "java.util.List<{}>",
+                fully_qualified_type_label(inner_type, ci, config)?
+            )),
+            Type::Map {
+                key_type,
+                value_type,
+            } => Ok(format!(
+                "java.util.Map<{}, {}>",
+                fully_qualified_type_label(key_type, ci, config)?,
+                fully_qualified_type_label(value_type, ci, config)?
+            )),
+            Type::Enum { .. }
+            | Type::Record { .. }
+            | Type::Object { .. }
+            | Type::CallbackInterface { .. }
+            | Type::Custom { .. } => {
+                let class_name = ty
+                    .name()
+                    .map(|nm| JavaCodeOracle.class_name(ci, nm))
+                    .ok_or_else(|| anyhow::anyhow!("type {:?} has no name", ty))?;
+                let package_name = package_for_type(ty, ci, config)?;
+                Ok(format!("{}.{}", package_name, class_name))
+            }
+            _ => Ok(JavaCodeOracle.find(ty).type_label(ci, config)),
+        }
+    }
+
+    fn package_for_type(
+        ty: &Type,
+        ci: &ComponentInterface,
+        config: &Config,
+    ) -> anyhow::Result<String> {
+        if ci.is_external(ty) {
+            let module_path = ty
+                .module_path()
+                .ok_or_else(|| anyhow::anyhow!("external type {:?} missing module path", ty))?;
+            let namespace = ci.namespace_for_module_path(module_path)?;
+            Ok(config.external_type_package_name(module_path, namespace))
+        } else {
+            Ok(config.package_name())
+        }
+    }
+
+    pub(super) fn canonical_name(
+        as_ct: &impl AsCodeType,
+        _v: &dyn askama::Values,
+    ) -> Result<String, askama::Error> {
         Ok(as_ct.as_codetype().canonical_name())
+    }
+
+    /// Check if a type is external (from another crate)
+    pub(super) fn is_external(
+        as_type: &impl AsType,
+        _v: &dyn askama::Values,
+        ci: &ComponentInterface,
+    ) -> Result<bool, askama::Error> {
+        Ok(ci.is_external(&as_type.as_type()))
     }
 
     pub(super) fn ffi_converter_instance(
         as_ct: &impl AsCodeType,
+        _v: &dyn askama::Values,
         config: &Config,
         ci: &ComponentInterface,
     ) -> Result<String, askama::Error> {
         Ok(as_ct.as_codetype().ffi_converter_instance(config, ci))
     }
 
-    pub(super) fn ffi_converter_name(as_ct: &impl AsCodeType) -> Result<String, askama::Error> {
+    pub(super) fn ffi_converter_name(
+        as_ct: &impl AsCodeType,
+        _v: &dyn askama::Values,
+    ) -> Result<String, askama::Error> {
         Ok(as_ct.as_codetype().ffi_converter_name())
     }
 
     pub(super) fn lower_fn(
         as_ct: &impl AsCodeType,
+        _v: &dyn askama::Values,
         config: &Config,
         ci: &ComponentInterface,
     ) -> Result<String, askama::Error> {
@@ -718,6 +834,7 @@ mod filters {
 
     pub(super) fn allocation_size_fn(
         as_ct: &impl AsCodeType,
+        _v: &dyn askama::Values,
         config: &Config,
         ci: &ComponentInterface,
     ) -> Result<String, askama::Error> {
@@ -729,6 +846,7 @@ mod filters {
 
     pub(super) fn write_fn(
         as_ct: &impl AsCodeType,
+        _v: &dyn askama::Values,
         config: &Config,
         ci: &ComponentInterface,
     ) -> Result<String, askama::Error> {
@@ -740,6 +858,7 @@ mod filters {
 
     pub(super) fn lift_fn(
         as_ct: &impl AsCodeType,
+        _v: &dyn askama::Values,
         config: &Config,
         ci: &ComponentInterface,
     ) -> Result<String, askama::Error> {
@@ -751,6 +870,7 @@ mod filters {
 
     pub(super) fn read_fn(
         as_ct: &impl AsCodeType,
+        _v: &dyn askama::Values,
         config: &Config,
         ci: &ComponentInterface,
     ) -> Result<String, askama::Error> {
@@ -764,8 +884,11 @@ mod filters {
     fn int_literal(t: &Option<Type>, base10: String) -> Result<String, askama::Error> {
         if let Some(t) = t {
             match t {
-                Type::Int8 | Type::Int16 | Type::Int32 | Type::Int64 => Ok(base10),
-                Type::UInt8 | Type::UInt16 | Type::UInt32 | Type::UInt64 => Ok(base10 + "u"),
+                // Byte and Short need explicit casts in Java
+                Type::Int8 | Type::UInt8 => Ok(format!("(byte){}", base10)),
+                Type::Int16 | Type::UInt16 => Ok(format!("(short){}", base10)),
+                Type::Int32 | Type::UInt32 => Ok(base10),
+                Type::Int64 | Type::UInt64 => Ok(base10),
                 _ => Err(to_askama_error("Only ints are supported.")),
             }
         } else {
@@ -774,19 +897,24 @@ mod filters {
     }
 
     // Get the idiomatic Java rendering of an individual enum variant's discriminant
-    pub fn variant_discr_literal(e: &Enum, index: &usize) -> Result<String, askama::Error> {
+    pub fn variant_discr_literal(
+        e: &Enum,
+        _v: &dyn askama::Values,
+        index: &usize,
+    ) -> Result<String, askama::Error> {
         let literal = e.variant_discr(*index).expect("invalid index");
         match literal {
             // Java doesn't convert between signed and unsigned by default
             // so we'll need to make sure we define the type as appropriately
-            LiteralMetadata::UInt(v, _, _) => int_literal(e.variant_discr_type(), v.to_string()),
-            LiteralMetadata::Int(v, _, _) => int_literal(e.variant_discr_type(), v.to_string()),
+            Literal::UInt(v, _, _) => int_literal(e.variant_discr_type(), v.to_string()),
+            Literal::Int(v, _, _) => int_literal(e.variant_discr_type(), v.to_string()),
             _ => Err(to_askama_error("Only ints are supported.")),
         }
     }
 
     pub fn ffi_type_name_by_value(
         type_: &FfiType,
+        _v: &dyn askama::Values,
         config: &Config,
         ci: &ComponentInterface,
     ) -> Result<String, askama::Error> {
@@ -795,66 +923,167 @@ mod filters {
 
     pub fn ffi_type_name_for_ffi_struct(
         type_: &FfiType,
+        _v: &dyn askama::Values,
         config: &Config,
         ci: &ComponentInterface,
     ) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.ffi_type_label_for_ffi_struct(type_, config, ci))
     }
 
-    pub fn ffi_default_value(type_: FfiType) -> Result<String, askama::Error> {
+    pub fn ffi_default_value(
+        type_: FfiType,
+        _v: &dyn askama::Values,
+    ) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.ffi_default_value(&type_))
     }
 
-    /// Get the idiomatic Java rendering of a class name.
+    /// FFI type name preferring primitive types (for JNA direct mapping native methods)
+    pub fn ffi_type_name_primitive(
+        type_: &FfiType,
+        _v: &dyn askama::Values,
+        config: &Config,
+        ci: &ComponentInterface,
+    ) -> Result<String, askama::Error> {
+        Ok(JavaCodeOracle.ffi_type_label_by_value(type_, true, config, ci))
+    }
+
+    /// Get the interface name for a trait implementation (for external trait interfaces).
+    pub fn trait_interface_name(
+        trait_ty: &Type,
+        _v: &dyn askama::Values,
+        ci: &ComponentInterface,
+    ) -> Result<String, askama::Error> {
+        let Some(module_path) = trait_ty.module_path() else {
+            return Err(to_askama_error(&format!(
+                "Invalid trait_type: {trait_ty:?}"
+            )));
+        };
+        let Some(ci_look) = ci.find_component_interface(module_path) else {
+            return Err(to_askama_error(&format!(
+                "no interface with module_path: {}",
+                module_path
+            )));
+        };
+
+        let (obj_name, has_callback_interface) = match trait_ty {
+            Type::Object { name, .. } => {
+                let Some(obj) = ci_look.get_object_definition(name) else {
+                    return Err(to_askama_error(&format!(
+                        "trait interface not found: {}",
+                        name
+                    )));
+                };
+                (name, obj.has_callback_interface())
+            }
+            Type::CallbackInterface { name, .. } => (name, true),
+            _ => {
+                return Err(to_askama_error(&format!(
+                    "Invalid trait_type: {trait_ty:?}"
+                )));
+            }
+        };
+
+        let class_name = JavaCodeOracle.class_name(ci_look, obj_name);
+        if has_callback_interface {
+            Ok(class_name)
+        } else {
+            Ok(format!("{}Interface", class_name))
+        }
+    }
+
+    /// Get the idiomatic Java rendering of a class name from a string.
     pub fn class_name<S: AsRef<str>>(
         nm: S,
+        _v: &dyn askama::Values,
         ci: &ComponentInterface,
     ) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.class_name(ci, nm.as_ref()))
     }
 
+    /// Get the idiomatic Java rendering of a class name from a Type.
+    pub fn class_name_from_type(
+        as_type: &impl AsType,
+        _v: &dyn askama::Values,
+        ci: &ComponentInterface,
+    ) -> Result<String, askama::Error> {
+        let type_ = as_type.as_type();
+        let name = match &type_ {
+            Type::Enum { name, .. } => name,
+            Type::Object { name, .. } => name,
+            Type::Record { name, .. } => name,
+            Type::Custom { name, .. } => name,
+            Type::CallbackInterface { name, .. } => name,
+            _ => {
+                return Err(to_askama_error(&format!(
+                    "class_name_from_type: unsupported type {:?}",
+                    type_
+                )));
+            }
+        };
+        Ok(JavaCodeOracle.class_name(ci, name))
+    }
+
     /// Get the idiomatic Java rendering of a function name.
-    pub fn fn_name<S: AsRef<str>>(nm: S) -> Result<String, askama::Error> {
+    pub fn fn_name<S: AsRef<str>>(nm: S, _v: &dyn askama::Values) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.fn_name(nm.as_ref()))
     }
 
     /// Get the idiomatic Java rendering of a variable name.
-    pub fn var_name<S: AsRef<str>>(nm: S) -> Result<String, askama::Error> {
+    pub fn var_name<S: AsRef<str>>(
+        nm: S,
+        _v: &dyn askama::Values,
+    ) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.var_name(nm.as_ref()))
     }
 
     /// Get the idiomatic Java rendering of a variable name, without altering reserved words.
-    pub fn var_name_raw<S: AsRef<str>>(nm: S) -> Result<String, askama::Error> {
+    pub fn var_name_raw<S: AsRef<str>>(
+        nm: S,
+        _v: &dyn askama::Values,
+    ) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.var_name_raw(nm.as_ref()))
     }
 
     /// Get the idiomatic Java setter method name.
-    pub fn setter<S: AsRef<str>>(nm: S) -> Result<String, askama::Error> {
+    pub fn setter<S: AsRef<str>>(nm: S, _v: &dyn askama::Values) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.setter(nm.as_ref()))
     }
 
     /// Get a String representing the name used for an individual enum variant.
-    pub fn variant_name(v: &Variant) -> Result<String, askama::Error> {
-        Ok(JavaCodeOracle.enum_variant_name(v.name()))
+    pub fn variant_name(
+        variant: &Variant,
+        _v: &dyn askama::Values,
+    ) -> Result<String, askama::Error> {
+        Ok(JavaCodeOracle.enum_variant_name(variant.name()))
     }
 
-    pub fn error_variant_name(v: &Variant) -> Result<String, askama::Error> {
-        let name = v.name().to_string().to_upper_camel_case();
+    pub fn error_variant_name(
+        variant: &Variant,
+        _v: &dyn askama::Values,
+    ) -> Result<String, askama::Error> {
+        let name = variant.name().to_string().to_upper_camel_case();
         Ok(JavaCodeOracle.convert_error_suffix(&name))
     }
 
     /// Get the idiomatic Java rendering of an FFI callback function name
-    pub fn ffi_callback_name<S: AsRef<str>>(nm: S) -> Result<String, askama::Error> {
+    pub fn ffi_callback_name<S: AsRef<str>>(
+        nm: S,
+        _v: &dyn askama::Values,
+    ) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.ffi_callback_name(nm.as_ref()))
     }
 
     /// Get the idiomatic Java rendering of an FFI struct name
-    pub fn ffi_struct_name<S: AsRef<str>>(nm: S) -> Result<String, askama::Error> {
+    pub fn ffi_struct_name<S: AsRef<str>>(
+        nm: S,
+        _v: &dyn askama::Values,
+    ) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.ffi_struct_name(nm.as_ref()))
     }
 
     pub fn object_names(
         obj: &Object,
+        _v: &dyn askama::Values,
         ci: &ComponentInterface,
     ) -> Result<(String, String), askama::Error> {
         Ok(JavaCodeOracle.object_names(ci, obj))
@@ -862,23 +1091,29 @@ mod filters {
 
     pub fn async_inner_return_type(
         callable: impl Callable,
+        _v: &dyn askama::Values,
         ci: &ComponentInterface,
         config: &Config,
     ) -> Result<String, askama::Error> {
         callable
             .return_type()
-            .map_or(Ok("Void".to_string()), |t| type_name(t, ci, config))
+            .map_or(Ok("java.lang.Void".to_string()), |t| {
+                type_name(t, _v, ci, config)
+            })
     }
 
     pub fn async_return_type(
         callable: impl Callable,
+        _v: &dyn askama::Values,
         ci: &ComponentInterface,
         config: &Config,
     ) -> Result<String, askama::Error> {
         let is_async = callable.is_async();
-        let inner_type = async_inner_return_type(callable, ci, config)?;
+        let inner_type = async_inner_return_type(callable, _v, ci, config)?;
         if is_async {
-            Ok(format!("CompletableFuture<{inner_type}>"))
+            Ok(format!(
+                "java.util.concurrent.CompletableFuture<{inner_type}>"
+            ))
         } else {
             Ok(inner_type)
         }
@@ -886,21 +1121,23 @@ mod filters {
 
     pub fn async_poll(
         callable: impl Callable,
+        _v: &dyn askama::Values,
         ci: &ComponentInterface,
     ) -> Result<String, askama::Error> {
         let ffi_func = callable.ffi_rust_future_poll(ci);
         Ok(format!(
-            "(future, callback, continuation) -> UniffiLib.INSTANCE.{ffi_func}(future, callback, continuation)"
+            "(future, callback, continuation) -> UniffiLib.{ffi_func}(future, callback, continuation)"
         ))
     }
 
     pub fn async_complete(
         callable: impl Callable,
+        _v: &dyn askama::Values,
         ci: &ComponentInterface,
         config: &Config,
     ) -> Result<String, askama::Error> {
         let ffi_func = callable.ffi_rust_future_complete(ci);
-        let call = format!("UniffiLib.INSTANCE.{ffi_func}(future, continuation)");
+        let call = format!("UniffiLib.{ffi_func}(future, continuation)");
         let call = match callable.return_type() {
             Some(return_type) if ci.is_external(return_type) => {
                 let ffi_type = FfiType::from(return_type);
@@ -928,10 +1165,11 @@ mod filters {
 
     pub fn async_free(
         callable: impl Callable,
+        _v: &dyn askama::Values,
         ci: &ComponentInterface,
     ) -> Result<String, askama::Error> {
         let ffi_func = callable.ffi_rust_future_free(ci);
-        Ok(format!("(future) -> UniffiLib.INSTANCE.{ffi_func}(future)"))
+        Ok(format!("(future) -> UniffiLib.{ffi_func}(future)"))
     }
 
     /// Remove the "`" chars we put around function/variable names
@@ -939,17 +1177,87 @@ mod filters {
     /// These are used to avoid name clashes with java identifiers, but sometimes you want to
     /// render the name unquoted.  One example is the message property for errors where we want to
     /// display the name for the user.
-    pub fn unquote<S: AsRef<str>>(nm: S) -> Result<String, askama::Error> {
+    pub fn unquote<S: AsRef<str>>(nm: S, _v: &dyn askama::Values) -> Result<String, askama::Error> {
         Ok(nm.as_ref().trim_matches('`').to_string())
     }
 
     /// Get the idiomatic Java rendering of docstring
-    pub fn docstring<S: AsRef<str>>(docstring: S, spaces: &i32) -> Result<String, askama::Error> {
+    pub fn docstring<S: AsRef<str>>(
+        docstring: S,
+        _v: &dyn askama::Values,
+        spaces: &i32,
+    ) -> Result<String, askama::Error> {
         let middle = textwrap::indent(&textwrap::dedent(docstring.as_ref()), " * ");
         let wrapped = format!("/**\n{middle}\n */");
 
         let spaces = usize::try_from(*spaces).unwrap_or_default();
         Ok(textwrap::indent(&wrapped, &" ".repeat(spaces)))
+    }
+
+    /// Returns the type name suitable for use in field declarations, method parameters, and return types.
+    /// For non-optional primitives, returns the primitive type (int, long, boolean, etc.).
+    /// For optional types and all other types, returns the boxed/object type.
+    pub fn type_name_for_field(
+        as_ct: &impl AsCodeType,
+        _v: &dyn askama::Values,
+        ci: &ComponentInterface,
+        config: &Config,
+    ) -> Result<String, askama::Error> {
+        // Check if the codetype has a primitive label available
+        let codetype = as_ct.as_codetype();
+        if let Some(primitive) = codetype.type_label_primitive() {
+            return Ok(primitive);
+        }
+        // Otherwise use the standard boxed type label
+        Ok(codetype.type_label(ci, config))
+    }
+
+    /// Always returns the boxed type name, for use in generic contexts like CompletableFuture<T>.
+    /// This is the same as type_name but with a clearer name for template readability.
+    pub fn boxed_type_name(
+        as_ct: &impl AsCodeType,
+        _v: &dyn askama::Values,
+        ci: &ComponentInterface,
+        config: &Config,
+    ) -> Result<String, askama::Error> {
+        Ok(as_ct.as_codetype().type_label(ci, config))
+    }
+
+    /// Generates an equality expression for comparing two values of a field's type.
+    /// For primitives: returns "left == right"
+    /// For objects: returns "java.util.Objects.equals(left, right)"
+    pub fn equals_expr<T: AsCodeType, L: std::fmt::Display, R: std::fmt::Display>(
+        field: &T,
+        _v: &dyn askama::Values,
+        left: L,
+        right: R,
+    ) -> Result<String, askama::Error> {
+        // Check if this type has a primitive label (meaning it's a primitive)
+        if field.as_codetype().type_label_primitive().is_some() {
+            Ok(format!("{} == {}", left, right))
+        } else {
+            Ok(format!("java.util.Objects.equals({}, {})", left, right))
+        }
+    }
+
+    /// Generates a hash code expression for a field value.
+    /// For primitives: returns "Type.hashCode(value)" (e.g., "java.lang.Integer.hashCode(value)")
+    /// For objects: returns "java.util.Objects.hashCode(value)"
+    pub fn hash_code_expr<T: AsCodeType + AsType, V: std::fmt::Display>(
+        field: &T,
+        _v: &dyn askama::Values,
+        value: V,
+    ) -> Result<String, askama::Error> {
+        match field.as_type() {
+            Type::Boolean => Ok(format!("java.lang.Boolean.hashCode({})", value)),
+            Type::Int8 | Type::UInt8 => Ok(format!("java.lang.Byte.hashCode({})", value)),
+            Type::Int16 | Type::UInt16 => Ok(format!("java.lang.Short.hashCode({})", value)),
+            Type::Int32 | Type::UInt32 => Ok(format!("java.lang.Integer.hashCode({})", value)),
+            Type::Int64 | Type::UInt64 => Ok(format!("java.lang.Long.hashCode({})", value)),
+            Type::Float32 => Ok(format!("java.lang.Float.hashCode({})", value)),
+            Type::Float64 => Ok(format!("java.lang.Double.hashCode({})", value)),
+            _ => Ok(format!("java.util.Objects.hashCode({})", value)),
+        }
     }
 }
 
@@ -1007,11 +1315,12 @@ mod tests {
         let bindings = generate_bindings(&Config::default(), &ci).unwrap();
 
         // show that the generated bindings preserve the name
+        // Note: we use java.lang.Exception to avoid collisions with user types
         let relevant_lines = bindings
             .lines()
             .filter(|line| {
-                line.contains("class Error extends Exception")
-                    || line.contains("class Exception extends Exception")
+                line.contains("class Error extends java.lang.Exception")
+                    || line.contains("class Exception extends java.lang.Exception")
                     || line.contains("throws Error")
                     || line.contains("throws Exception")
             })
@@ -1019,7 +1328,7 @@ mod tests {
             .join("\n");
 
         assert!(
-            bindings.contains("public class Error extends Exception"),
+            bindings.contains("public class Error extends java.lang.Exception"),
             "expected generated bindings to preserve the `Error` type name:\n{relevant_lines}"
         );
         assert!(

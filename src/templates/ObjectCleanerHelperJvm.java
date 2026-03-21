@@ -1,31 +1,27 @@
 package {{ config.package_name() }};
 
-import java.lang.ref.Cleaner;
-
 class JavaLangRefCleaner implements UniffiCleaner {
-    private final Cleaner cleaner;
+    private final java.lang.ref.Cleaner cleaner;
 
     JavaLangRefCleaner() {
-      this.cleaner = Cleaner.create();
+      this.cleaner = java.lang.ref.Cleaner.create();
     }
 
     @Override
-    public UniffiCleaner.Cleanable register(Object value, Runnable cleanUpTask) {
+    public UniffiCleaner.Cleanable register(java.lang.Object value, java.lang.Runnable cleanUpTask) {
         return new JavaLangRefCleanable(cleaner.register(value, cleanUpTask));
     }
 }
 
 package {{ config.package_name() }};
 
-import java.lang.ref.Cleaner;
-
 class JavaLangRefCleanable implements UniffiCleaner.Cleanable {
-    private final Cleaner.Cleanable cleanable;
-    
-    JavaLangRefCleanable(Cleaner.Cleanable cleanable) {
+    private final java.lang.ref.Cleaner.Cleanable cleanable;
+
+    JavaLangRefCleanable(java.lang.ref.Cleaner.Cleanable cleanable) {
         this.cleanable = cleanable;
     }
-    
+
     @Override
     public void clean() {
       cleanable.clean();

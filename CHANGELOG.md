@@ -1,3 +1,21 @@
+## 0.3.0
+
+- update to uniffi 0.31.0
+- switched to the new BindgenPaths API for generation internally
+- support methods on records and enums
+- multiple bugfixes ported from Kotlin changes
+- fully qualified all `java.lang` type use in templates to simplify imports and avoid potential name collisions
+- added `omit_checksums` config option, see [the kotlin doc about it](https://mozilla.github.io/uniffi-rs/latest/kotlin/configuration.html#available-options).
+- support the `rename` config option, see [the docs](https://mozilla.github.io/uniffi-rs/latest/renaming.html).
+- Uniffi trait methods
+
+### Breaking
+
+- method checksums change (since we skipped over 0.30.0 this is only theoretically breaking)
+- `--lib-file` and `--library` CLI generator options removed, they're both now automatically detected by uniffi
+- Java callback interface implementations must now use primitive types (e.g., `int`, `long`, `boolean`) instead of boxed types (`Integer`, `Long`, `Boolean`) for non-optional primitive parameters and return types
+- use Java primitive types (`int`, `long`, `boolean`, etc.) instead of boxed types (`Integer`, `Long`, `Boolean`) for non-optional primitive parameters, return types, and record fields. Optional primitives and primitives in generic contexts (e.g., `List<Integer>`, `CompletableFuture<Integer>`) still use boxed types as required by Java.
+
 ## 0.2.1
 
 - Fix `OptionalTemplate` missing potential imports of `java.util.List` and `java.util.Map`

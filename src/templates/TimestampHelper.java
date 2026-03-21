@@ -1,37 +1,32 @@
 package {{ config.package_name() }};
 
-import java.nio.ByteBuffer;
-import java.time.Instant;
-import java.time.Duration;
-import java.time.DateTimeException;
-
-public enum FfiConverterTimestamp implements FfiConverterRustBuffer<Instant> {
+public enum FfiConverterTimestamp implements FfiConverterRustBuffer<java.time.Instant> {
     INSTANCE;
 
     @Override
-    public Instant read(ByteBuffer buf) {
+    public java.time.Instant read(java.nio.ByteBuffer buf) {
         long seconds = buf.getLong();
         // Type mismatch (should be u32) but we check for overflow/underflow below
         long nanoseconds = (long) buf.getInt();
         if (nanoseconds < 0) {
-            throw new DateTimeException("Instant nanoseconds exceed minimum or maximum supported by uniffi");
+            throw new java.time.DateTimeException("Instant nanoseconds exceed minimum or maximum supported by uniffi");
         }
         if (seconds >= 0) {
-            return Instant.EPOCH.plus(Duration.ofSeconds(seconds, nanoseconds));
+            return java.time.Instant.EPOCH.plus(java.time.Duration.ofSeconds(seconds, nanoseconds));
         } else {
-            return Instant.EPOCH.minus(Duration.ofSeconds(-seconds, nanoseconds));    
+            return java.time.Instant.EPOCH.minus(java.time.Duration.ofSeconds(-seconds, nanoseconds));
         }
     }
 
     // 8 bytes for seconds, 4 bytes for nanoseconds
     @Override
-    public long allocationSize(Instant value) {
+    public long allocationSize(java.time.Instant value) {
         return 12L;
     }
 
     @Override
-    public void write(Instant value, ByteBuffer buf) {
-        Duration epochOffset = Duration.between(Instant.EPOCH, value);
+    public void write(java.time.Instant value, java.nio.ByteBuffer buf) {
+        java.time.Duration epochOffset = java.time.Duration.between(java.time.Instant.EPOCH, value);
 
         var sign = 1;
         if (epochOffset.isNegative()) {
@@ -42,7 +37,7 @@ public enum FfiConverterTimestamp implements FfiConverterRustBuffer<Instant> {
         if (epochOffset.getNano() < 0) {
             // Java docs provide guarantee that nano will always be positive, so this should be impossible
             // See: https://docs.oracle.com/javase/8/docs/api/java/time/Instant.html
-            throw new IllegalArgumentException("Invalid timestamp, nano value must be non-negative");
+            throw new java.lang.IllegalArgumentException("Invalid timestamp, nano value must be non-negative");
         }
 
         buf.putLong(sign * epochOffset.getSeconds());

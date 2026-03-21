@@ -1,18 +1,18 @@
-// This template implements a class for working with a Rust struct via a Pointer/Arc<T>
+// This template implements a class for working with a Rust struct via a handle
 // to the live Rust struct on the other side of the FFI.
 //
 // Each instance implements core operations for working with the Rust `Arc<T>` and the
-// Kotlin Pointer to work with the live Rust struct on the other side of the FFI.
+// Java handle to work with the live Rust struct on the other side of the FFI.
 //
 // There's some subtlety here, because we have to be careful not to operate on a Rust
 // struct after it has been dropped, and because we must expose a public API for freeing
 // the Java wrapper object in lieu of reliable finalizers. The core requirements are:
 //
-//   * Each instance holds an opaque pointer to the underlying Rust struct.
-//     Method calls need to read this pointer from the object's state and pass it in to
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
 //     the Rust FFI.
 //
-//   * When an instance is no longer needed, its pointer should be passed to a
+//   * When an instance is no longer needed, its handle should be passed to a
 //     special destructor function provided by the Rust FFI, which will drop the
 //     underlying Rust struct.
 //
@@ -37,13 +37,13 @@
 //      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
 //         or `android = true` in the [`java` section of the `uniffi.toml` file, like the Kotlin one](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
 //
-// If we try to implement this with mutual exclusion on access to the pointer, there is the
+// If we try to implement this with mutual exclusion on access to the handle, there is the
 // possibility of a race between a method call and a concurrent call to `close`:
 //
-//    * Thread A starts a method call, reads the value of the pointer, but is interrupted
-//      before it can pass the pointer over the FFI to Rust.
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
 //    * Thread B calls `close` and frees the underlying Rust struct.
-//    * Thread A resumes, passing the already-read pointer value to Rust and triggering
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
 //      a use-after-free.
 //
 // One possible solution would be to use a `ReadWriteLock`, with each method call taking
@@ -102,6 +102,7 @@
 {%- let obj = ci.get_object_definition(name).unwrap() %}
 {%- let (interface_name, impl_class_name) = obj|object_names(ci) %}
 {%- let methods = obj.methods() %}
+{%- let uniffi_trait_methods = obj.uniffi_trait_methods() %}
 {%- let interface_docstring = obj.docstring() %}
 {%- let is_error = ci.is_name_used_as_error(name) %}
 {%- let ffi_converter_name = obj|ffi_converter_name %}
@@ -110,30 +111,25 @@
 
 package {{ config.package_name() }};
 
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Function;
-import java.util.function.Consumer;
-import com.sun.jna.Pointer;
-import java.util.concurrent.CompletableFuture;
-
 {%- call java::docstring(obj, 0) %}
 {% if (is_error) %}
-public class {{ impl_class_name }} extends Exception implements AutoCloseable, {{ interface_name }} {
+public class {{ impl_class_name }} extends Exception implements AutoCloseable, {{ interface_name }}{% for t in obj.trait_impls() %}, {{ t.trait_ty|trait_interface_name(ci) }}{% endfor %}{% if uniffi_trait_methods.ord_cmp.is_some() %}, Comparable<{{ impl_class_name }}>{% endif %} {
 {% else -%}
-public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }} {
+public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }}{% for t in obj.trait_impls() %}, {{ t.trait_ty|trait_interface_name(ci) }}{% endfor %}{% if uniffi_trait_methods.ord_cmp.is_some() %}, Comparable<{{ impl_class_name }}>{% endif %} {
 {%- endif %}
-  protected Pointer pointer;
+  protected long handle;
   protected UniffiCleaner.Cleanable cleanable;
 
-  private AtomicBoolean wasDestroyed = new AtomicBoolean(false);
-  private AtomicLong callCounter = new AtomicLong(1);
+  private java.util.concurrent.atomic.AtomicBoolean wasDestroyed = new java.util.concurrent.atomic.AtomicBoolean(false);
+  private java.util.concurrent.atomic.AtomicLong callCounter = new java.util.concurrent.atomic.AtomicLong(1);
 
-  public {{ impl_class_name }}(Pointer pointer) {
-    this.pointer = pointer;
-    this.cleanable = UniffiLib.CLEANER.register(this, new UniffiCleanAction(pointer));
+  /**
+   * Internal constructor to wrap a raw handle from FFI.
+   * The UniffiWithHandle marker disambiguates this from other constructors.
+   */
+  public {{ impl_class_name }}(UniffiWithHandle phantom, long handle) {
+    this.handle = handle;
+    this.cleanable = UniffiLib.CLEANER.register(this, new UniffiCleanAction(handle));
   }
 
   /**
@@ -141,9 +137,9 @@ public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }
    * attempt to actually use an object constructed this way will fail as there is no
    * connected Rust object.
    */
-  public {{ impl_class_name }}(NoPointer noPointer) {
-    this.pointer = null;
-    this.cleanable = UniffiLib.CLEANER.register(this, new UniffiCleanAction(pointer));
+  public {{ impl_class_name }}(NoHandle noHandle) {
+    this.handle = 0L;
+    this.cleanable = null;
   }
 
   {% match obj.primary_constructor() %}
@@ -153,7 +149,7 @@ public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }
   {%-     else %}
   {%- call java::docstring(cons, 4) %}
   public {{ impl_class_name }}({% call java::arg_list(cons, true) -%}) {% match cons.throws_type() %}{% when Some(throwable) %}throws {{ throwable|type_name(ci, config) }}{% else %}{% endmatch %}{
-    this((Pointer){%- call java::to_ffi_call(cons) -%});
+    this(UniffiWithHandle.INSTANCE, (long){%- call java::to_ffi_call(cons) -%});
   }
   {%-     endif %}
   {%- when None %}
@@ -166,66 +162,71 @@ public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }
     if (this.wasDestroyed.compareAndSet(false, true)) {
       // This decrement always matches the initial count of 1 given at creation time.
       if (this.callCounter.decrementAndGet() == 0L) {
-        cleanable.clean();
+        if (cleanable != null) {
+          cleanable.clean();
+        }
       }
     }
   }
 
-  public <R> R callWithPointer(Function<Pointer, R> block) {
+  public <R> R callWithHandle(java.util.function.Function<java.lang.Long, R> block) {
     // Check and increment the call counter, to keep the object alive.
     // This needs a compare-and-set retry loop in case of concurrent updates.
     long c;
     do {
       c = this.callCounter.get();
       if (c == 0L) {
-        throw new IllegalStateException("{{ impl_class_name }} object has already been destroyed");
+        throw new java.lang.IllegalStateException("{{ impl_class_name }} object has already been destroyed");
       }
-      if (c == Long.MAX_VALUE) {
-        throw new IllegalStateException("{{ impl_class_name }} call counter would overflow");
+      if (c == java.lang.Long.MAX_VALUE) {
+        throw new java.lang.IllegalStateException("{{ impl_class_name }} call counter would overflow");
       }
     } while (! this.callCounter.compareAndSet(c, c + 1L));
-    // Now we can safely do the method call without the pointer being freed concurrently.
+    // Now we can safely do the method call without the handle being freed concurrently.
     try {
-      return block.apply(this.uniffiClonePointer());
+      return block.apply(this.uniffiCloneHandle());
     } finally {
       // This decrement always matches the increment we performed above.
       if (this.callCounter.decrementAndGet() == 0L) {
+        if (cleanable != null) {
           cleanable.clean();
+        }
       }
     }
   }
 
-  public void callWithPointer(Consumer<Pointer> block) {
-    callWithPointer((Pointer p) -> {
-      block.accept(p);
-      return (Void)null;
+  public void callWithHandle(java.util.function.Consumer<java.lang.Long> block) {
+    callWithHandle((java.lang.Long uniffiHandle) -> {
+      block.accept(uniffiHandle);
+      return (java.lang.Void)null;
     });
   }
 
   private class UniffiCleanAction implements Runnable {
-    private final Pointer pointer;
+    private final long handle;
 
-    public UniffiCleanAction(Pointer pointer) {
-      this.pointer = pointer;
+    public UniffiCleanAction(long handle) {
+      this.handle = handle;
     }
 
     @Override
     public void run() {
-      if (pointer != null) {
+      // If the handle is 0 this is a fake object created with `NoHandle`, don't try to free.
+      if (handle != 0L) {
         UniffiHelpers.uniffiRustCall(status -> {
-          UniffiLib.INSTANCE.{{ obj.ffi_object_free().name() }}(pointer, status);
+          UniffiLib.{{ obj.ffi_object_free().name() }}(handle, status);
           return null;
         });
       }
     }
   }
 
-  Pointer uniffiClonePointer() {
+  long uniffiCloneHandle() {
     return UniffiHelpers.uniffiRustCall(status -> {
-      if (pointer == null) {
-        throw new NullPointerException();
+      if (handle == 0L) {
+        throw new java.lang.NullPointerException();
       }
-      return UniffiLib.INSTANCE.{{ obj.ffi_object_clone().name() }}(pointer, status);
+      return UniffiLib.{{ obj.ffi_object_clone().name() }}(handle, status);
     });
   }
 
@@ -233,33 +234,7 @@ public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }
   {%- call java::func_decl("public", "Override", meth, 4) %}
   {% endfor %}
 
-  {%- for tm in obj.uniffi_traits() %}
-  {%-     match tm %}
-  {%         when UniffiTrait::Display { fmt } %}
-  @Override
-  public String toString() {
-      return {{ fmt.return_type().unwrap()|lift_fn(config, ci) }}({% call java::to_ffi_call(fmt) %});
-  }
-  {%         when UniffiTrait::Eq { eq, ne } %}
-  {# only equals used #}
-  @Override
-  public Boolean equals(Object other) {
-      if (this === other) {
-        return true;
-      }
-      if (!(other instanceof {{ impl_class_name}})) {
-        return false;
-      }
-      return {{ eq.return_type().unwrap()|lift_fn(config, ci) }}({% call java::to_ffi_call(eq) %});
-  }
-  {%         when UniffiTrait::Hash { hash } %}
-  @Override
-  public Integer hashCode() {
-      return {{ hash.return_type().unwrap()|lift_fn(config, ci) }}({%- call java::to_ffi_call(hash) %}).toInt();
-  }
-  {%-         else %}
-  {%-     endmatch %}
-  {%- endfor %}
+  {% call java::uniffi_trait_impls(uniffi_trait_methods) %}
 
   {% if !obj.alternate_constructors().is_empty() -%}
   {% for cons in obj.alternate_constructors() -%}
@@ -284,55 +259,101 @@ public class {{ impl_class_name }}ErrorHandler implements UniffiRustCallStatusEr
 }
 {% endif %}
 
-{%- if obj.has_callback_interface() %}
-{%- let vtable = obj.vtable().expect("trait interface should have a vtable") %}
-{%- let vtable_methods = obj.vtable_methods() %}
-{%- let ffi_init_callback = obj.ffi_init_callback() %}
-{% include "CallbackInterfaceImpl.java" %}
-{%- endif %}
+{%- if !obj.has_callback_interface() %}
+{#- Simple case: the interface can only be implemented in Rust -#}
 
 package {{ config.package_name() }};
 
-import java.nio.ByteBuffer;
-import com.sun.jna.Pointer;
-
-public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, Pointer> {
+public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, java.lang.Long> {
     INSTANCE;
 
-    {%- if obj.has_callback_interface() %}
-    public final UniffiHandleMap<{{ type_name }}> handleMap = new UniffiHandleMap<>();
-    {%- endif %}
-
     @Override
-    public Pointer lower({{ type_name }} value) {
-        {%- if obj.has_callback_interface() %}
-        return new Pointer(handleMap.insert(value));
-        {%- else %}
-        return value.uniffiClonePointer();
-        {%- endif %}
+    public java.lang.Long lower({{ type_name }} value) {
+        return value.uniffiCloneHandle();
     }
 
     @Override
-    public {{ type_name }} lift(Pointer value) {
-        return new {{ impl_class_name }}(value);
+    public {{ type_name }} lift(java.lang.Long value) {
+        return new {{ impl_class_name }}(UniffiWithHandle.INSTANCE, value);
     }
 
     @Override
-    public {{ type_name }} read(ByteBuffer buf) {
-        // The Rust code always writes pointers as 8 bytes, and will
+    public {{ type_name }} read(java.nio.ByteBuffer buf) {
+        // The Rust code always writes handles as 8 bytes, and will
         // fail to compile if they don't fit.
-        return lift(new Pointer(buf.getLong()));
+        return lift(buf.getLong());
     }
 
     @Override
     public long allocationSize({{ type_name }} value) {
-      return 8L;
+        return 8L;
     }
 
     @Override
-    public void write({{ type_name }} value, ByteBuffer buf) {
-        // The Rust code always expects pointers written as 8 bytes,
+    public void write({{ type_name }} value, java.nio.ByteBuffer buf) {
+        // The Rust code always expects handles written as 8 bytes,
         // and will fail to compile if they don't fit.
-        buf.putLong(Pointer.nativeValue(lower(value)));
+        buf.putLong(lower(value));
     }
 }
+{%- else %}
+{#-
+   The interface can be implemented in Rust or Java.
+   * Generate a callback interface implementation to handle the Java side.
+   * In the FfiConverter, check which side a handle came from to know how to handle it correctly.
+-#}
+{%- let vtable = obj.vtable().expect("trait interface should have a vtable") %}
+{%- let vtable_methods = obj.vtable_methods() %}
+{%- let ffi_init_callback = obj.ffi_init_callback() %}
+{% include "CallbackInterfaceImpl.java" %}
+
+package {{ config.package_name() }};
+
+public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, java.lang.Long> {
+    INSTANCE;
+
+    public final UniffiHandleMap<{{ type_name }}> handleMap = new UniffiHandleMap<>();
+
+    @Override
+    public java.lang.Long lower({{ type_name }} value) {
+        if (value instanceof {{ impl_class_name }}) {
+            // Rust-implemented object. Clone the handle and return it.
+            return (({{ impl_class_name }}) value).uniffiCloneHandle();
+        } else {
+            // Java object, generate a new handle and return that.
+            return handleMap.insert(value);
+        }
+    }
+
+    @Override
+    public {{ type_name }} lift(java.lang.Long value) {
+        // Check the LSB: Rust handles have LSB = 0, Java handles have LSB = 1
+        if ((value & 1L) == 0L) {
+            // Rust-generated handle
+            return new {{ impl_class_name }}(UniffiWithHandle.INSTANCE, value);
+        } else {
+            // Java-generated handle - remove from handleMap (handles are single-use)
+            return handleMap.remove(value);
+        }
+    }
+
+    @Override
+    public {{ type_name }} read(java.nio.ByteBuffer buf) {
+        // The Rust code always writes handles as 8 bytes, and will
+        // fail to compile if they don't fit.
+        return lift(buf.getLong());
+    }
+
+    @Override
+    public long allocationSize({{ type_name }} value) {
+        return 8L;
+    }
+
+    @Override
+    public void write({{ type_name }} value, java.nio.ByteBuffer buf) {
+        // The Rust code always expects handles written as 8 bytes,
+        // and will fail to compile if they don't fit.
+        buf.putLong(lower(value));
+    }
+}
+{%- endif %}

@@ -1,18 +1,10 @@
 package {{ config.package_name() }};
 
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.function.BiConsumer;
-import java.util.function.BiFunction;
-import java.util.function.Consumer;
-import java.util.function.Function;
-import java.util.function.Supplier;
-
 public final class UniffiAsyncHelpers {
     // Async return type handlers
     static final byte UNIFFI_RUST_FUTURE_POLL_READY = (byte) 0;
-    static final byte UNIFFI_RUST_FUTURE_POLL_MAYBE_READY = (byte) 1;
-    static final UniffiHandleMap<CompletableFuture<Byte>> uniffiContinuationHandleMap = new UniffiHandleMap<>();
+    static final byte UNIFFI_RUST_FUTURE_POLL_WAKE = (byte) 1;
+    static final UniffiHandleMap<java.util.concurrent.CompletableFuture<java.lang.Byte>> uniffiContinuationHandleMap = new UniffiHandleMap<>();
     static final UniffiHandleMap<CancelableForeignFuture> uniffiForeignFutureHandleMap = new UniffiHandleMap<>();
 
     // FFI type for Rust future continuations
@@ -29,12 +21,12 @@ public final class UniffiAsyncHelpers {
     interface PollingFunction {
         void apply(long rustFuture, UniffiRustFutureContinuationCallback callback, long continuationHandle);
     }
-    
-    static class UniffiFreeingFuture<T> extends CompletableFuture<T> {
-        private Consumer<Long> freeFunc;
+
+    static class UniffiFreeingFuture<T> extends java.util.concurrent.CompletableFuture<T> {
+        private java.util.function.Consumer<java.lang.Long> freeFunc;
         private long rustFuture;
 
-        public UniffiFreeingFuture(long rustFuture, Consumer<Long> freeFunc) {
+        public UniffiFreeingFuture(long rustFuture, java.util.function.Consumer<java.lang.Long> freeFunc) {
             this.freeFunc = freeFunc;
             this.rustFuture = rustFuture;
         }
@@ -47,16 +39,16 @@ public final class UniffiAsyncHelpers {
             }
             return cancelled;
         }
-    } 
+    }
 
     // helper so both the Java completable future and the job that handles it finishing and reports to Rust can be
     // retrieved (and potentially cancelled) by handle. This allows our FreeImpl to be a parameterless singleton,
     // preventing #19, which was caused by our FreeImpls being GCd before Rust called back into them.
     static class CancelableForeignFuture {
-        private CompletableFuture<?> childFuture;
-        private CompletableFuture<Void> childFutureHandler;
+        private java.util.concurrent.CompletableFuture<?> childFuture;
+        private java.util.concurrent.CompletableFuture<java.lang.Void> childFutureHandler;
 
-        CancelableForeignFuture(CompletableFuture<?> childFuture, CompletableFuture<Void> childFutureHandler) {
+        CancelableForeignFuture(java.util.concurrent.CompletableFuture<?> childFuture, java.util.concurrent.CompletableFuture<java.lang.Void> childFutureHandler) {
             this.childFuture = childFuture;
             this.childFutureHandler = childFutureHandler;
         }
@@ -69,17 +61,17 @@ public final class UniffiAsyncHelpers {
         }
     }
 
-    static <T, F, E extends Exception> CompletableFuture<T> uniffiRustCallAsync(
+    static <T, F, E extends java.lang.Exception> java.util.concurrent.CompletableFuture<T> uniffiRustCallAsync(
         long rustFuture,
         PollingFunction pollFunc,
-        BiFunction<Long, UniffiRustCallStatus, F> completeFunc,
-        Consumer<Long> freeFunc,
-        Function<F, T> liftFunc,
+        java.util.function.BiFunction<java.lang.Long, UniffiRustCallStatus, F> completeFunc,
+        java.util.function.Consumer<java.lang.Long> freeFunc,
+        java.util.function.Function<F, T> liftFunc,
         UniffiRustCallStatusErrorHandler<E> errorHandler
     ){
-        CompletableFuture<T> future = new UniffiFreeingFuture<>(rustFuture, freeFunc);
+        java.util.concurrent.CompletableFuture<T> future = new UniffiFreeingFuture<>(rustFuture, freeFunc);
 
-        CompletableFuture.runAsync(() -> {
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
             try {
                 byte pollResult;
                 do {
@@ -93,8 +85,8 @@ public final class UniffiAsyncHelpers {
                     T liftedResult = liftFunc.apply(result);
                     future.complete(liftedResult);
                 }
-            } catch (Exception e) {
-                future.completeExceptionally(e);
+            } catch (java.lang.Exception _e) {
+                future.completeExceptionally(_e);
             } finally {
                 if (!future.isCancelled()) {
                     freeFunc.accept(rustFuture);
@@ -105,20 +97,20 @@ public final class UniffiAsyncHelpers {
         return future;
     }
 
-    
+
     // overload specifically for Void cases, which aren't within the Object type.
     // This is only necessary because of Java's lack of proper Any/Unit
-    static <E extends Exception> CompletableFuture<Void> uniffiRustCallAsync(
+    static <E extends java.lang.Exception> java.util.concurrent.CompletableFuture<java.lang.Void> uniffiRustCallAsync(
         long rustFuture,
         PollingFunction pollFunc,
-        BiConsumer<Long, UniffiRustCallStatus> completeFunc,
-        Consumer<Long> freeFunc,
-        Runnable liftFunc,
+        java.util.function.BiConsumer<java.lang.Long, UniffiRustCallStatus> completeFunc,
+        java.util.function.Consumer<java.lang.Long> freeFunc,
+        java.lang.Runnable liftFunc,
         UniffiRustCallStatusErrorHandler<E> errorHandler
     ){
-        CompletableFuture<Void> future = new UniffiFreeingFuture<>(rustFuture, freeFunc);
-        
-        CompletableFuture.runAsync(() -> {
+        java.util.concurrent.CompletableFuture<java.lang.Void> future = new UniffiFreeingFuture<>(rustFuture, freeFunc);
+
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
             try {
                 byte pollResult;
                 do {
@@ -135,8 +127,8 @@ public final class UniffiAsyncHelpers {
                     });
                     future.complete(null);
                 }
-            } catch (Throwable e) {
-                future.completeExceptionally(e);
+            } catch (java.lang.Throwable _e) {
+                future.completeExceptionally(_e);
             } finally {
                 if (!future.isCancelled()) {
                     freeFunc.accept(rustFuture);
@@ -146,9 +138,9 @@ public final class UniffiAsyncHelpers {
 
         return future;
     }
-    
-    private static byte poll(long rustFuture, PollingFunction pollFunc) throws InterruptedException, ExecutionException {
-        CompletableFuture<Byte> pollFuture = new CompletableFuture<>();
+
+    private static byte poll(long rustFuture, PollingFunction pollFunc) throws java.lang.InterruptedException, java.util.concurrent.ExecutionException {
+        java.util.concurrent.CompletableFuture<java.lang.Byte> pollFuture = new java.util.concurrent.CompletableFuture<>();
         var handle = uniffiContinuationHandleMap.insert(pollFuture);
         pollFunc.apply(rustFuture, UniffiRustFutureContinuationCallbackImpl.INSTANCE, handle);
         do {} while (!pollFuture.isDone()); // removing this makes futures not cancel (sometimes)
@@ -156,78 +148,98 @@ public final class UniffiAsyncHelpers {
     }
     
     {%- if ci.has_async_callback_interface_definition() %}
-    static <T> UniffiForeignFuture uniffiTraitInterfaceCallAsync(
-        Supplier<CompletableFuture<T>> makeCall,
-        Consumer<T> handleSuccess,
-        Consumer<UniffiRustCallStatus.ByValue> handleError 
+    static <T> void uniffiTraitInterfaceCallAsync(
+        java.util.function.Supplier<java.util.concurrent.CompletableFuture<T>> makeCall,
+        java.util.function.Consumer<T> handleSuccess,
+        java.util.function.Consumer<UniffiRustCallStatus.ByValue> handleError,
+        UniffiForeignFutureDroppedCallbackStruct uniffiOutDroppedCallback
     ){
         // Uniffi does its best to support structured concurrency across the FFI.
-        // If the Rust future is dropped, `UniffiForeignFutureFreeImpl` is called, which will cancel the Java completable future if it's still running.
+        // If the Rust future is dropped, `uniffiForeignFutureDroppedCallbackImpl` is called, which will cancel the Java completable future if it's still running.
         var foreignFutureCf = makeCall.get();
-        CompletableFuture<Void> ffHandler = CompletableFuture.supplyAsync(() -> {
+        java.util.concurrent.CompletableFuture<java.lang.Void> ffHandler = java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+            // Note: it's important we call either `handleSuccess` or `handleError` exactly once.
+            // Each call consumes an Arc reference, which means there should be no possibility of
+            // a double call. The following code is structured so that we will never call both
+            // `handleSuccess` and `handleError`, even in the face of weird exceptions.
+            //
+            // In extreme circumstances we may not call either, for example if we fail to make the
+            // JNA call to `handleSuccess`. This means we will leak the Arc reference, which is
+            // better than double-freeing it.
+            T callResult;
             try {
-                foreignFutureCf.thenAcceptAsync(handleSuccess).get();
-            } catch(Throwable e) {
+                callResult = foreignFutureCf.get();
+            } catch(java.lang.Throwable _e) {
                 // if we errored inside the CF, it's that error we want to send to Rust, not the wrapper
-                if (e instanceof ExecutionException) {
-                    e = e.getCause();
+                if (_e instanceof java.util.concurrent.ExecutionException) {
+                    _e = _e.getCause();
                 }
                 handleError.accept(
                     UniffiRustCallStatus.create(
                         UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR,
-                        {{ Type::String.borrow()|lower_fn(config, ci) }}(e.toString())
+                        {{ Type::String.borrow()|lower_fn(config, ci) }}(uniffiStackTraceToString(_e))
                     )
                 );
+                return null;
             }
-
+            handleSuccess.accept(callResult);
             return null;
         });
         long handle = uniffiForeignFutureHandleMap.insert(new CancelableForeignFuture(foreignFutureCf, ffHandler));
-        return new UniffiForeignFuture(handle, UniffiForeignFutureFreeImpl.INSTANCE);
+        uniffiOutDroppedCallback.uniffiSetValue(
+            new UniffiForeignFutureDroppedCallbackStruct(handle, uniffiForeignFutureDroppedCallbackImpl.INSTANCE)
+        );
     }
 
     @SuppressWarnings("unchecked")
-    static <T, E extends Throwable> UniffiForeignFuture uniffiTraitInterfaceCallAsyncWithError(
-        Supplier<CompletableFuture<T>> makeCall,
-        Consumer<T> handleSuccess,
-        Consumer<UniffiRustCallStatus.ByValue> handleError, 
-        Function<E, RustBuffer.ByValue> lowerError,
-        Class<E> errorClass
+    static <T, E extends java.lang.Throwable> void uniffiTraitInterfaceCallAsyncWithError(
+        java.util.function.Supplier<java.util.concurrent.CompletableFuture<T>> makeCall,
+        java.util.function.Consumer<T> handleSuccess,
+        java.util.function.Consumer<UniffiRustCallStatus.ByValue> handleError,
+        java.util.function.Function<E, RustBuffer.ByValue> lowerError,
+        java.lang.Class<E> errorClass,
+        UniffiForeignFutureDroppedCallbackStruct uniffiOutDroppedCallback
     ){
         var foreignFutureCf = makeCall.get();
-        CompletableFuture<Void> ffHandler = CompletableFuture.supplyAsync(() -> {
+        java.util.concurrent.CompletableFuture<java.lang.Void> ffHandler = java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+            // See the note in uniffiTraitInterfaceCallAsync for details on `handleSuccess` and
+            // `handleError`.
+            T callResult;
             try {
-                foreignFutureCf.thenAcceptAsync(handleSuccess).get();
-            } catch (Throwable e) {
+                callResult = foreignFutureCf.get();
+            } catch (java.lang.Throwable _e) {
                 // if we errored inside the CF, it's that error we want to send to Rust, not the wrapper
-                if (e instanceof ExecutionException) {
-                    e = e.getCause();
+                if (_e instanceof java.util.concurrent.ExecutionException) {
+                    _e = _e.getCause();
                 }
-                if (errorClass.isInstance(e)) {
+                if (errorClass.isInstance(_e)) {
                     handleError.accept(
                         UniffiRustCallStatus.create(
                             UniffiRustCallStatus.UNIFFI_CALL_ERROR,
-                            lowerError.apply((E) e)
+                            lowerError.apply((E) _e)
                         )
                     );
                 } else {
                     handleError.accept(
                         UniffiRustCallStatus.create(
                             UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR,
-                            {{ Type::String.borrow()|lower_fn(config, ci) }}(e.getMessage())
+                            {{ Type::String.borrow()|lower_fn(config, ci) }}(uniffiStackTraceToString(_e))
                         )
                     );
                 }
+                return null;
             }
-
+            handleSuccess.accept(callResult);
             return null;
         });
 
         long handle = uniffiForeignFutureHandleMap.insert(new CancelableForeignFuture(foreignFutureCf, ffHandler));
-        return new UniffiForeignFuture(handle, UniffiForeignFutureFreeImpl.INSTANCE);
+        uniffiOutDroppedCallback.uniffiSetValue(
+            new UniffiForeignFutureDroppedCallbackStruct(handle, uniffiForeignFutureDroppedCallbackImpl.INSTANCE)
+        );
     }
 
-    enum UniffiForeignFutureFreeImpl implements UniffiForeignFutureFree {
+    enum uniffiForeignFutureDroppedCallbackImpl implements UniffiForeignFutureDroppedCallback {
         INSTANCE;
 
         @Override
@@ -242,6 +254,16 @@ public final class UniffiAsyncHelpers {
       return uniffiForeignFutureHandleMap.size();
     }
     {%- endif %}
+
+    private static java.lang.String uniffiStackTraceToString(java.lang.Throwable _e) {
+        try {
+            java.io.StringWriter sw = new java.io.StringWriter();
+            _e.printStackTrace(new java.io.PrintWriter(sw));
+            return sw.toString();
+        } catch (java.lang.Throwable _t) {
+            return _e.toString();
+        }
+    }
 }
 
 
