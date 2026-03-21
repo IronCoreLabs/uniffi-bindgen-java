@@ -15,6 +15,7 @@
 - `--lib-file` and `--library` CLI generator options removed, they're both now automatically detected by uniffi
 - Java callback interface implementations must now use primitive types (e.g., `int`, `long`, `boolean`) instead of boxed types (`Integer`, `Long`, `Boolean`) for non-optional primitive parameters and return types
 - use Java primitive types (`int`, `long`, `boolean`, etc.) instead of boxed types (`Integer`, `Long`, `Boolean`) for non-optional primitive parameters, return types, and record fields. Optional primitives and primitives in generic contexts (e.g., `List<Integer>`, `CompletableFuture<Integer>`) still use boxed types as required by Java.
+- use primitive arrays where possible (similar to how `Vec<u8> -> bytes[]`). This should reduce GC pressure and speed up copies across the boundary via `AsBuffer` instead of iteration. There's a potentially small ergonomic hit to those doing a lot of data transformation, not just passing values to and from the Rust side. If you're someone this negatively impacts, reach out and we can talk about adding a `use_primitive_arrays` config option.
 
 ## 0.2.1
 
