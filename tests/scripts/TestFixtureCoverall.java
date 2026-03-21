@@ -266,12 +266,12 @@ public class TestFixtureCoverall {
     // Java Getter trait implementation for tests.
     class JavaGetters implements Getters {
       @Override
-      public Boolean getBool(Boolean v, Boolean arg2) {
+      public boolean getBool(boolean v, boolean arg2) {
         return v != arg2;
       }
-      
+
       @Override
-      public String getString(String v, Boolean arg2) throws CoverallException {
+      public String getString(String v, boolean arg2) throws CoverallException {
         if (v.equals("too-many-holes")) {
           throw new CoverallException.TooManyHoles("too many holes");
         } else if (v.equals("unexpected-error")) {
@@ -282,9 +282,9 @@ public class TestFixtureCoverall {
           return v;
         }
       }
-      
+
       @Override
-      public String getOption(String v, Boolean arg2) throws ComplexException {
+      public String getOption(String v, boolean arg2) throws ComplexException {
         if (v.equals("os-error")) {
           throw new ComplexException.OsException((short)100, (short)200);
         } else if (v.equals("unknown-error")) {
@@ -299,16 +299,16 @@ public class TestFixtureCoverall {
           return v;
         }
       }
-      
+
       @Override
-      public List<Integer> getList(List<Integer> v, Boolean arg2) {
+      public java.util.List<java.lang.Integer> getList(java.util.List<java.lang.Integer> v, boolean arg2) {
         if (arg2) {
           return v;
         } else {
           return List.of();
         }
       }
-      
+
       @Override
       public void getNothing(String v) {}
       
@@ -351,7 +351,7 @@ public class TestFixtureCoverall {
       }
 
       @Override
-      public Long strongCount() {
+      public long strongCount() {
         return 0L;
       }
     }

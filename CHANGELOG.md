@@ -13,6 +13,8 @@
 
 - method checksums change (since we skipped over 0.30.0 this is only theoretically breaking)
 - `--lib-file` and `--library` CLI generator options removed, they're both now automatically detected by uniffi
+- Java callback interface implementations must now use primitive types (e.g., `int`, `long`, `boolean`) instead of boxed types (`Integer`, `Long`, `Boolean`) for non-optional primitive parameters and return types
+- use Java primitive types (`int`, `long`, `boolean`, etc.) instead of boxed types (`Integer`, `Long`, `Boolean`) for non-optional primitive parameters, return types, and record fields. Optional primitives and primitives in generic contexts (e.g., `List<Integer>`, `CompletableFuture<Integer>`) still use boxed types as required by Java.
 
 ## 0.2.1
 

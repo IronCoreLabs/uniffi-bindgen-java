@@ -8,7 +8,7 @@ package {{ config.package_name() }};
 public record {{ type_name }}(
     {%- for field in rec.fields() %}
     {%- call java::docstring(field, 4) %}
-    {{ field|type_name(ci, config) }} {{ field.name()|var_name -}}
+    {{ field|type_name_for_field(ci, config) }} {{ field.name()|var_name -}}
     {% if !loop.last %}, {% endif %}
     {%- endfor %}
 ) {% if contains_object_references %}implements AutoCloseable{% endif %}{% if uniffi_trait_methods.ord_cmp.is_some() %}{% if contains_object_references %}, {% else %}implements {% endif %}Comparable<{{ type_name }}>{% endif %} {
@@ -28,12 +28,12 @@ public record {{ type_name }}(
 public class {{ type_name }} {% if contains_object_references %}implements AutoCloseable{% if uniffi_trait_methods.ord_cmp.is_some() %}, Comparable<{{ type_name }}>{% endif %}{% else %}{% if uniffi_trait_methods.ord_cmp.is_some() %}implements Comparable<{{ type_name }}> {% endif %}{% endif %}{
     {%- for field in rec.fields() %}
     {%- call java::docstring(field, 4) %}
-    private {{ field|type_name(ci, config) }} {{ field.name()|var_name -}};
+    private {{ field|type_name_for_field(ci, config) }} {{ field.name()|var_name -}};
     {%- endfor %}
 
     public {{ type_name }}(
         {%- for field in rec.fields() %}
-        {{ field|type_name(ci, config) }} {{ field.name()|var_name -}}
+        {{ field|type_name_for_field(ci, config) }} {{ field.name()|var_name -}}
         {% if !loop.last %}, {% endif %}
         {%- endfor %}
     ) {
@@ -45,14 +45,14 @@ public class {{ type_name }} {% if contains_object_references %}implements AutoC
 
     {%- for field in rec.fields() %}
     {% let field_var_name = field.name()|var_name %}
-    public {{ field|type_name(ci, config) }} {{ field_var_name }}() {
+    public {{ field|type_name_for_field(ci, config) }} {{ field_var_name }}() {
         return this.{{ field_var_name }};
     }
     {%- endfor %}
 
     {%- for field in rec.fields() %}
     {%- let field_var_name = field.name()|var_name %}
-    public void {{ field.name()|setter}}({{ field|type_name(ci, config) }} {{ field_var_name }}) {
+    public void {{ field.name()|setter}}({{ field|type_name_for_field(ci, config) }} {{ field_var_name }}) {
         this.{{ field_var_name }} = {{ field_var_name }};
     }
     {%- endfor %}
@@ -71,8 +71,7 @@ public class {{ type_name }} {% if contains_object_references %}implements AutoC
         if (other instanceof {{ type_name }}) {
             {{ type_name }} t = ({{ type_name }}) other;
             return ({% for field in rec.fields() %}{% let field_var_name = field.name()|var_name %}
-              {#- currently all primitives are already referenced by their boxed values in generated code, so `.equals` works for everything #}
-              java.util.Objects.equals({{ field_var_name }}, t.{{ field_var_name }}){% if !loop.last%} && {% endif %}
+              {{ field|equals_expr(field_var_name, "t." ~ field_var_name) }}{% if !loop.last%} && {% endif %}
               {% endfor %}
             );
         };
@@ -83,7 +82,11 @@ public class {{ type_name }} {% if contains_object_references %}implements AutoC
     {%- if uniffi_trait_methods.hash_hash.is_none() %}
     @Override
     public int hashCode() {
-        return java.util.Objects.hash({% for field in rec.fields() %}{{ field.name()|var_name }}{% if !loop.last%}, {% endif %}{% endfor %});
+        int result = 17;
+        {%- for field in rec.fields() %}
+        result = 31 * result + {{ field|hash_code_expr(field.name()|var_name) }};
+        {%- endfor %}
+        return result;
     }
     {%- endif %}
 
@@ -143,7 +146,7 @@ public enum {{ rec|ffi_converter_name }} implements FfiConverterRustBuffer<{{ ty
         {%- for field in rec.fields() %}
             {{ field|allocation_size_fn(config, ci) }}(value.{{ field.name()|var_name }}()){% if !loop.last %} +{% endif %}
         {%- endfor %}
-      ); 
+      );
       {%- else %}
       return 0L;
       {%- endif %}

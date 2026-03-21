@@ -51,13 +51,15 @@
     @{{ annotation }}
     {% endif %}
     {%- if callable.is_async() %}
-    {{ func_decl }} java.util.concurrent.CompletableFuture<{% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|type_name(ci, config) }}{%- when None %}java.lang.Void{%- endmatch %}> {{ callable.name()|fn_name }}(
+    {#- Async methods use CompletableFuture<T> which requires boxed types -#}
+    {{ func_decl }} java.util.concurrent.CompletableFuture<{% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|boxed_type_name(ci, config) }}{%- when None %}java.lang.Void{%- endmatch %}> {{ callable.name()|fn_name }}(
         {%- call arg_list(callable, !callable.self_type().is_some()) -%}
     ){
         return {% call call_async(callable) %};
     }
     {%- else -%}
-    {{ func_decl }} {% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|type_name(ci, config) }}{%- when None %}void{%- endmatch %} {{ callable.name()|fn_name }}(
+    {#- Sync methods can use primitives for return types -#}
+    {{ func_decl }} {% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|type_name_for_field(ci, config) }}{%- when None %}void{%- endmatch %} {{ callable.name()|fn_name }}(
         {%- call arg_list(callable, !callable.self_type().is_some()) -%}
     ) {% match callable.throws_type() -%}
         {%-     when Some(throwable) -%}
@@ -140,7 +142,7 @@
 
 {% macro arg_list(func, is_decl) %}
 {%- for arg in func.arguments() -%}
-        {{ arg|type_name(ci, config) }} {{ arg.name()|var_name }}
+        {{ arg|type_name_for_field(ci, config) }} {{ arg.name()|var_name }}
 {%-     if !loop.last %}, {% endif -%}
 {%- endfor %}
 {%- endmacro %}

@@ -184,16 +184,16 @@ public class TestFixtureFutures {
           int completedDelays = 0;
 
           @Override
-          public CompletableFuture<String> asString(Integer delayMs, Integer value) {
+          public CompletableFuture<java.lang.String> asString(int delayMs, int value) {
             return TestFixtureFutures.delay((long)delayMs).thenApply(nothing -> {
-              return value.toString();
+              return Integer.toString(value);
             });
           }
 
           @Override
-          public CompletableFuture<Integer> tryFromString(Integer delayMs, String value) {
+          public CompletableFuture<java.lang.Integer> tryFromString(int delayMs, String value) {
             return TestFixtureFutures.delay((long)delayMs).thenCompose((Void nothing) -> {
-              CompletableFuture<Integer> f = new CompletableFuture<>();
+              CompletableFuture<java.lang.Integer> f = new CompletableFuture<>();
               if (value.equals("force-unexpected-exception")) {
                 f.completeExceptionally(new RuntimeException("UnexpectedException"));
                 return f;
@@ -208,14 +208,14 @@ public class TestFixtureFutures {
           }
 
           @Override
-          public CompletableFuture<Void> delay(Integer delayMs) {
+          public CompletableFuture<java.lang.Void> delay(int delayMs) {
             return TestFixtureFutures.delay((long)delayMs).thenRun(() -> {
               completedDelays += 1;
             });
           }
 
           @Override
-          public CompletableFuture<Void> tryDelay(String delayMs) {
+          public CompletableFuture<java.lang.Void> tryDelay(String delayMs) {
             try {
               var parsed = Long.parseLong(delayMs);
               return TestFixtureFutures.delay(parsed).thenRun(() -> {

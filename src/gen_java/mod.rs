@@ -48,6 +48,12 @@ trait CodeType: Debug {
     /// method signatures and property declarations.
     fn type_label(&self, ci: &ComponentInterface, config: &Config) -> String;
 
+    /// The primitive type label if this type is a primitive (int, long, boolean, etc.).
+    /// Returns None for non-primitive types.
+    fn type_label_primitive(&self) -> Option<String> {
+        None
+    }
+
     /// A representation of this type label that can be used as part of another
     /// identifier. e.g. `read_foo()`, or `FooInternals`.
     ///
@@ -1145,6 +1151,72 @@ mod filters {
 
         let spaces = usize::try_from(*spaces).unwrap_or_default();
         Ok(textwrap::indent(&wrapped, &" ".repeat(spaces)))
+    }
+
+    /// Returns the type name suitable for use in field declarations, method parameters, and return types.
+    /// For non-optional primitives, returns the primitive type (int, long, boolean, etc.).
+    /// For optional types and all other types, returns the boxed/object type.
+    pub fn type_name_for_field(
+        as_ct: &impl AsCodeType,
+        _v: &dyn askama::Values,
+        ci: &ComponentInterface,
+        config: &Config,
+    ) -> Result<String, askama::Error> {
+        // Check if the codetype has a primitive label available
+        let codetype = as_ct.as_codetype();
+        if let Some(primitive) = codetype.type_label_primitive() {
+            return Ok(primitive);
+        }
+        // Otherwise use the standard boxed type label
+        Ok(codetype.type_label(ci, config))
+    }
+
+    /// Always returns the boxed type name, for use in generic contexts like CompletableFuture<T>.
+    /// This is the same as type_name but with a clearer name for template readability.
+    pub fn boxed_type_name(
+        as_ct: &impl AsCodeType,
+        _v: &dyn askama::Values,
+        ci: &ComponentInterface,
+        config: &Config,
+    ) -> Result<String, askama::Error> {
+        Ok(as_ct.as_codetype().type_label(ci, config))
+    }
+
+    /// Generates an equality expression for comparing two values of a field's type.
+    /// For primitives: returns "left == right"
+    /// For objects: returns "java.util.Objects.equals(left, right)"
+    pub fn equals_expr<T: AsCodeType, L: std::fmt::Display, R: std::fmt::Display>(
+        field: &T,
+        _v: &dyn askama::Values,
+        left: L,
+        right: R,
+    ) -> Result<String, askama::Error> {
+        // Check if this type has a primitive label (meaning it's a primitive)
+        if field.as_codetype().type_label_primitive().is_some() {
+            Ok(format!("{} == {}", left, right))
+        } else {
+            Ok(format!("java.util.Objects.equals({}, {})", left, right))
+        }
+    }
+
+    /// Generates a hash code expression for a field value.
+    /// For primitives: returns "Type.hashCode(value)" (e.g., "java.lang.Integer.hashCode(value)")
+    /// For objects: returns "java.util.Objects.hashCode(value)"
+    pub fn hash_code_expr<T: AsCodeType + AsType, V: std::fmt::Display>(
+        field: &T,
+        _v: &dyn askama::Values,
+        value: V,
+    ) -> Result<String, askama::Error> {
+        match field.as_type() {
+            Type::Boolean => Ok(format!("java.lang.Boolean.hashCode({})", value)),
+            Type::Int8 | Type::UInt8 => Ok(format!("java.lang.Byte.hashCode({})", value)),
+            Type::Int16 | Type::UInt16 => Ok(format!("java.lang.Short.hashCode({})", value)),
+            Type::Int32 | Type::UInt32 => Ok(format!("java.lang.Integer.hashCode({})", value)),
+            Type::Int64 | Type::UInt64 => Ok(format!("java.lang.Long.hashCode({})", value)),
+            Type::Float32 => Ok(format!("java.lang.Float.hashCode({})", value)),
+            Type::Float64 => Ok(format!("java.lang.Double.hashCode({})", value)),
+            _ => Ok(format!("java.util.Objects.hashCode({})", value)),
+        }
     }
 }
 
