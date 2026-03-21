@@ -130,8 +130,10 @@ The generated Java can be configured using a `uniffi.toml` configuration file.
 | `generate_immutable_records` | `false` | Whether to generate records with immutable fields (`record` instead of `class`). |
 | `custom_types` | | A map which controls how custom types are exposed to Java. See the [custom types section of the UniFFI manual](https://mozilla.github.io/uniffi-rs/latest/udl/custom_types.html#custom-types-in-the-bindings-code) |
 | `external_packages` | | A map of packages to be used for the specified external crates. The key is the Rust crate name, the value is the Java package which will be used referring to types in that crate. See the [external types section of the manual](https://mozilla.github.io/uniffi-rs/latest/udl/ext_types_external.html#kotlin) |
+| `rename` | | A map to rename types, functions, methods, and their members in the generated Java bindings. See the [renaming section](https://mozilla.github.io/uniffi-rs/latest/renaming.html). |
 | `android` | `false` | Used to toggle on Android specific optimizations (warning: not well tested yet) |
 | `android_cleaner` | `android` | Use the `android.system.SystemCleaner` instead of `java.lang.ref.Cleaner`. Fallback in both instances is the one shipped with JNA. |
+| `omit_checksums` | `false` | Whether to omit checking the library checksums as the library is initialized. Changing this will shoot yourself in the foot if you mixup your build pipeline in any way, but might speed up initialization. |
 
 ### Example
 
