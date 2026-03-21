@@ -181,8 +181,8 @@ Note that if you need additional toml entries for your test, you can put a `unif
 
 `uniffi-bindgen-java` is versioned separately from `uniffi-rs`. We follow the [Cargo SemVer rules](https://doc.rust-lang.org/cargo/reference/resolver.html#semver-compatibility), so versions are compatible if their left-most non-zero major/minor/patch component is the same. Any modification to the generator that causes a consumer of the generated code to need to make changes is considered breaking.
 
-`uniffi-bindgen-java` is currently unstable and being developed by IronCore Labs to target features required by [`ironcore-alloy`](https://github.com/IronCoreLabs/ironcore-alloy/). The major version is currently 0, and most changes are likely to bump the minor version. 
+`uniffi-bindgen-java` is currently unstable and being developed by IronCore Labs to target features required by [`ironcore-alloy`](https://github.com/IronCoreLabs/ironcore-alloy/). The major version is currently 0, and most changes are likely to bump the minor version.
 
 ### Compatibility
 
-This table is an attempt to keep which versions of `uniffi-bindgen-java` used which versions of `uniffi-rs` so that if you're locked into a version of uniffi by other libraries, you can use a compatible one of `uniffi-bindgen-java`.
+Keeping this testable requires fully pinned `uniffi-rs` versions. The version of `uniffi-rs` will always be called out in the changelog when it changes, so if you're stuck on a specific version due to other bindings, you can stay on a compatible version of these bindings.
