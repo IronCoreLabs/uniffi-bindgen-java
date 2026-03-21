@@ -26,5 +26,10 @@ public class TestProcMacro {
         MixedEnum meNone = new MixedEnum.None();
         assert meNone.isNotNone() == false : "Complex enum method isNotNone() for None variant failed";
 
+        // Test struct implementing trait (verifies trait_impls() code generation)
+        StructWithTrait swt = new StructWithTrait("test");
+        assert swt.concatStrings("foo", "bar").equals("test: foobar") : "StructWithTrait.concatStrings failed";
+        assert swt instanceof TraitInterface : "StructWithTrait should implement TraitInterface";
+
     }
 }
