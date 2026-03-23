@@ -301,11 +301,11 @@ public class TestFixtureCoverall {
       }
 
       @Override
-      public java.util.List<java.lang.Integer> getList(java.util.List<java.lang.Integer> v, boolean arg2) {
+      public int[] getList(int[] v, boolean arg2) {
         if (arg2) {
           return v;
         } else {
-          return List.of();
+          return new int[0];
         }
       }
 
@@ -586,8 +586,8 @@ public class TestFixtureCoverall {
       throw new RuntimeException("Unexpected ComplexException", e);
     }
 
-    assert getters.getList(Arrays.asList(1, 2, 3), true).equals(Arrays.asList(1, 2, 3));
-    assert getters.getList(Arrays.asList(1, 2, 3), false).equals(Arrays.asList());
+    assert Arrays.equals(getters.getList(new int[]{1, 2, 3}, true), new int[]{1, 2, 3});
+    assert Arrays.equals(getters.getList(new int[]{1, 2, 3}, false), new int[0]);
 
     // void function returns nothing, compiler won't let us write this test
     // assert getters.getNothing("hello") == Unit;

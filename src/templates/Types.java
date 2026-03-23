@@ -153,7 +153,22 @@ public class UniffiWithHandle {
 {% include "RecordTemplate.java" %}
 
 {%- when Type::Sequence { inner_type } %}
+{%- match inner_type.as_ref() %}
+{%- when Type::Int16 or Type::UInt16 %}
+{%- include "Int16ArrayHelper.java" %}
+{%- when Type::Int32 or Type::UInt32 %}
+{%- include "Int32ArrayHelper.java" %}
+{%- when Type::Int64 or Type::UInt64 %}
+{%- include "Int64ArrayHelper.java" %}
+{%- when Type::Float32 %}
+{%- include "Float32ArrayHelper.java" %}
+{%- when Type::Float64 %}
+{%- include "Float64ArrayHelper.java" %}
+{%- when Type::Boolean %}
+{%- include "BooleanArrayHelper.java" %}
+{%- else %}
 {% include "SequenceTemplate.java" %}
+{%- endmatch %}
 
 {%- when Type::String %}
 {%- include "StringHelper.java" %}

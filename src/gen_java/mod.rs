@@ -635,9 +635,16 @@ impl AsCodeType for Type {
             Type::Optional { inner_type } => {
                 Box::new(compounds::OptionalCodeType::new((*inner_type).clone()))
             }
-            Type::Sequence { inner_type } => {
-                Box::new(compounds::SequenceCodeType::new((*inner_type).clone()))
-            }
+            Type::Sequence { inner_type } => match inner_type.as_ref() {
+                Type::Int16 | Type::UInt16 => Box::new(compounds::Int16ArrayCodeType),
+                Type::Int32 | Type::UInt32 => Box::new(compounds::Int32ArrayCodeType),
+                Type::Int64 | Type::UInt64 => Box::new(compounds::Int64ArrayCodeType),
+                Type::Float32 => Box::new(compounds::Float32ArrayCodeType),
+                Type::Float64 => Box::new(compounds::Float64ArrayCodeType),
+                Type::Boolean => Box::new(compounds::BooleanArrayCodeType),
+                // Int8/UInt8 sequences still use SequenceCodeType; the separate Bytes type handles byte[]
+                _ => Box::new(compounds::SequenceCodeType::new((*inner_type).clone())),
+            },
             Type::Map {
                 key_type,
                 value_type,
@@ -744,10 +751,18 @@ mod filters {
             Type::Optional { inner_type } => {
                 Ok(fully_qualified_type_label(inner_type, ci, config)?.to_string())
             }
-            Type::Sequence { inner_type } => Ok(format!(
-                "java.util.List<{}>",
-                fully_qualified_type_label(inner_type, ci, config)?
-            )),
+            Type::Sequence { inner_type } => match inner_type.as_ref() {
+                Type::Int16 | Type::UInt16 => Ok("short[]".to_string()),
+                Type::Int32 | Type::UInt32 => Ok("int[]".to_string()),
+                Type::Int64 | Type::UInt64 => Ok("long[]".to_string()),
+                Type::Float32 => Ok("float[]".to_string()),
+                Type::Float64 => Ok("double[]".to_string()),
+                Type::Boolean => Ok("boolean[]".to_string()),
+                _ => Ok(format!(
+                    "java.util.List<{}>",
+                    fully_qualified_type_label(inner_type, ci, config)?
+                )),
+            },
             Type::Map {
                 key_type,
                 value_type,
@@ -1266,8 +1281,8 @@ mod tests {
     use super::*;
     use uniffi_bindgen::interface::ComponentInterface;
     use uniffi_meta::{
-        EnumMetadata, EnumShape, FnMetadata, Metadata, MetadataGroup, NamespaceMetadata, Type,
-        VariantMetadata,
+        EnumMetadata, EnumShape, FnMetadata, FnParamMetadata, Metadata, MetadataGroup,
+        NamespaceMetadata, Type, VariantMetadata,
     };
 
     #[test]
@@ -1344,5 +1359,205 @@ mod tests {
             "ExampleException"
         );
         assert_eq!(JavaCodeOracle.convert_error_suffix("Error"), "Error");
+    }
+
+    fn create_primitive_array_test_group() -> MetadataGroup {
+        let mut group = MetadataGroup {
+            namespace: NamespaceMetadata {
+                crate_name: "test".to_string(),
+                name: "test".to_string(),
+                ..Default::default()
+            },
+            namespace_docstring: None,
+            items: Default::default(),
+        };
+
+        // Add functions for each primitive array type
+        let primitive_types = [
+            ("process_floats", Type::Float32),
+            ("process_doubles", Type::Float64),
+            ("process_shorts", Type::Int16),
+            ("process_ints", Type::Int32),
+            ("process_longs", Type::Int64),
+            ("process_bools", Type::Boolean),
+        ];
+
+        for (name, inner_type) in primitive_types {
+            group.add_item(Metadata::Func(FnMetadata {
+                module_path: "test".to_string(),
+                name: name.to_string(),
+                is_async: false,
+                inputs: vec![FnParamMetadata {
+                    name: "data".to_string(),
+                    ty: Type::Sequence {
+                        inner_type: Box::new(inner_type.clone()),
+                    },
+                    by_ref: false,
+                    optional: false,
+                    default: None,
+                }],
+                return_type: Some(Type::Sequence {
+                    inner_type: Box::new(inner_type),
+                }),
+                throws: None,
+                checksum: None,
+                docstring: None,
+            }));
+        }
+
+        group
+    }
+
+    #[test]
+    fn generates_float32_primitive_array() {
+        let group = create_primitive_array_test_group();
+        let ci = ComponentInterface::from_metadata(group).unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+
+        assert!(
+            bindings.contains("float[]"),
+            "expected float[] in generated bindings"
+        );
+        assert!(
+            bindings.contains("FfiConverterFloat32Array"),
+            "expected FfiConverterFloat32Array in generated bindings"
+        );
+        assert!(
+            bindings.contains("public static float[] processFloats(float[] data)"),
+            "expected processFloats method with float[] signature"
+        );
+    }
+
+    #[test]
+    fn generates_float64_primitive_array() {
+        let group = create_primitive_array_test_group();
+        let ci = ComponentInterface::from_metadata(group).unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+
+        assert!(
+            bindings.contains("double[]"),
+            "expected double[] in generated bindings"
+        );
+        assert!(
+            bindings.contains("FfiConverterFloat64Array"),
+            "expected FfiConverterFloat64Array in generated bindings"
+        );
+        assert!(
+            bindings.contains("public static double[] processDoubles(double[] data)"),
+            "expected processDoubles method with double[] signature"
+        );
+    }
+
+    #[test]
+    fn generates_int32_primitive_array() {
+        let group = create_primitive_array_test_group();
+        let ci = ComponentInterface::from_metadata(group).unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+
+        assert!(
+            bindings.contains("int[]"),
+            "expected int[] in generated bindings"
+        );
+        assert!(
+            bindings.contains("FfiConverterInt32Array"),
+            "expected FfiConverterInt32Array in generated bindings"
+        );
+        assert!(
+            bindings.contains("public static int[] processInts(int[] data)"),
+            "expected processInts method with int[] signature"
+        );
+    }
+
+    #[test]
+    fn generates_int64_primitive_array() {
+        let group = create_primitive_array_test_group();
+        let ci = ComponentInterface::from_metadata(group).unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+
+        assert!(
+            bindings.contains("long[]"),
+            "expected long[] in generated bindings"
+        );
+        assert!(
+            bindings.contains("FfiConverterInt64Array"),
+            "expected FfiConverterInt64Array in generated bindings"
+        );
+        assert!(
+            bindings.contains("public static long[] processLongs(long[] data)"),
+            "expected processLongs method with long[] signature"
+        );
+    }
+
+    #[test]
+    fn generates_int16_primitive_array() {
+        let group = create_primitive_array_test_group();
+        let ci = ComponentInterface::from_metadata(group).unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+
+        assert!(
+            bindings.contains("short[]"),
+            "expected short[] in generated bindings"
+        );
+        assert!(
+            bindings.contains("FfiConverterInt16Array"),
+            "expected FfiConverterInt16Array in generated bindings"
+        );
+        assert!(
+            bindings.contains("public static short[] processShorts(short[] data)"),
+            "expected processShorts method with short[] signature"
+        );
+    }
+
+    #[test]
+    fn generates_boolean_primitive_array() {
+        let group = create_primitive_array_test_group();
+        let ci = ComponentInterface::from_metadata(group).unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+
+        assert!(
+            bindings.contains("boolean[]"),
+            "expected boolean[] in generated bindings"
+        );
+        assert!(
+            bindings.contains("FfiConverterBooleanArray"),
+            "expected FfiConverterBooleanArray in generated bindings"
+        );
+        assert!(
+            bindings.contains("public static boolean[] processBools(boolean[] data)"),
+            "expected processBools method with boolean[] signature"
+        );
+    }
+
+    #[test]
+    fn does_not_generate_list_for_primitive_sequences() {
+        let group = create_primitive_array_test_group();
+        let ci = ComponentInterface::from_metadata(group).unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+
+        // Verify that we don't generate boxed List types for primitives
+        assert!(
+            !bindings.contains("List<java.lang.Float>"),
+            "should not contain List<java.lang.Float>"
+        );
+        assert!(
+            !bindings.contains("List<java.lang.Double>"),
+            "should not contain List<java.lang.Double>"
+        );
+        assert!(
+            !bindings.contains("List<java.lang.Integer>"),
+            "should not contain List<java.lang.Integer>"
+        );
+        assert!(
+            !bindings.contains("List<java.lang.Long>"),
+            "should not contain List<java.lang.Long>"
+        );
+        assert!(
+            !bindings.contains("List<java.lang.Short>"),
+            "should not contain List<java.lang.Short>"
+        );
+        assert!(
+            !bindings.contains("List<java.lang.Boolean>"),
+            "should not contain List<java.lang.Boolean>"
+        );
     }
 }

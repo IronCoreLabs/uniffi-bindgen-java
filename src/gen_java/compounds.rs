@@ -109,3 +109,30 @@ impl CodeType for MapCodeType {
         )
     }
 }
+
+// Primitive array types for sequences of primitives.
+// These generate Java primitive arrays (e.g., float[], int[]) instead of List<Boxed>.
+
+macro_rules! impl_primitive_array_code_type {
+    ($name:ident, $type_label:literal, $canonical_name:literal) => {
+        #[derive(Debug)]
+        pub struct $name;
+
+        impl CodeType for $name {
+            fn type_label(&self, _ci: &ComponentInterface, _config: &Config) -> String {
+                $type_label.into()
+            }
+
+            fn canonical_name(&self) -> String {
+                $canonical_name.into()
+            }
+        }
+    };
+}
+
+impl_primitive_array_code_type!(Int16ArrayCodeType, "short[]", "Int16Array");
+impl_primitive_array_code_type!(Int32ArrayCodeType, "int[]", "Int32Array");
+impl_primitive_array_code_type!(Int64ArrayCodeType, "long[]", "Int64Array");
+impl_primitive_array_code_type!(Float32ArrayCodeType, "float[]", "Float32Array");
+impl_primitive_array_code_type!(Float64ArrayCodeType, "double[]", "Float64Array");
+impl_primitive_array_code_type!(BooleanArrayCodeType, "boolean[]", "BooleanArray");

@@ -1354,6 +1354,7 @@ dependencies = [
  "uniffi-fixture-coverall",
  "uniffi-fixture-ext-types",
  "uniffi-fixture-futures",
+ "uniffi-fixture-primitive-arrays",
  "uniffi-fixture-proc-macro",
  "uniffi-fixture-rename",
  "uniffi-fixture-time",
@@ -1482,6 +1483,13 @@ dependencies = [
  "once_cell",
  "thiserror",
  "tokio",
+ "uniffi",
+]
+
+[[package]]
+name = "uniffi-fixture-primitive-arrays"
+version = "0.1.0"
+dependencies = [
  "uniffi",
 ]
 
