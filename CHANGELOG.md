@@ -8,6 +8,7 @@
 - added `omit_checksums` config option, see [the kotlin doc about it](https://mozilla.github.io/uniffi-rs/latest/kotlin/configuration.html#available-options).
 - support the `rename` config option, see [the docs](https://mozilla.github.io/uniffi-rs/latest/renaming.html).
 - Uniffi trait methods
+- don't strip prefix on Error names [#38](https://github.com/IronCoreLabs/uniffi-bindgen-java/pull/48)
 
 ### Breaking
 

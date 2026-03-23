@@ -188,13 +188,13 @@ enum Commands {
         #[clap(long, short)]
         config: Option<Utf8PathBuf>,
 
-        /// When `--library` is passed, only generate bindings for one crate.
-        /// When `--library` is not passed, use this as the crate name instead of attempting to
+        /// When a library is passed as SOURCE, only generate bindings for this crate.
+        /// When a UDL file is passed, use this as the crate name instead of attempting to
         /// locate and parse Cargo.toml.
         #[clap(long = "crate")]
         crate_name: Option<String>,
 
-        /// Path to the UDL file, or cdylib if `library-mode` is specified
+        /// Path to the UDL file or compiled library (.so, .dll, .dylib, or .a)
         source: Utf8PathBuf,
 
         /// Whether we should exclude dependencies when running "cargo metadata".

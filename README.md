@@ -44,13 +44,13 @@ Generate Java bindings
 Usage:
 
 Arguments:
-  <SOURCE>  Path to the UDL file, or cdylib if `library-mode` is specified
+  <SOURCE>  Path to the UDL file or compiled library (.so, .dll, .dylib, or .a)
 
 Options:
   -o, --out-dir <OUT_DIR>   Directory in which to write generated files. Default is same folder as .udl file
   -n, --no-format           Do not try to format the generated bindings
   -c, --config <CONFIG>     Path to optional uniffi config file. This config is merged with the `uniffi.toml` config present in each crate, with its values taking precedence
-      --crate <CRATE_NAME>  When `--library` is passed, only generate bindings for one crate. When `--library` is not passed, use this as the crate name instead of attempting to locate and parse Cargo.toml
+      --crate <CRATE_NAME>  When a library is passed as SOURCE, only generate bindings for this crate. When a UDL file is passed, use this as the crate name instead of attempting to locate and parse Cargo.toml
       --metadata-no-deps    Whether we should exclude dependencies when running "cargo metadata". This will mean external types may not be resolved if they are implemented in crates outside of this workspace. This can be used in environments when all types are in the namespace and fetching all sub-dependencies causes obscure platform specific problems
   -h, --help                Print help
   -V, --version             Print version
@@ -62,7 +62,7 @@ As an example:
 > git clone https://github.com/mozilla/uniffi-rs.git
 > cd uniffi-rs/examples/arithmetic-proc-macro
 > cargo b --release
-> uniffi-bindgen-java generate --out-dir ./generated-java --library ../../target/release/libarithmeticpm.so
+> uniffi-bindgen-java generate --out-dir ./generated-java ../../target/release/libarithmeticpm.so
 > ll generated-java/uniffi/arithmeticpm/
 total 216
 -rw-r--r-- 1 user users  295 Jul 24 13:02 ArithmeticExceptionErrorHandler.java
@@ -175,7 +175,7 @@ rust-crate-name = "java.package.name"
 
 ## Testing
 
-We pull down the pinned examples directly from Uniffi and run Java tests using the generated bindings. Run `cargo t` to run all of them.
+We pull down the pinned examples directly from Uniffi (currently v0.31.0) and run Java tests using the generated bindings. Run `cargo t` to run all of them.
 
 Note that if you need additional toml entries for your test, you can put a `uniffi-extras.toml` as a sibling of the test and it will be read in addition to the base `uniffi.toml` for the example. See [CustomTypes](./tests/scripts/TestCustomTypes/) for an example. Settings in `uniffi-extras.toml` apply across all namespaces.
 
