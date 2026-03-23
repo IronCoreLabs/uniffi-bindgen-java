@@ -85,8 +85,8 @@ public final class UniffiAsyncHelpers {
                     T liftedResult = liftFunc.apply(result);
                     future.complete(liftedResult);
                 }
-            } catch (java.lang.Exception _e) {
-                future.completeExceptionally(_e);
+            } catch (java.lang.Exception e) {
+                future.completeExceptionally(e);
             } finally {
                 if (!future.isCancelled()) {
                     freeFunc.accept(rustFuture);
@@ -127,8 +127,8 @@ public final class UniffiAsyncHelpers {
                     });
                     future.complete(null);
                 }
-            } catch (java.lang.Throwable _e) {
-                future.completeExceptionally(_e);
+            } catch (java.lang.Throwable e) {
+                future.completeExceptionally(e);
             } finally {
                 if (!future.isCancelled()) {
                     freeFunc.accept(rustFuture);
@@ -169,15 +169,15 @@ public final class UniffiAsyncHelpers {
             T callResult;
             try {
                 callResult = foreignFutureCf.get();
-            } catch(java.lang.Throwable _e) {
+            } catch(java.lang.Throwable e) {
                 // if we errored inside the CF, it's that error we want to send to Rust, not the wrapper
-                if (_e instanceof java.util.concurrent.ExecutionException) {
-                    _e = _e.getCause();
+                if (e instanceof java.util.concurrent.ExecutionException) {
+                    e = e.getCause();
                 }
                 handleError.accept(
                     UniffiRustCallStatus.create(
                         UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR,
-                        {{ Type::String.borrow()|lower_fn(config, ci) }}(uniffiStackTraceToString(_e))
+                        {{ Type::String.borrow()|lower_fn(config, ci) }}(uniffiStackTraceToString(e))
                     )
                 );
                 return null;
@@ -207,23 +207,23 @@ public final class UniffiAsyncHelpers {
             T callResult;
             try {
                 callResult = foreignFutureCf.get();
-            } catch (java.lang.Throwable _e) {
+            } catch (java.lang.Throwable e) {
                 // if we errored inside the CF, it's that error we want to send to Rust, not the wrapper
-                if (_e instanceof java.util.concurrent.ExecutionException) {
-                    _e = _e.getCause();
+                if (e instanceof java.util.concurrent.ExecutionException) {
+                    e = e.getCause();
                 }
-                if (errorClass.isInstance(_e)) {
+                if (errorClass.isInstance(e)) {
                     handleError.accept(
                         UniffiRustCallStatus.create(
                             UniffiRustCallStatus.UNIFFI_CALL_ERROR,
-                            lowerError.apply((E) _e)
+                            lowerError.apply((E) e)
                         )
                     );
                 } else {
                     handleError.accept(
                         UniffiRustCallStatus.create(
                             UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR,
-                            {{ Type::String.borrow()|lower_fn(config, ci) }}(uniffiStackTraceToString(_e))
+                            {{ Type::String.borrow()|lower_fn(config, ci) }}(uniffiStackTraceToString(e))
                         )
                     );
                 }
@@ -255,13 +255,13 @@ public final class UniffiAsyncHelpers {
     }
     {%- endif %}
 
-    private static java.lang.String uniffiStackTraceToString(java.lang.Throwable _e) {
+    private static java.lang.String uniffiStackTraceToString(java.lang.Throwable e) {
         try {
             java.io.StringWriter sw = new java.io.StringWriter();
-            _e.printStackTrace(new java.io.PrintWriter(sw));
+            e.printStackTrace(new java.io.PrintWriter(sw));
             return sw.toString();
         } catch (java.lang.Throwable _t) {
-            return _e.toString();
+            return e.toString();
         }
     }
 }

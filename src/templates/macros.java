@@ -68,18 +68,18 @@
         {%- endmatch %} {
             try {
                 {% match callable.return_type() -%}{%- when Some with (return_type) -%}return {{ return_type|lift_fn(config, ci) }}({% call to_ffi_call(callable) %}){%- when None %}{% call to_ffi_call(callable) %}{%- endmatch %};
-            } catch (java.lang.RuntimeException _e) {
+            } catch (java.lang.RuntimeException _uniffi_ex) {
                 {% match callable.throws_type() %}
                 {% when Some(throwable) %}
-                if ({{ throwable|type_name(ci, config) }}.class.isInstance(_e.getCause())) {
-                    throw ({{ throwable|type_name(ci, config) }})_e.getCause();
+                if ({{ throwable|type_name(ci, config) }}.class.isInstance(_uniffi_ex.getCause())) {
+                    throw ({{ throwable|type_name(ci, config) }})_uniffi_ex.getCause();
                 }
                 {% else %}
                 {% endmatch %}
-                if (InternalException.class.isInstance(_e.getCause())) {
-                    throw (InternalException)_e.getCause();
+                if (InternalException.class.isInstance(_uniffi_ex.getCause())) {
+                    throw (InternalException)_uniffi_ex.getCause();
                 }
-                throw _e;
+                throw _uniffi_ex;
             }
     }
     {% endif %}

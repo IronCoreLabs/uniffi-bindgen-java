@@ -46,8 +46,8 @@ public enum {{ e|ffi_converter_name}} implements FfiConverterRustBuffer<{{ type_
     public {{ type_name }} read(java.nio.ByteBuffer buf) {
         try {
             return {{ type_name }}.values()[buf.getInt() - 1];
-        } catch (java.lang.IndexOutOfBoundsException _e) {
-            throw new java.lang.RuntimeException("invalid enum value, something is very wrong!!", _e);
+        } catch (java.lang.IndexOutOfBoundsException e) {
+            throw new java.lang.RuntimeException("invalid enum value, something is very wrong!!", e);
         }
     }
 

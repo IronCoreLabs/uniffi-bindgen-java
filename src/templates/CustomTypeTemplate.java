@@ -89,8 +89,8 @@ public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, {{
         var builtinValue = {{ builtin|lift_fn(config, ci) }}(value);
         try{
           return new {{ type_name}}({{ custom_type_config.lift("builtinValue") }});
-        } catch(java.lang.Exception _e){
-          throw new java.lang.RuntimeException(_e);
+        } catch(java.lang.Exception e){
+          throw new java.lang.RuntimeException(e);
         }
     }
     @Override
@@ -98,8 +98,8 @@ public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, {{
       try{
         var builtinValue = {{ custom_type_config.lower("value.value()") }};
         return {{ builtin|lower_fn(config, ci) }}(builtinValue);
-      } catch(java.lang.Exception _e){
-        throw new java.lang.RuntimeException(_e);
+      } catch(java.lang.Exception e){
+        throw new java.lang.RuntimeException(e);
       }
     }
     @Override
@@ -107,8 +107,8 @@ public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, {{
       try{
         var builtinValue = {{ builtin|read_fn(config, ci) }}(buf);
         return new {{ type_name }}({{ custom_type_config.lift("builtinValue") }});
-      } catch(java.lang.Exception _e){
-        throw new java.lang.RuntimeException(_e);
+      } catch(java.lang.Exception e){
+        throw new java.lang.RuntimeException(e);
       }
     }
     @Override
@@ -116,8 +116,8 @@ public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, {{
       try {
         var builtinValue = {{ custom_type_config.lower("value.value()") }};
         return {{ builtin|allocation_size_fn(config, ci) }}(builtinValue);
-      } catch(java.lang.Exception _e){
-        throw new java.lang.RuntimeException(_e);
+      } catch(java.lang.Exception e){
+        throw new java.lang.RuntimeException(e);
       }
     }
     @Override
@@ -125,8 +125,8 @@ public enum {{ ffi_converter_name }} implements FfiConverter<{{ type_name }}, {{
       try {
         var builtinValue = {{ custom_type_config.lower("value.value()") }};
         {{ builtin|write_fn(config, ci) }}(builtinValue, buf);
-      } catch(java.lang.Exception _e){
-        throw new java.lang.RuntimeException(_e);
+      } catch(java.lang.Exception e){
+        throw new java.lang.RuntimeException(e);
       }
     }
 }

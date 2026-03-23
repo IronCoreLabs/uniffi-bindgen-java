@@ -41,9 +41,9 @@ public interface FfiConverter<JavaType, FfiType> {
             write(value, bbuf);
             rbuf.writeField("len", (long)bbuf.position());
             return rbuf;
-        } catch (java.lang.Throwable _e) {
+        } catch (java.lang.Throwable e) {
             RustBuffer.free(rbuf);
-            throw _e;
+            throw e;
         }
     }
 

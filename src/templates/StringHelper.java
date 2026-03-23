@@ -31,8 +31,8 @@ public enum FfiConverterString implements FfiConverter<java.lang.String, RustBuf
         encoder.onMalformedInput(java.nio.charset.CodingErrorAction.REPORT);
         try {
             return encoder.encode(java.nio.CharBuffer.wrap(value));
-        } catch (java.nio.charset.CharacterCodingException _e) {
-            throw new java.lang.RuntimeException(_e);
+        } catch (java.nio.charset.CharacterCodingException e) {
+            throw new java.lang.RuntimeException(e);
         }
     }
 

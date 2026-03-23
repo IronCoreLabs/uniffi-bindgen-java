@@ -125,19 +125,19 @@ public final class UniffiHelpers {
   ) {
       try {
           writeReturn.accept(makeCall.get());
-      } catch (java.lang.Exception _e) {
+      } catch (java.lang.Exception e) {
           callStatus.setCode(UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR);
-          callStatus.setErrorBuf({{ Type::String.borrow()|lower_fn(config, ci) }}(uniffiStackTraceToString(_e)));
+          callStatus.setErrorBuf({{ Type::String.borrow()|lower_fn(config, ci) }}(uniffiStackTraceToString(e)));
       }
   }
 
-  private static java.lang.String uniffiStackTraceToString(java.lang.Throwable _e) {
+  private static java.lang.String uniffiStackTraceToString(java.lang.Throwable e) {
       try {
           java.io.StringWriter sw = new java.io.StringWriter();
-          _e.printStackTrace(new java.io.PrintWriter(sw));
+          e.printStackTrace(new java.io.PrintWriter(sw));
           return sw.toString();
       } catch (java.lang.Throwable _t) {
-          return _e.toString();
+          return e.toString();
       }
   }
 
@@ -150,15 +150,15 @@ public final class UniffiHelpers {
   ) {
       try {
           writeReturn.accept(makeCall.call());
-      } catch (java.lang.Exception _e) {
-          if (errorClazz.isAssignableFrom(_e.getClass())) {
+      } catch (java.lang.Exception e) {
+          if (errorClazz.isAssignableFrom(e.getClass())) {
               @SuppressWarnings("unchecked")
-              E castedE = (E) _e;
+              E castedE = (E) e;
               callStatus.setCode(UniffiRustCallStatus.UNIFFI_CALL_ERROR);
               callStatus.setErrorBuf(lowerError.apply(castedE));
           } else {
               callStatus.setCode(UniffiRustCallStatus.UNIFFI_CALL_UNEXPECTED_ERROR);
-              callStatus.setErrorBuf({{ Type::String.borrow()|lower_fn(config, ci) }}(uniffiStackTraceToString(_e)));
+              callStatus.setErrorBuf({{ Type::String.borrow()|lower_fn(config, ci) }}(uniffiStackTraceToString(e)));
           }
       }
   }
