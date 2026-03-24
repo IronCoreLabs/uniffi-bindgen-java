@@ -31,6 +31,12 @@ public final class UniffiAsyncHelpers {
             this.rustFuture = rustFuture;
         }
 
+        // Cancellation calls freeFunc immediately, which frees the underlying Rust future.
+        // This races with the thenApplyAsync pipeline stage that calls completeFunc on
+        // the same handle. The pipeline guards against this with isCancelled() checks
+        // before touching the Rust future, but a narrow race window remains if cancel()
+        // fires after the check passes. This is safe in practice because uniffi's
+        // rust_future_free is idempotent (see the double-free and poll-after-free tests).
         @Override
         public boolean cancel(boolean ignored) {
             boolean cancelled = super.cancel(ignored);
@@ -98,6 +104,7 @@ public final class UniffiAsyncHelpers {
                 return;
             }
             try {
+                // If we failed in the chain somewhere, now complete the future with the failure
                 if (throwable != null) {
                     // Unwrap CompletionException to expose the original exception
                     java.lang.Throwable cause = throwable;

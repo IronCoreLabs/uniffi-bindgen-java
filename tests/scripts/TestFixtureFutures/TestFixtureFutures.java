@@ -411,7 +411,6 @@ public class TestFixtureFutures {
 
         System.out.println(MessageFormat.format("useSharedResource (not cancelled): {0}ms", time));
       }
-      // Test high fan-out concurrency.
       // Spawns many concurrent futures to verify the thread pool isn't starved.
       // With the old spinloop implementation, each future held a thread from the common pool;
       // with thenCompose, no threads are held during polling.
@@ -433,7 +432,6 @@ public class TestFixtureFutures {
         assert time < 2000 : MessageFormat.format("high fan-out too slow: {0}ms", time);
       }
 
-      // Test immediate cancellation.
       // Cancel a future before any poll can complete and verify no crash or hang.
       {
         for (int i = 0; i < 100; i++) {
@@ -447,8 +445,6 @@ public class TestFixtureFutures {
         System.out.println("immediate cancellation (100 iterations) ... ok");
       }
 
-      // Test double-free race condition (regression test for uniffi internals).
-      //
       // There is a theoretical race in our async code: if cancel() fires between the
       // isCancelled() check and the freeFunc call in whenComplete, both paths call
       // rust_future_free on the same handle. Currently this is safe because uniffi's
@@ -476,8 +472,6 @@ public class TestFixtureFutures {
         System.out.println("double-free race (200 iterations) ... ok");
       }
 
-      // Test polling after free (regression test for uniffi internals).
-      //
       // When a future is cancelled, our pollUntilReady chain may still have an in-flight
       // poll when freeFunc is called. The orphaned chain can then call rust_future_poll on
       // the freed handle. Currently this is safe because uniffi's Scheduler enters the
