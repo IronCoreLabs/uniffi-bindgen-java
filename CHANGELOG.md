@@ -1,3 +1,8 @@
+## 0.3.1
+
+- remove spinlock where Java checks for Rust future completion (uses a thenCompose based CF chain to prevent unnecessary blocking)
+- generate overloads for async functions that accept and use a custom Executor
+
 ## 0.3.0
 
 - update to uniffi 0.31.0

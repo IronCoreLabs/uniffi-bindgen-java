@@ -411,6 +411,127 @@ public class TestFixtureFutures {
 
         System.out.println(MessageFormat.format("useSharedResource (not cancelled): {0}ms", time));
       }
+      // Spawns many concurrent futures to verify the thread pool isn't starved.
+      // With the old spinloop implementation, each future held a thread from the common pool;
+      // with thenCompose, no threads are held during polling.
+      {
+        int concurrency = 100;
+        var futures = new java.util.ArrayList<CompletableFuture<String>>(concurrency);
+        var time = measureTimeMillis(() -> {
+            for (int i = 0; i < concurrency; i++) {
+                futures.add(Futures.sayAfter((short)10, "concurrent-" + i));
+            }
+            for (var f : futures) {
+                var result = f.get();
+                assert result.startsWith("Hello, concurrent-") : "unexpected result: " + result;
+            }
+        });
+
+        System.out.println(MessageFormat.format("high fan-out ({0} concurrent): {1}ms", concurrency, time));
+        // All futures sleep 10ms and run concurrently; should complete well under 1s.
+        assert time < 2000 : MessageFormat.format("high fan-out too slow: {0}ms", time);
+      }
+
+      // Cancel a future before any poll can complete and verify no crash or hang.
+      {
+        for (int i = 0; i < 100; i++) {
+            var job = Futures.sleep((short)5000);
+            job.cancel(true);
+            assert job.isCancelled();
+        }
+        // Verify async machinery still works after many immediate cancellations.
+        var result = Futures.sayAfter((short)1, "still-alive").get();
+        assert result.equals("Hello, still-alive!") : "async broken after cancellations";
+        System.out.println("immediate cancellation (100 iterations) ... ok");
+      }
+
+      // There is a theoretical race in our async code: if cancel() fires between the
+      // isCancelled() check and the freeFunc call in whenComplete, both paths call
+      // rust_future_free on the same handle. Currently this is safe because uniffi's
+      // rust_future_free is effectively idempotent:
+      //   - Handle::into_arc_borrowed increments the Arc refcount before creating the Arc,
+      //     so the RustFuture allocation stays alive across multiple free calls.
+      //   - RustFuture::free() just clears internal state (future=None, result=None) and
+      //     cancels the scheduler; the second call is a no-op.
+      //
+      // This test remains in place to catch any regression if uniffi changes its handle
+      // management to be less tolerant of double-free.
+      {
+        for (int i = 0; i < 200; i++) {
+            // 1ms sleep means the future may complete around the same time we cancel
+            var job = Futures.sayAfter((short)1, "race-" + i);
+            // Small random-ish delay to vary the race timing
+            if (i % 3 == 0) {
+                Thread.yield();
+            }
+            job.cancel(true);
+        }
+        // Verify the system is still healthy after many race attempts.
+        var result = Futures.sayAfter((short)1, "post-race").get();
+        assert result.equals("Hello, post-race!") : "async broken after double-free race test";
+        System.out.println("double-free race (200 iterations) ... ok");
+      }
+
+      // When a future is cancelled, our pollUntilReady chain may still have an in-flight
+      // poll when freeFunc is called. The orphaned chain can then call rust_future_poll on
+      // the freed handle. Currently this is safe because uniffi's Scheduler enters the
+      // Cancelled state on free, and any subsequent poll short-circuits to Ready via
+      // is_cancelled() without touching the inner future.
+      //
+      // This test remains in place to catch any regression if uniffi changes its
+      // post-free poll behavior.
+      {
+        for (int i = 0; i < 50; i++) {
+            // brokenSleep calls the waker multiple times, creating multiple polls.
+            // Cancelling while these polls are in-flight exercises the polling-after-free path.
+            var job = Futures.brokenSleep((short)100, (short)50);
+            // Vary timing to hit different points in the poll chain
+            if (i % 5 == 0) {
+                Thread.yield();
+            }
+            job.cancel(true);
+            assert job.isCancelled();
+        }
+        // Small delay to let any orphaned poll chains settle
+        TestFixtureFutures.delay(200).get();
+        // Verify the system is still functional
+        var result = Futures.sayAfter((short)1, "post-poll-free").get();
+        assert result.equals("Hello, post-poll-free!") : "async broken after poll-after-free test";
+        System.out.println("poll after free (50 iterations) ... ok");
+      }
+
+      // Verifies that async operations use the provided Executor instead of the default ForkJoinPool.commonPool().
+      {
+        var executorInvocations = new java.util.concurrent.atomic.AtomicInteger(0);
+        var innerExecutor = Executors.newCachedThreadPool();
+        java.util.concurrent.Executor trackingExecutor = runnable -> {
+            executorInvocations.incrementAndGet();
+            innerExecutor.execute(runnable);
+        };
+
+        try {
+            // Test top-level async function with custom executor
+            var result = Futures.sayAfter((short)1, "custom-exec", trackingExecutor).get();
+            assert result.equals("Hello, custom-exec!") : "unexpected result: " + result;
+            assert executorInvocations.get() > 0 : "custom executor was not invoked for top-level function";
+
+            // Test async method on object with custom executor
+            var megaphone = Futures.newMegaphone();
+            var prevCount = executorInvocations.get();
+            var methodResult = megaphone.sayAfter((short)1, "method-exec", trackingExecutor).get();
+            assert methodResult.equals("HELLO, METHOD-EXEC!") : "unexpected result: " + methodResult;
+            assert executorInvocations.get() > prevCount : "custom executor was not invoked for method call";
+
+            // Test void-returning async function with custom executor
+            prevCount = executorInvocations.get();
+            Futures.sleep((short)1, trackingExecutor).get();
+            assert executorInvocations.get() > prevCount : "custom executor was not invoked for void function";
+        } finally {
+            innerExecutor.shutdown();
+        }
+
+        System.out.println("custom executor ... ok");
+      }
     } finally {
       // bring down the scheduler, if it's not shut down it'll hold the main thread open.
       scheduler.shutdown();
