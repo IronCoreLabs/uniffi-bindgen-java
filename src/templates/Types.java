@@ -7,7 +7,8 @@ import java.util.Map;
 import java.util.stream.Stream;
 
 public interface AutoCloseableHelper {
-    static void close(Object... args) {
+    // Use java.lang.Object to avoid conflict with user-defined Object types
+    static void close(java.lang.Object... args) {
         Stream
             .of(args)
             .forEach(obj -> {
@@ -15,18 +16,18 @@ public interface AutoCloseableHelper {
                 if (obj instanceof AutoCloseable) {
                     try {
                         ((AutoCloseable) obj).close();
-                    } catch (Exception e) {
-                        throw new RuntimeException(e);
+                    } catch (java.lang.Exception ex) {
+                        throw new RuntimeException(ex);
                     }
                 }
                 if (obj instanceof List<?>) {
                     for (int i = 0; i < ((List) obj).size(); i++) {
-                        Object element = ((List) obj).get(i);
+                        java.lang.Object element = ((List) obj).get(i);
                         if (element instanceof AutoCloseable) {
                             try {
                                 ((AutoCloseable) element).close();
-                            } catch (Exception e) {
-                                throw new RuntimeException(e);
+                            } catch (java.lang.Exception ex) {
+                                throw new RuntimeException(ex);
                             }
                         }
                     }
@@ -36,8 +37,8 @@ public interface AutoCloseableHelper {
                         if (value instanceof AutoCloseable) {
                             try {
                                 ((AutoCloseable) value).close();
-                            } catch (Exception e) {
-                                throw new RuntimeException(e);
+                            } catch (java.lang.Exception ex) {
+                                throw new RuntimeException(ex);
                             }
                         }
                     }
@@ -47,8 +48,8 @@ public interface AutoCloseableHelper {
                         if (value instanceof AutoCloseable) {
                             try {
                                 ((AutoCloseable) value).close();
-                            } catch (Exception e) {
-                                throw new RuntimeException(e);
+                            } catch (java.lang.Exception ex) {
+                                throw new RuntimeException(ex);
                             }
                         }
                     }
@@ -58,12 +59,24 @@ public interface AutoCloseableHelper {
 }
 package {{ config.package_name() }};
 
-public class NoPointer {
+public class NoHandle {
     // Private constructor to prevent instantiation
-    private NoPointer() {}
+    private NoHandle() {}
 
     // Static final instance of the class so it can be used in tests
-    public static final NoPointer INSTANCE = new NoPointer();
+    public static final NoHandle INSTANCE = new NoHandle();
+}
+
+package {{ config.package_name() }};
+
+// Marker class for constructors that accept a raw handle.
+// This disambiguates constructor signatures when an interface has both
+// a regular constructor and one accepting an FFI handle.
+public class UniffiWithHandle {
+    // Private constructor to prevent instantiation
+    private UniffiWithHandle() {}
+
+    public static final UniffiWithHandle INSTANCE = new UniffiWithHandle();
 }
 
 {%- for type_ in ci.iter_local_types() %}
@@ -140,7 +153,22 @@ public class NoPointer {
 {% include "RecordTemplate.java" %}
 
 {%- when Type::Sequence { inner_type } %}
+{%- match inner_type.as_ref() %}
+{%- when Type::Int16 or Type::UInt16 %}
+{%- include "Int16ArrayHelper.java" %}
+{%- when Type::Int32 or Type::UInt32 %}
+{%- include "Int32ArrayHelper.java" %}
+{%- when Type::Int64 or Type::UInt64 %}
+{%- include "Int64ArrayHelper.java" %}
+{%- when Type::Float32 %}
+{%- include "Float32ArrayHelper.java" %}
+{%- when Type::Float64 %}
+{%- include "Float64ArrayHelper.java" %}
+{%- when Type::Boolean %}
+{%- include "BooleanArrayHelper.java" %}
+{%- else %}
 {% include "SequenceTemplate.java" %}
+{%- endmatch %}
 
 {%- when Type::String %}
 {%- include "StringHelper.java" %}
@@ -150,4 +178,11 @@ public class NoPointer {
 
 {%- else %}
 {%- endmatch %}
+{%- endfor %}
+
+{#- Generate external error handlers for external types used as errors -#}
+{%- for type_ in ci.iter_external_types() %}
+{%- let name = type_.name().unwrap() %}
+{%- let module_path = type_.module_path().unwrap() %}
+{% include "ExternalTypeTemplate.java" %}
 {%- endfor %}

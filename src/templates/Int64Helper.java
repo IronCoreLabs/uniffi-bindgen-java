@@ -1,32 +1,30 @@
 package {{ config.package_name() }};
 
-import java.nio.ByteBuffer;
-
-public enum FfiConverterLong implements FfiConverter<Long, Long> {
+public enum FfiConverterLong implements FfiConverter<java.lang.Long, java.lang.Long> {
     INSTANCE;
 
     @Override
-    public Long lift(Long value) {
+    public java.lang.Long lift(java.lang.Long value) {
         return value;
     }
 
     @Override
-    public Long read(ByteBuffer buf) {
+    public java.lang.Long read(java.nio.ByteBuffer buf) {
         return buf.getLong();
     }
 
     @Override
-    public Long lower(Long value) {
+    public java.lang.Long lower(java.lang.Long value) {
         return value;
     }
 
     @Override
-    public long allocationSize(Long value) {
+    public long allocationSize(java.lang.Long value) {
         return 8L;
     }
 
     @Override
-    public void write(Long value, ByteBuffer buf) {
+    public void write(java.lang.Long value, java.nio.ByteBuffer buf) {
         buf.putLong(value);
     }
 }

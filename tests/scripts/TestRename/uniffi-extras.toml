@@ -1,0 +1,31 @@
+# Java-specific rename configuration for testing the rename feature
+[bindings.java.rename]
+# Rename a function and its args
+binding_function = "javaFunction"
+"binding_function.record" = "javaRecord"
+
+# Rename a record and its field
+BindingRecord = "JavaRecord"
+"BindingRecord.item" = "javaItem"
+
+# Enum renaming
+BindingEnum = "JavaEnum"
+"BindingEnum.VariantA" = "JavaVariantA"
+"BindingEnum.Record" = "JavaRecordVariant"
+
+BindingEnumWithFields = "JavaEnumWithFields"
+"BindingEnumWithFields.VariantA" = "JavaVariantA"
+"BindingEnumWithFields.VariantA.binding_int" = "javaInt"
+
+# Error renaming (Java adds Exception suffix like Kotlin)
+BindingError = "JavaError"
+"BindingError.Simple" = "JavaSimple"
+
+# Trait renaming
+BindingTrait = "JavaTrait"
+"BindingTrait.trait_method" = "javaTraitMethod"
+
+# Object renaming
+BindingObject = "JavaObject"
+"BindingObject.method" = "javaMethod"
+"BindingObject.method.arg" = "javaArg"

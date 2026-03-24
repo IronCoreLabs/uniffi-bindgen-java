@@ -1,6 +1,5 @@
 package {{ config.package_name() }};
 
-import com.sun.jna.Library;
 import com.sun.jna.Native;
 
 final class NamespaceLibrary {
@@ -12,27 +11,25 @@ final class NamespaceLibrary {
     return "{{ config.cdylib_name() }}";
   }
 
-  static <Lib extends Library> Lib loadIndirect(String componentName, Class<Lib> clazz) {
-    return Native.load(findLibraryName(componentName), clazz);
-  }
-
-  static void uniffiCheckContractApiVersion(UniffiLib lib) {
+  static void uniffiCheckContractApiVersion() {
     // Get the bindings contract version from our ComponentInterface
     int bindingsContractVersion = {{ ci.uniffi_contract_version() }};
-    // Get the scaffolding contract version by calling the into the dylib
-    int scaffoldingContractVersion = lib.{{ ci.ffi_uniffi_contract_version().name() }}();
+    // Get the scaffolding contract version by calling into the dylib
+    int scaffoldingContractVersion = IntegrityCheckingUniffiLib.{{ ci.ffi_uniffi_contract_version().name() }}();
     if (bindingsContractVersion != scaffoldingContractVersion) {
         throw new RuntimeException("UniFFI contract version mismatch: try cleaning and rebuilding your project");
     }
   }
 
-  static void uniffiCheckApiChecksums(UniffiLib lib) {
+{%- if !config.omit_checksums() %}
+  static void uniffiCheckApiChecksums() {
     {%- for (name, expected_checksum) in ci.iter_checksums() %}
-    if (lib.{{ name }}() != ((short) {{ expected_checksum }})) {
+    if (IntegrityCheckingUniffiLib.{{ name }}() != ((short) {{ expected_checksum }})) {
         throw new RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project");
     }
     {%- endfor %}
   }
+{%- endif %}
 }
 
 // Define FFI callback types
@@ -70,7 +67,7 @@ public class {{ ffi_struct.name()|ffi_struct_name }} extends Structure {
     public {{ ffi_struct.name()|ffi_struct_name}}() {
         super();
     }
-    
+
     public {{ ffi_struct.name()|ffi_struct_name }}(
         {%- for field in ffi_struct.fields() %}
         {{ field.type_().borrow()|ffi_type_name_for_ffi_struct(config, ci) }} {{ field.name()|var_name }}{% if !loop.last %},{% endif %}
@@ -88,7 +85,7 @@ public class {{ ffi_struct.name()|ffi_struct_name }} extends Structure {
             {%- endfor %}
         ) {
             super({%- for field in ffi_struct.fields() -%}
-                {{ field.name()|var_name }}{% if !loop.last %},{% endif %}        
+                {{ field.name()|var_name }}{% if !loop.last %},{% endif %}
             {% endfor %});
         }
     }
@@ -101,43 +98,88 @@ public class {{ ffi_struct.name()|ffi_struct_name }} extends Structure {
 
 }
 {%- when FfiDefinition::Function(_) %}
-{# functions are handled below #}
+{#- functions are handled below #}
 {%- endmatch %}
 {%- endfor %}
 
 package {{ config.package_name() }};
 
-import com.sun.jna.Library;
-import com.sun.jna.Pointer;
+import com.sun.jna.Native;
 
-// A JNA Library to expose the extern-C FFI definitions.
-// This is an implementation detail which will be called internally by the public API.
-interface UniffiLib extends Library {
-    UniffiLib INSTANCE = UniffiLibInitializer.load();
+// For large crates we prevent `MethodTooLargeException` (see #2340)
+// N.B. the name of the exception is very misleading, since it is
+// rather `InterfaceTooLargeException`, caused by too many methods
+// in the interface for large crates.
+//
+// By splitting the otherwise huge interface into two parts
+// * UniffiLib
+// * IntegrityCheckingUniffiLib
+// And all checksum methods are put into `IntegrityCheckingUniffiLib`
+// we allow for ~2x as many methods in the UniffiLib interface.
+//
+// Note: above all written when we used JNA's `loadIndirect` etc.
+// We now use JNA's "direct mapping" - unclear if same considerations apply exactly.
+final class IntegrityCheckingUniffiLib {
+    static {
+        Native.register(IntegrityCheckingUniffiLib.class, NamespaceLibrary.findLibraryName("{{ ci.namespace() }}"));
+        NamespaceLibrary.uniffiCheckContractApiVersion();
+{%- if !config.omit_checksums() %}
+        NamespaceLibrary.uniffiCheckApiChecksums();
+{%- endif %}
+    }
 
-    {% if ci.contains_object_types() %}
-    // The Cleaner for the whole library
-    static UniffiCleaner CLEANER = UniffiCleaner.create();
-    {%- endif %}
-    
-    {% for func in ci.iter_ffi_function_definitions() -%}
-    {% match func.return_type() %}{% when Some with (return_type) %}{{ return_type.borrow()|ffi_type_name_by_value(config, ci) }}{% when None %}void{% endmatch %} {{ func.name() }}({%- call java::arg_list_ffi_decl(func) %});
+    {% for func in ci.iter_ffi_function_integrity_checks() -%}
+    native static {% match func.return_type() %}{% when Some with (return_type) %}{{ return_type.borrow()|ffi_type_name_primitive(config, ci) }}{% when None %}void{% endmatch %} {{ func.name() }}({%- call java::arg_list_ffi_decl_primitive(func) %});
     {% endfor %}
 }
 
 package {{ config.package_name() }};
 
-// Java doesn't allow for static init blocks in an interface outside of a static property with a default.
-// To get around that and make sure that when the UniffiLib interface loads it has an initialized library
-// we call this class. The init code won't be called until a function on this interface is called unfortunately.
-final class UniffiLibInitializer {
-    static UniffiLib load() {
-        UniffiLib instance = NamespaceLibrary.loadIndirect("{{ ci.namespace() }}", UniffiLib.class);
-        NamespaceLibrary.uniffiCheckContractApiVersion(instance);
-        NamespaceLibrary.uniffiCheckApiChecksums(instance);
+import com.sun.jna.Native;
+import com.sun.jna.Pointer;
+
+// A JNA Library to expose the extern-C FFI definitions.
+// This is an implementation detail which will be called internally by the public API.
+final class UniffiLib {
+    {% if ci.contains_object_types() %}
+    // The Cleaner for the whole library
+    static UniffiCleaner CLEANER;
+    {%- endif %}
+
+    static {
+        Native.register(UniffiLib.class,
+            NamespaceLibrary.findLibraryName("{{ ci.namespace() }}"));
+        // Force IntegrityCheckingUniffiLib to load first to run integrity checks
+        Class<?> ignored = IntegrityCheckingUniffiLib.class;
+        {% if ci.contains_object_types() %}
+        CLEANER = UniffiCleaner.create();
+        {%- endif %}
         {% for init_fn in self.initialization_fns() -%}
-        {{ init_fn }}(instance);
+        {{ init_fn }}();
         {% endfor -%}
-        return instance;
+    }
+
+    {% for func in ci.iter_ffi_function_definitions_excluding_integrity_checks() -%}
+    native static {% match func.return_type() %}{% when Some with (return_type) %}{{ return_type.borrow()|ffi_type_name_primitive(config, ci) }}{% when None %}void{% endmatch %} {{ func.name() }}({%- call java::arg_list_ffi_decl_primitive(func) %});
+    {% endfor %}
+}
+
+package {{ config.package_name() }};
+
+/**
+ * Ensures the native library is initialized.
+ * Call this function to force initialization before using any types from this library.
+ */
+public final class UniffiInitializer {
+    /**
+     * Force initialization of the native library.
+     * UniffiLib is initialized as classes are used, but we still need to explicitly
+     * reference it so initialization across crates works as expected.
+     */
+    public static void ensureInitialized() {
+        // Force IntegrityCheckingUniffiLib class to load (runs integrity checks)
+        Class<?> ignored1 = IntegrityCheckingUniffiLib.class;
+        // Force UniffiLib class to load (runs initialization functions)
+        Class<?> ignored2 = UniffiLib.class;
     }
 }

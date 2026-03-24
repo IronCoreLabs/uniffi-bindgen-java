@@ -10,8 +10,8 @@ use std::io::{Read, Write};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, fs};
-use uniffi_bindgen::library_mode::generate_bindings;
-use uniffi_bindgen_java::JavaBindingGenerator;
+use uniffi_bindgen::{BindgenLoader, BindgenPaths};
+use uniffi_bindgen_java::{GenerateOptions, generate};
 use uniffi_testing::UniFFITestHelper;
 
 /// Run the test fixtures from UniFFI
@@ -57,22 +57,23 @@ fn run_test(fixture_name: &str, test_file: &str) -> Result<()> {
         }
     };
 
-    let config_supplier = {
-        use uniffi_bindgen::cargo_metadata::CrateConfigSupplier;
-        let cmd = cargo_metadata::MetadataCommand::new();
-        let metadata = cmd.exec()?;
-        CrateConfigSupplier::from(metadata)
-    };
+    // Create BindgenPaths with cargo metadata layer and optional config override
+    let mut paths = BindgenPaths::default();
+    if let Some(config_path) = &maybe_new_uniffi_toml_filename {
+        paths.add_config_override_layer(config_path.clone());
+    }
+    paths.add_cargo_metadata_layer(false)?;
+    let loader = BindgenLoader::new(paths);
 
     // generate the fixture bindings
-    generate_bindings(
-        &cdylib_path,
-        None,
-        &JavaBindingGenerator,
-        &config_supplier,
-        maybe_new_uniffi_toml_filename.as_deref(),
-        &out_dir,
-        true,
+    generate(
+        &loader,
+        &GenerateOptions {
+            source: cdylib_path.clone(),
+            out_dir: out_dir.clone(),
+            format: true,
+            crate_filter: None,
+        },
     )?;
 
     // jna requires a specific resources path inside the jar by default, create that folder
@@ -264,4 +265,9 @@ fixture_tests! {
     (test_external_types, "uniffi-fixture-ext-types", "scripts/TestImportedTypes/TestImportedTypes.java"),
     (test_futures, "uniffi-example-futures", "scripts/TestFutures.java"),
     (test_futures_fixtures, "uniffi-fixture-futures", "scripts/TestFixtureFutures/TestFixtureFutures.java"),
+    (test_trait_methods, "uniffi-fixture-trait-methods", "scripts/TestTraitMethods.java"),
+    (test_omit_checksums, "uniffi-example-arithmetic", "scripts/TestOmitChecksums/TestOmitChecksums.java"),
+    (test_proc_macro, "uniffi-fixture-proc-macro", "scripts/TestProcMacro.java"),
+    (test_rename, "uniffi-fixture-rename", "scripts/TestRename/TestRename.java"),
+    (test_primitive_arrays, "uniffi-fixture-primitive-arrays", "scripts/TestPrimitiveArrays.java"),
 }

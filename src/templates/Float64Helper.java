@@ -1,32 +1,30 @@
 package {{ config.package_name() }};
 
-import java.nio.ByteBuffer;
-
-public enum FfiConverterDouble implements FfiConverter<Double, Double>{
+public enum FfiConverterDouble implements FfiConverter<java.lang.Double, java.lang.Double>{
   INSTANCE;
 
     @Override
-    public Double lift(Double value) {
+    public java.lang.Double lift(java.lang.Double value) {
         return value;
     }
 
     @Override
-    public Double read(ByteBuffer buf) {
+    public java.lang.Double read(java.nio.ByteBuffer buf) {
         return buf.getDouble();
     }
 
     @Override
-    public Double lower(Double value) {
+    public java.lang.Double lower(java.lang.Double value) {
         return value;
     }
 
     @Override
-    public long allocationSize(Double value) {
+    public long allocationSize(java.lang.Double value) {
         return 8L;
     }
 
     @Override
-    public void write(Double value, ByteBuffer buf) {
+    public void write(java.lang.Double value, java.nio.ByteBuffer buf) {
         buf.putDouble(value);
     }
 }

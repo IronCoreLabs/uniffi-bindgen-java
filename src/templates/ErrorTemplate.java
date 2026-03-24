@@ -6,15 +6,15 @@ package {{ config.package_name() }};
 
 {% if e.is_flat() %}
 {%- call java::docstring(e, 0) %}
-public class {{ type_name }} extends Exception {
-    private {{ type_name }}(String message) {
+public class {{ type_name }} extends java.lang.Exception {
+    private {{ type_name }}(java.lang.String message) {
       super(message);
     }
 
     {% for variant in e.variants() -%}
     {%- call java::docstring(variant, 4) %}
     public static class {{ variant|error_variant_name }} extends {{ type_name }}{% if contains_object_references %}, AutoCloseable{% endif %} {
-      public {{ variant|error_variant_name }}(String message) {
+      public {{ variant|error_variant_name }}(java.lang.String message) {
         super(message);
       }
     }
@@ -24,9 +24,9 @@ public class {{ type_name }} extends Exception {
 
 {%- else %}
 {%- call java::docstring(e, 0) %}
-public class {{ type_name }} extends Exception {
-    private {{ type_name }}(String message) {
-      super(message); 
+public class {{ type_name }} extends java.lang.Exception {
+    private {{ type_name }}(java.lang.String message) {
+      super(message);
     }
 
     {% for variant in e.variants() -%}
@@ -89,19 +89,17 @@ public class {{ type_name }}ErrorHandler implements UniffiRustCallStatusErrorHan
 
 package {{ config.package_name() }};
 
-import java.nio.ByteBuffer;
-
 public enum {{ e|ffi_converter_name }} implements FfiConverterRustBuffer<{{ type_name }}> {
     INSTANCE;
 
     @Override
-    public {{ type_name }} read(ByteBuffer buf) {
+    public {{ type_name }} read(java.nio.ByteBuffer buf) {
         {%- if e.is_flat() %}
         return switch(buf.getInt()) {
             {%- for variant in e.variants() %}
             case {{ loop.index }} -> new {{ type_name }}.{{ variant|error_variant_name }}({{ Type::String.borrow()|read_fn(config, ci) }}(buf));
             {%- endfor %}
-            default -> throw new RuntimeException("invalid error enum value, something is very wrong!!");
+            default -> throw new java.lang.RuntimeException("invalid error enum value, something is very wrong!!");
         };
         {%- else %}
 
@@ -113,7 +111,7 @@ public enum {{ e|ffi_converter_name }} implements FfiConverterRustBuffer<{{ type
                 {% endfor -%}
             {%- endif -%});
             {%- endfor %}
-            default -> throw new RuntimeException("invalid error enum value, something is very wrong!!");
+            default -> throw new java.lang.RuntimeException("invalid error enum value, something is very wrong!!");
         };
         {%- endif %}
     }
@@ -133,13 +131,13 @@ public enum {{ e|ffi_converter_name }} implements FfiConverterRustBuffer<{{ type
                 {%- endfor %}
             );
             {%- endfor %}
-            default -> throw new RuntimeException("invalid error enum value, something is very wrong!!");
+            default -> throw new java.lang.RuntimeException("invalid error enum value, something is very wrong!!");
         };
         {%- endif %}
     }
 
     @Override
-    public void write({{ type_name }} value, ByteBuffer buf) {
+    public void write({{ type_name }} value, java.nio.ByteBuffer buf) {
         switch(value) {
             {%- for variant in e.variants() %}
             case {{ type_name }}.{{ variant|error_variant_name }} x -> {
@@ -149,7 +147,7 @@ public enum {{ e|ffi_converter_name }} implements FfiConverterRustBuffer<{{ type
                 {%- endfor %}
             }
             {%- endfor %}
-            default -> throw new RuntimeException("invalid error enum value, something is very wrong!!");
+            default -> throw new java.lang.RuntimeException("invalid error enum value, something is very wrong!!");
         };
     }
 }

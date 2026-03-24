@@ -3,10 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use super::{AsCodeType, CodeType, Config};
-use uniffi_bindgen::{
-    ComponentInterface,
-    backend::{Literal, Type},
-};
+use uniffi_bindgen::interface::ComponentInterface;
+use uniffi_meta::Type;
 
 #[derive(Debug)]
 pub struct OptionalCodeType {
@@ -36,16 +34,6 @@ impl CodeType for OptionalCodeType {
             super::JavaCodeOracle.find(self.inner()).canonical_name()
         )
     }
-
-    fn literal(&self, literal: &Literal, ci: &ComponentInterface, config: &Config) -> String {
-        match literal {
-            Literal::None => "null".into(),
-            Literal::Some { inner } => super::JavaCodeOracle
-                .find(&self.inner)
-                .literal(inner, ci, config),
-            _ => panic!("Invalid literal for Optional type: {literal:?}"),
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -65,7 +53,7 @@ impl SequenceCodeType {
 impl CodeType for SequenceCodeType {
     fn type_label(&self, ci: &ComponentInterface, config: &Config) -> String {
         format!(
-            "List<{}>",
+            "java.util.List<{}>",
             super::JavaCodeOracle
                 .find(self.inner())
                 .type_label(ci, config)
@@ -77,13 +65,6 @@ impl CodeType for SequenceCodeType {
             "Sequence{}",
             super::JavaCodeOracle.find(self.inner()).canonical_name()
         )
-    }
-
-    fn literal(&self, literal: &Literal, _ci: &ComponentInterface, _config: &Config) -> String {
-        match literal {
-            Literal::EmptySequence => "List.of()".into(),
-            _ => panic!("Invalid literal for List type: {literal:?}"),
-        }
     }
 }
 
@@ -110,7 +91,7 @@ impl MapCodeType {
 impl CodeType for MapCodeType {
     fn type_label(&self, ci: &ComponentInterface, config: &Config) -> String {
         format!(
-            "Map<{}, {}>",
+            "java.util.Map<{}, {}>",
             super::JavaCodeOracle
                 .find(self.key())
                 .type_label(ci, config),
@@ -127,11 +108,31 @@ impl CodeType for MapCodeType {
             self.value().as_codetype().canonical_name(),
         )
     }
-
-    fn literal(&self, literal: &Literal, _ci: &ComponentInterface, _config: &Config) -> String {
-        match literal {
-            Literal::EmptyMap => "Map.of()".into(),
-            _ => panic!("Invalid literal for Map type: {literal:?}"),
-        }
-    }
 }
+
+// Primitive array types for sequences of primitives.
+// These generate Java primitive arrays (e.g., float[], int[]) instead of List<Boxed>.
+
+macro_rules! impl_primitive_array_code_type {
+    ($name:ident, $type_label:literal, $canonical_name:literal) => {
+        #[derive(Debug)]
+        pub struct $name;
+
+        impl CodeType for $name {
+            fn type_label(&self, _ci: &ComponentInterface, _config: &Config) -> String {
+                $type_label.into()
+            }
+
+            fn canonical_name(&self) -> String {
+                $canonical_name.into()
+            }
+        }
+    };
+}
+
+impl_primitive_array_code_type!(Int16ArrayCodeType, "short[]", "Int16Array");
+impl_primitive_array_code_type!(Int32ArrayCodeType, "int[]", "Int32Array");
+impl_primitive_array_code_type!(Int64ArrayCodeType, "long[]", "Int64Array");
+impl_primitive_array_code_type!(Float32ArrayCodeType, "float[]", "Float32Array");
+impl_primitive_array_code_type!(Float64ArrayCodeType, "double[]", "Float64Array");
+impl_primitive_array_code_type!(BooleanArrayCodeType, "boolean[]", "BooleanArray");

@@ -2,12 +2,11 @@ package {{ config.package_name() }};
 
 import android.os.Build;
 import androidx.annotation.RequiresApi;
-import java.lang.ref.Cleaner;
 
 // The SystemCleaner, available from API Level 33.
 // Some API Level 33 OSes do not support using it, so we require API Level 34.
 class AndroidSystemCleaner implements UniffiCleaner {
-    private final Cleaner cleaner;
+    private final java.lang.ref.Cleaner cleaner;
 
     @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     AndroidSystemCleaner() {
@@ -15,7 +14,7 @@ class AndroidSystemCleaner implements UniffiCleaner {
     }
 
     @Override
-    public UniffiCleaner.Cleanable register(Object value, Runnable cleanUpTask) {
+    public UniffiCleaner.Cleanable register(java.lang.Object value, java.lang.Runnable cleanUpTask) {
         return new AndroidSystemCleanable(cleaner.register(value, cleanUpTask));
     }
 }
@@ -24,16 +23,15 @@ package {{ config.package_name() }};
 
 import android.os.Build;
 import androidx.annotation.RequiresApi;
-import java.lang.ref.Cleaner;
 
 class AndroidSystemCleanable implements UniffiCleaner.Cleanable {
-    private final Cleaner.Cleanable cleanable;
-    
+    private final java.lang.ref.Cleaner.Cleanable cleanable;
+
     @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-    AndroidSystemCleanable(Cleaner.Cleanable cleanable) {
+    AndroidSystemCleanable(java.lang.ref.Cleaner.Cleanable cleanable) {
         this.cleanable = cleanable;
     }
-    
+
     @Override
     public void clean() {
       cleanable.clean();

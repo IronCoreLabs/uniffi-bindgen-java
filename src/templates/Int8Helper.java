@@ -1,32 +1,30 @@
 package {{ config.package_name() }};
 
-import java.nio.ByteBuffer;
-
-public enum FfiConverterByte implements FfiConverter<Byte, Byte>{
+public enum FfiConverterByte implements FfiConverter<java.lang.Byte, java.lang.Byte>{
   INSTANCE;
 
     @Override
-    public Byte lift(Byte value) {
+    public java.lang.Byte lift(java.lang.Byte value) {
         return value;
     }
 
     @Override
-    public Byte read(ByteBuffer buf) {
+    public java.lang.Byte read(java.nio.ByteBuffer buf) {
         return buf.get();
     }
 
     @Override
-    public Byte lower(Byte value) {
+    public java.lang.Byte lower(java.lang.Byte value) {
         return value;
     }
 
     @Override
-    public long allocationSize(Byte value) {
+    public long allocationSize(java.lang.Byte value) {
         return 1L;
     }
 
     @Override
-    public void write(Byte value, ByteBuffer buf) {
+    public void write(java.lang.Byte value, java.nio.ByteBuffer buf) {
         buf.put(value);
     }
 }
