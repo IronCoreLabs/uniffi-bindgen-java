@@ -62,6 +62,7 @@ public final class UniffiAsyncHelpers {
     }
 
     static <T, F, E extends java.lang.Exception> java.util.concurrent.CompletableFuture<T> uniffiRustCallAsync(
+        java.util.concurrent.Executor uniffiExecutor,
         long rustFuture,
         PollingFunction pollFunc,
         java.util.function.BiFunction<java.lang.Long, UniffiRustCallStatus, F> completeFunc,
@@ -73,7 +74,7 @@ public final class UniffiAsyncHelpers {
 
         java.util.concurrent.CompletableFuture<java.lang.Void> pollChain;
         try {
-            pollChain = pollUntilReady(rustFuture, pollFunc);
+            pollChain = pollUntilReady(rustFuture, pollFunc, uniffiExecutor);
         } catch (java.lang.Exception e) {
             freeFunc.accept(rustFuture);
             future.completeExceptionally(e);
@@ -92,7 +93,7 @@ public final class UniffiAsyncHelpers {
             } catch (java.lang.Exception e) {
                 throw new java.util.concurrent.CompletionException(e);
             }
-        }).whenComplete((result, throwable) -> {
+        }, uniffiExecutor).whenComplete((result, throwable) -> {
             if (future.isCancelled()) {
                 return;
             }
@@ -119,6 +120,7 @@ public final class UniffiAsyncHelpers {
     // overload specifically for Void cases, which aren't within the Object type.
     // This is only necessary because of Java's lack of proper Any/Unit
     static <E extends java.lang.Exception> java.util.concurrent.CompletableFuture<java.lang.Void> uniffiRustCallAsync(
+        java.util.concurrent.Executor uniffiExecutor,
         long rustFuture,
         PollingFunction pollFunc,
         java.util.function.BiConsumer<java.lang.Long, UniffiRustCallStatus> completeFunc,
@@ -130,7 +132,7 @@ public final class UniffiAsyncHelpers {
 
         java.util.concurrent.CompletableFuture<java.lang.Void> pollChain;
         try {
-            pollChain = pollUntilReady(rustFuture, pollFunc);
+            pollChain = pollUntilReady(rustFuture, pollFunc, uniffiExecutor);
         } catch (java.lang.Exception e) {
             freeFunc.accept(rustFuture);
             future.completeExceptionally(e);
@@ -149,7 +151,7 @@ public final class UniffiAsyncHelpers {
                 throw new java.util.concurrent.CompletionException(e);
             }
             return null;
-        }).whenComplete((result, throwable) -> {
+        }, uniffiExecutor).whenComplete((result, throwable) -> {
             if (future.isCancelled()) {
                 return;
             }
@@ -171,7 +173,7 @@ public final class UniffiAsyncHelpers {
         return future;
     }
 
-    private static java.util.concurrent.CompletableFuture<java.lang.Void> pollUntilReady(long rustFuture, PollingFunction pollFunc) {
+    private static java.util.concurrent.CompletableFuture<java.lang.Void> pollUntilReady(long rustFuture, PollingFunction pollFunc, java.util.concurrent.Executor uniffiExecutor) {
         java.util.concurrent.CompletableFuture<java.lang.Byte> pollFuture = new java.util.concurrent.CompletableFuture<>();
         var handle = uniffiContinuationHandleMap.insert(pollFuture);
         pollFunc.apply(rustFuture, UniffiRustFutureContinuationCallbackImpl.INSTANCE, handle);
@@ -179,9 +181,9 @@ public final class UniffiAsyncHelpers {
             if (pollResult == UNIFFI_RUST_FUTURE_POLL_READY) {
                 return java.util.concurrent.CompletableFuture.completedFuture(null);
             } else {
-                return pollUntilReady(rustFuture, pollFunc);
+                return pollUntilReady(rustFuture, pollFunc, uniffiExecutor);
             }
-        });
+        }, uniffiExecutor);
     }
     
     {%- if ci.has_async_callback_interface_definition() %}

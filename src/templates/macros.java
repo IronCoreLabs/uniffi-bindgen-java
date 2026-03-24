@@ -52,8 +52,16 @@
     {% endif %}
     {%- if callable.is_async() %}
     {#- Async methods use CompletableFuture<T> which requires boxed types -#}
+    {#- No-executor overload — defaults to ForkJoinPool.commonPool(), delegates to Executor version -#}
     {{ func_decl }} java.util.concurrent.CompletableFuture<{% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|boxed_type_name(ci, config) }}{%- when None %}java.lang.Void{%- endmatch %}> {{ callable.name()|fn_name }}(
         {%- call arg_list(callable, !callable.self_type().is_some()) -%}
+    ){
+        return {{ callable.name()|fn_name }}({% call arg_name_list(callable) %}{% if !callable.arguments().is_empty() %}, {% endif %}java.util.concurrent.ForkJoinPool.commonPool());
+    }
+
+    {#- With-executor overload — does the actual async work -#}
+    {{ func_decl }} java.util.concurrent.CompletableFuture<{% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|boxed_type_name(ci, config) }}{%- when None %}java.lang.Void{%- endmatch %}> {{ callable.name()|fn_name }}(
+        {%- call arg_list(callable, !callable.self_type().is_some()) -%}{% if !callable.arguments().is_empty() %}, {% endif %}java.util.concurrent.Executor uniffiExecutor
     ){
         return {% call call_async(callable) %};
     }
@@ -87,6 +95,7 @@
 
 {%- macro call_async(callable) -%}
     UniffiAsyncHelpers.uniffiRustCallAsync(
+        uniffiExecutor,
 {%- match callable.self_type() %}
 {%- when Some with (Type::Object { .. }) %}
         callWithHandle(uniffiHandle -> {
@@ -132,6 +141,16 @@
         {{- arg|lower_fn(config, ci) }}({{ arg.name()|var_name }})
     {%- if !loop.last %}, {% endif -%}
     {%- endfor %}
+{%- endmacro -%}
+
+{#-
+// Arglist of just argument names, for forwarding calls (e.g. delegation between overloads).
+-#}
+{%- macro arg_name_list(func) -%}
+{%- for arg in func.arguments() -%}
+    {{ arg.name()|var_name }}
+{%-     if !loop.last %}, {% endif -%}
+{%- endfor %}
 {%- endmacro -%}
 
 {#-

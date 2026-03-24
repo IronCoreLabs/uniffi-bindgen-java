@@ -506,6 +506,38 @@ public class TestFixtureFutures {
         System.out.println("poll after free (50 iterations) ... ok");
       }
 
+      // Verifies that async operations use the provided Executor instead of the default ForkJoinPool.commonPool().
+      {
+        var executorInvocations = new java.util.concurrent.atomic.AtomicInteger(0);
+        var innerExecutor = Executors.newCachedThreadPool();
+        java.util.concurrent.Executor trackingExecutor = runnable -> {
+            executorInvocations.incrementAndGet();
+            innerExecutor.execute(runnable);
+        };
+
+        try {
+            // Test top-level async function with custom executor
+            var result = Futures.sayAfter((short)1, "custom-exec", trackingExecutor).get();
+            assert result.equals("Hello, custom-exec!") : "unexpected result: " + result;
+            assert executorInvocations.get() > 0 : "custom executor was not invoked for top-level function";
+
+            // Test async method on object with custom executor
+            var megaphone = Futures.newMegaphone();
+            var prevCount = executorInvocations.get();
+            var methodResult = megaphone.sayAfter((short)1, "method-exec", trackingExecutor).get();
+            assert methodResult.equals("HELLO, METHOD-EXEC!") : "unexpected result: " + methodResult;
+            assert executorInvocations.get() > prevCount : "custom executor was not invoked for method call";
+
+            // Test void-returning async function with custom executor
+            prevCount = executorInvocations.get();
+            Futures.sleep((short)1, trackingExecutor).get();
+            assert executorInvocations.get() > prevCount : "custom executor was not invoked for void function";
+        } finally {
+            innerExecutor.shutdown();
+        }
+
+        System.out.println("custom executor ... ok");
+      }
     } finally {
       // bring down the scheduler, if it's not shut down it'll hold the main thread open.
       scheduler.shutdown();
