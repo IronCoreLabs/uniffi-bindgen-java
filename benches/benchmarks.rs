@@ -2,14 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-//! JMH benchmark harness for uniffi-bindgen-java
+//! Criterion benchmark harness for uniffi-bindgen-java
 //!
-//! This builds the uniffi-fixture-benchmarks cdylib, generates Java bindings,
-//! copies them into the Gradle benchmark project, and runs JMH.
+//! Matches the upstream uniffi-rs benchmark style: builds the fixture cdylib,
+//! generates Java bindings, compiles a Java benchmark runner, and executes it.
+//! Criterion runs inside the Rust fixture library, driven by `runBenchmarks()`.
 //!
 //! Usage:
 //!   cargo bench
-//!   cargo bench --bench benchmarks -- --jmh-args="-f 1 -wi 2 -i 3"  # pass args to JMH
+//!   cargo bench -- --filter call-only    # filter benchmarks
+//!   cargo bench -- --save-baseline name  # save Criterion baseline
 
 use anyhow::{Context, Result, bail};
 use camino::Utf8PathBuf;
@@ -23,16 +25,14 @@ use uniffi_bindgen_java::{GenerateOptions, generate};
 use uniffi_testing::UniFFITestHelper;
 
 fn main() -> Result<()> {
-    let jmh_args = parse_jmh_args();
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let bench_project = project_root.join("benchmarks");
-    let generated_dir = bench_project.join("build/generated-sources/uniffi");
+    let tmp_dir = PathBuf::from(std::env!("CARGO_TARGET_TMPDIR")).join("benchmarks");
 
-    // Clean and recreate the generated sources directory
-    if generated_dir.exists() {
-        fs::remove_dir_all(&generated_dir)?;
+    // Clean and recreate the temp directory
+    if tmp_dir.exists() {
+        fs::remove_dir_all(&tmp_dir)?;
     }
-    fs::create_dir_all(&generated_dir)?;
+    fs::create_dir_all(&tmp_dir)?;
 
     // Build the benchmarks fixture cdylib
     println!("Building benchmarks fixture...");
@@ -42,7 +42,7 @@ fn main() -> Result<()> {
 
     // Generate Java bindings
     println!("Generating Java bindings...");
-    let out_dir = Utf8PathBuf::from(generated_dir.to_string_lossy().to_string());
+    let out_dir = Utf8PathBuf::from(tmp_dir.to_string_lossy().to_string());
 
     let mut paths = BindgenPaths::default();
     paths.add_cargo_metadata_layer(false)?;
@@ -58,65 +58,112 @@ fn main() -> Result<()> {
         },
     )?;
 
-    // Copy the native library into JNA's expected resource path so it gets packaged
-    // into the JMH jar. JNA looks for native libs in {os}-{arch}/ inside the classpath.
+    // Set up JNA native library path: copy cdylib into {os}-{arch}/ inside a staging dir
     let jna_resource_folder = if cdylib_path.extension().unwrap() == "dylib" {
         format!("darwin-{}", ARCH).replace('_', "-")
     } else {
         format!("linux-{}", ARCH).replace('_', "-")
     };
-    let native_resource_dir = bench_project
-        .join("build/native-resources")
-        .join(&jna_resource_folder);
+    let staging_dir = tmp_dir.join("staging");
+    let native_resource_dir = staging_dir.join(&jna_resource_folder);
     fs::create_dir_all(&native_resource_dir)?;
     let cdylib_dest = native_resource_dir.join(cdylib_path.file_name().unwrap());
     fs::copy(cdylib_path.as_std_path(), &cdylib_dest)?;
-    println!("  native lib: {}", cdylib_dest.display());
 
-    // Run JMH via Gradle
-    println!("Running JMH benchmarks...");
-    let mut cmd = Command::new("gradle");
-    cmd.current_dir(&bench_project)
-        .arg("jmh")
-        .arg("--no-daemon")
-        .arg("--console=plain")
-        .env(
-            "UNIFFI_JNA_CLASSPATH",
-            env::var("CLASSPATH").unwrap_or_default(),
-        );
+    // Compile generated bindings into a jar
+    println!("Compiling Java bindings...");
+    let java_sources: Vec<_> = glob::glob(&format!("{}/**/*.java", out_dir))?
+        .flatten()
+        .map(|p| p.to_string_lossy().to_string())
+        .collect();
 
-    // Pass JMH args via project property
-    if !jmh_args.is_empty() {
-        let args_str = jmh_args.join(" ");
-        cmd.arg(format!("-PjmhArgs={args_str}"));
+    let classpath = calc_classpath(vec![]);
+    let status = Command::new("javac")
+        .arg("-d")
+        .arg(&staging_dir)
+        .arg("-classpath")
+        .arg(&classpath)
+        .args(&java_sources)
+        .spawn()
+        .context("Failed to spawn `javac` to compile the bindings")?
+        .wait()
+        .context("Failed to wait for `javac`")?;
+    if !status.success() {
+        bail!("javac failed when compiling the generated bindings")
     }
+
+    let jar_file = tmp_dir.join("benchmarks.jar");
+    let jar_status = Command::new("jar")
+        .current_dir(&tmp_dir)
+        .arg("cf")
+        .arg(jar_file.file_name().unwrap())
+        .arg("-C")
+        .arg(&staging_dir)
+        .arg(".")
+        .spawn()
+        .context("Failed to spawn `jar`")?
+        .wait()
+        .context("Failed to wait for `jar`")?;
+    if !jar_status.success() {
+        bail!("jar failed when packaging the bindings")
+    }
+
+    // Compile the benchmark runner script
+    println!("Compiling benchmark runner...");
+    let runner_src = project_root.join("benches/bindings/RunBenchmarks.java");
+    let runner_classpath = calc_classpath(vec![
+        jar_file.to_string_lossy().to_string(),
+    ]);
+    let status = Command::new("javac")
+        .arg("-classpath")
+        .arg(&runner_classpath)
+        .arg("-d")
+        .arg(&tmp_dir)
+        .arg(&runner_src)
+        .spawn()
+        .context("Failed to spawn `javac` to compile the benchmark runner")?
+        .wait()
+        .context("Failed to wait for `javac`")?;
+    if !status.success() {
+        bail!("javac failed when compiling the benchmark runner")
+    }
+
+    // Run the benchmark. The Java process calls Benchmarks.runBenchmarks() which
+    // drives Criterion internally. We pass CLI args through via "--" so that the
+    // fixture's Args::parse_for_run_benchmarks() can pick them up.
+    println!("Running benchmarks...");
+    let run_classpath = calc_classpath(vec![
+        jar_file.to_string_lossy().to_string(),
+        tmp_dir.to_string_lossy().to_string(),
+    ]);
+
+    // Collect args after "--" to pass through to the Java process
+    let pass_through_args: Vec<String> = env::args()
+        .skip_while(|a| a != "--")
+        .collect();
+
+    let mut cmd = Command::new("java");
+    cmd.arg("-classpath")
+        .arg(&run_classpath)
+        .arg("RunBenchmarks")
+        .args(&pass_through_args);
 
     let status = cmd
         .spawn()
-        .context("Failed to spawn gradle. Is gradle available in your PATH (nix develop)?")?
+        .context("Failed to spawn `java` to run benchmarks")?
         .wait()
-        .context("Failed to wait for gradle")?;
-
+        .context("Failed to wait for `java`")?;
     if !status.success() {
-        bail!("JMH benchmark run failed");
+        bail!("Benchmark run failed")
     }
 
-    println!("\nResults written to: benchmarks/build/results/jmh/");
     Ok(())
 }
 
-fn parse_jmh_args() -> Vec<String> {
-    env::args()
-        .skip_while(|a| a != "--")
-        .skip(1)
-        .flat_map(|a| {
-            if let Some(args) = a.strip_prefix("--jmh-args=") {
-                args.split_whitespace()
-                    .map(String::from)
-                    .collect::<Vec<_>>()
-            } else {
-                vec![a]
-            }
-        })
-        .collect()
+fn calc_classpath(extra_paths: Vec<String>) -> String {
+    extra_paths
+        .into_iter()
+        .chain(env::var("CLASSPATH"))
+        .collect::<Vec<String>>()
+        .join(":")
 }

@@ -1,5 +1,3 @@
 /target
 .direnv
 *.class
-benchmarks/build/
-benchmarks/.gradle/

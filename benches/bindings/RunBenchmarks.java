@@ -2,18 +2,42 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-package uniffi.benchmarks;
-
-import java.util.Arrays;
+import uniffi.benchmarks.*;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class JavaCallbackImpl implements TestCallbackInterface {
+class TestData {
+    static final String testLargeString1 = "a".repeat(2048);
+    static final String testLargeString2 = "b".repeat(1500);
+    static final TestRecord testRec1 = new TestRecord(-1, 1L, 1.5);
+    static final TestRecord testRec2 = new TestRecord(-2, 2L, 4.5);
+    static final TestEnum testEnum1 = new TestEnum.One(-1, 0L);
+    static final TestEnum testEnum2 = new TestEnum.Two(1.5);
+    static final int[] testVec1 = new int[]{0, 1};
+    static final int[] testVec2 = new int[]{2, 4, 6};
+    static final Map<Integer, Integer> testMap1 = Map.of(0, 1, 1, 2);
+    static final Map<Integer, Integer> testMap2 = Map.of(2, 4);
+    static final TestInterface testInterface = new TestInterface();
+    static final TestInterface testInterface2 = new TestInterface();
+    static final TestTraitInterface testTraitInterface = Benchmarks.makeTestTraitInterface();
+    static final TestTraitInterface testTraitInterface2 = Benchmarks.makeTestTraitInterface();
+    static final NestedData testNestedData1 = new NestedData(
+        List.of(new TestRecord(-1, 1L, 1.5)),
+        List.of(List.of("one", "two"), List.of("three")),
+        Map.of(
+            "one", new TestEnum.One(-1, 1L),
+            "two", new TestEnum.Two(0.5)
+        )
+    );
+    static final NestedData testNestedData2 = new NestedData(
+        List.of(new TestRecord(-2, 2L, 4.5)),
+        List.of(List.of("four", "five")),
+        Map.of("two", new TestEnum.Two(-0.5))
+    );
+}
 
-    private static final String LARGE_STRING_A = "a".repeat(2048);
-    private static final String LARGE_STRING_B = "b".repeat(1500);
-
+class TestCallbackObj implements TestCallbackInterface {
     @Override
     public void callOnly() {
     }
@@ -107,66 +131,42 @@ public class JavaCallbackImpl implements TestCallbackInterface {
             }
             case LARGE_STRINGS -> {
                 for (long i = 0; i < count; i++) {
-                    Benchmarks.testCaseLargeStrings(LARGE_STRING_A, LARGE_STRING_B);
+                    Benchmarks.testCaseLargeStrings(TestData.testLargeString1, TestData.testLargeString2);
                 }
             }
             case RECORDS -> {
-                var rec1 = new TestRecord(-1, 1L, 1.5);
-                var rec2 = new TestRecord(-2, 2L, 4.5);
                 for (long i = 0; i < count; i++) {
-                    Benchmarks.testCaseRecords(rec1, rec2);
+                    Benchmarks.testCaseRecords(TestData.testRec1, TestData.testRec2);
                 }
             }
             case ENUMS -> {
-                var e1 = new TestEnum.One(-1, 0L);
-                var e2 = new TestEnum.Two(1.5);
                 for (long i = 0; i < count; i++) {
-                    Benchmarks.testCaseEnums(e1, e2);
+                    Benchmarks.testCaseEnums(TestData.testEnum1, TestData.testEnum2);
                 }
             }
             case VECS -> {
-                var v1 = new int[]{0, 1};
-                var v2 = new int[]{2, 4, 6};
                 for (long i = 0; i < count; i++) {
-                    Benchmarks.testCaseVecs(v1, v2);
+                    Benchmarks.testCaseVecs(TestData.testVec1, TestData.testVec2);
                 }
             }
             case HASHMAPS -> {
-                var m1 = Map.of(0, 1, 1, 2);
-                var m2 = Map.of(2, 4);
                 for (long i = 0; i < count; i++) {
-                    Benchmarks.testCaseHashmaps(m1, m2);
+                    Benchmarks.testCaseHashmaps(TestData.testMap1, TestData.testMap2);
                 }
             }
             case INTERFACES -> {
-                var iface1 = new TestInterface();
-                var iface2 = new TestInterface();
                 for (long i = 0; i < count; i++) {
-                    Benchmarks.testCaseInterfaces(iface1, iface2);
+                    Benchmarks.testCaseInterfaces(TestData.testInterface, TestData.testInterface2);
                 }
-                iface1.close();
-                iface2.close();
             }
             case TRAIT_INTERFACES -> {
-                var ti1 = Benchmarks.makeTestTraitInterface();
-                var ti2 = Benchmarks.makeTestTraitInterface();
                 for (long i = 0; i < count; i++) {
-                    Benchmarks.testCaseTraitInterfaces(ti1, ti2);
+                    Benchmarks.testCaseTraitInterfaces(TestData.testTraitInterface, TestData.testTraitInterface2);
                 }
             }
             case NESTED_DATA -> {
-                var nd1 = new NestedData(
-                    List.of(new TestRecord(-1, 1L, 1.5)),
-                    List.of(List.of("one", "two"), List.of("three")),
-                    Map.of("one", new TestEnum.One(-1, 1L), "two", new TestEnum.Two(0.5))
-                );
-                var nd2 = new NestedData(
-                    List.of(new TestRecord(-2, 2L, 4.5)),
-                    List.of(List.of("four", "five")),
-                    Map.of("two", new TestEnum.Two(-0.5))
-                );
                 for (long i = 0; i < count; i++) {
-                    Benchmarks.testCaseNestedData(nd1, nd2);
+                    Benchmarks.testCaseNestedData(TestData.testNestedData1, TestData.testNestedData2);
                 }
             }
             case ERRORS -> {
@@ -180,5 +180,11 @@ public class JavaCallbackImpl implements TestCallbackInterface {
             }
         }
         return System.nanoTime() - start;
+    }
+}
+
+public class RunBenchmarks {
+    public static void main(String[] args) {
+        Benchmarks.runBenchmarks("java", new TestCallbackObj());
     }
 }
