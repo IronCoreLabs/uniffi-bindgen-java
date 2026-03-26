@@ -17,7 +17,7 @@
         # nix develop
         devShell = pkgs.mkShell {
           buildInputs = with pkgs;
-            [ rusttoolchain pkg-config openjdk21 jna ];
+            [ rusttoolchain pkg-config openjdk21 jna gradle ];
         };
 
       });
