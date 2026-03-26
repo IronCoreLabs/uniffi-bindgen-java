@@ -62,3 +62,8 @@ uniffi_testing = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.3
 [[bench]]
 name = "benchmarks"
 harness = false
+
+# Ensure fixture cdylibs are optimized when benchmarking.
+# uniffi_testing builds them via `cargo test --no-run`, which uses the test profile.
+[profile.test.package."uniffi-fixture-benchmarks"]
+opt-level = 3

@@ -49,6 +49,11 @@ jmh {
     }
 }
 
+// JMH task should always re-run (args come from -P properties which Gradle doesn't track)
+tasks.named("jmh") {
+    outputs.upToDateWhen { false }
+}
+
 sourceSets {
     main {
         java {
