@@ -37,7 +37,7 @@ HTML reports are written to `target/criterion/`. Raw data persists across runs f
 
 ### Pre-results
 
-A run of the benchmarks (and comparison to upstream) on March 26, 2026 with an M4 Max 2024 Macbook Pro, 36GB memory. There was an upstream error in Python's `nested-data` bench at this time.
+A run of the benchmarks (and comparison to upstream) on March 26, 2026 with an M4 Max 2024 Macbook Pro, 36GB memory. There was an upstream error in Python's `nested-data` bench at this time. All calls are in microseconds unless noted.
 
 #### Function Calls (foreign code calling Rust)
 
