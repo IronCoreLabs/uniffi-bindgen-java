@@ -111,9 +111,7 @@ fn main() -> Result<()> {
     // Compile the benchmark runner script
     println!("Compiling benchmark runner...");
     let runner_src = project_root.join("benches/bindings/RunBenchmarks.java");
-    let runner_classpath = calc_classpath(vec![
-        jar_file.to_string_lossy().to_string(),
-    ]);
+    let runner_classpath = calc_classpath(vec![jar_file.to_string_lossy().to_string()]);
     let status = Command::new("javac")
         .arg("-classpath")
         .arg(&runner_classpath)
@@ -138,9 +136,7 @@ fn main() -> Result<()> {
     ]);
 
     // Collect args after "--" to pass through to the Java process
-    let pass_through_args: Vec<String> = env::args()
-        .skip_while(|a| a != "--")
-        .collect();
+    let pass_through_args: Vec<String> = env::args().skip_while(|a| a != "--").collect();
 
     let mut cmd = Command::new("java");
     cmd.arg("-classpath")
