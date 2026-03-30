@@ -1293,7 +1293,6 @@ mod tests {
             namespace: NamespaceMetadata {
                 crate_name: "test".to_string(),
                 name: "test".to_string(),
-                ..Default::default()
             },
             namespace_docstring: None,
             items: Default::default(),
@@ -1366,7 +1365,6 @@ mod tests {
             namespace: NamespaceMetadata {
                 crate_name: "test".to_string(),
                 name: "test".to_string(),
-                ..Default::default()
             },
             namespace_docstring: None,
             items: Default::default(),

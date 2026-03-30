@@ -48,6 +48,7 @@ uniffi-example-custom-types = { git = "https://github.com/mozilla/uniffi-rs.git"
 uniffi-example-futures = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
 uniffi-example-geometry = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
 uniffi-example-rondpoint = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
+uniffi-fixture-benchmarks = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
 uniffi-fixture-coverall = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
 uniffi-fixture-ext-types = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
 uniffi-fixture-futures = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
@@ -57,3 +58,12 @@ uniffi-fixture-rename = { git = "https://github.com/mozilla/uniffi-rs.git", tag 
 uniffi-fixture-time = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
 uniffi-fixture-trait-methods = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
 uniffi_testing = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
+
+[[bench]]
+name = "benchmarks"
+harness = false
+
+# Ensure fixture cdylibs are optimized when benchmarking.
+# uniffi_testing builds them via `cargo test --no-run`, which uses the test profile.
+[profile.test.package."uniffi-fixture-benchmarks"]
+opt-level = 3

@@ -37,8 +37,7 @@ public class TestFixtureFutures {
   }
 
   public static void assertReturnsImmediately(long actualTime, String testName) {
-    // TODO(java): 4ms limit in Kotlin
-    assert actualTime <= 40 : MessageFormat.format("unexpected {0} time: {1}ms", testName, actualTime);
+    assert actualTime <= 4 : MessageFormat.format("unexpected {0} time: {1}ms", testName, actualTime);
   }
   
   public static void assertApproximateTime(long actualTime, int expectedTime, String testName) {
@@ -47,10 +46,14 @@ public class TestFixtureFutures {
 
   public static void main(String[] args) throws Exception {
     try {
-      // init UniFFI to get good measurements after that
+      // init UniFFI to get good measurements after that.
+      // Each distinct return type uses separate JNA function bindings (poll_i8, poll_void, etc.)
+      // that are lazily resolved on first call. Warm up both paths so the timed tests below
+      // don't include JNA symbol resolution overhead.
       {
         var time = measureTimeMillis(() -> {
             Futures.alwaysReady().get();
+            Futures._void().get();
         });
 
         System.out.println(MessageFormat.format("init time: {0}ms", time));
