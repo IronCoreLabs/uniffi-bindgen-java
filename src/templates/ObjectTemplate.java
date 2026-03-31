@@ -213,7 +213,7 @@ public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }
     public void run() {
       // If the handle is 0 this is a fake object created with `NoHandle`, don't try to free.
       if (handle != 0L) {
-        UniffiHelpers.uniffiRustCall(status -> {
+        UniffiHelpers.uniffiRustCall((_allocator, status) -> {
           UniffiLib.{{ obj.ffi_object_free().name() }}(handle, status);
           return null;
         });
@@ -222,7 +222,7 @@ public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }
   }
 
   long uniffiCloneHandle() {
-    return UniffiHelpers.uniffiRustCall(status -> {
+    return UniffiHelpers.uniffiRustCall((_allocator, status) -> {
       if (handle == 0L) {
         throw new java.lang.NullPointerException();
       }
@@ -248,9 +248,9 @@ package {{ config.package_name() }};
 
 public class {{ impl_class_name }}ErrorHandler implements UniffiRustCallStatusErrorHandler<{{ impl_class_name }}> {
     @Override
-    public {{ impl_class_name }} lift(RustBuffer.ByValue error_buf) {
+    public {{ impl_class_name }} lift(java.lang.foreign.MemorySegment error_buf) {
         // Due to some mismatches in the ffi converter mechanisms, errors are a RustBuffer.
-        var bb = error_buf.asByteBuffer();
+        var bb = RustBuffer.asByteBuffer(error_buf);
         if (bb == null) {
             throw new InternalException("?");
         }

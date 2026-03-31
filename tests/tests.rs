@@ -5,7 +5,6 @@ License, v. 2.0. If a copy of the MPL was not distributed with this
 use anyhow::{Context, Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use cargo_metadata::{CrateType, MetadataCommand, Package, Target};
-use std::env::consts::ARCH;
 use std::io::{Read, Write};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -76,16 +75,28 @@ fn run_test(fixture_name: &str, test_file: &str) -> Result<()> {
         },
     )?;
 
-    // jna requires a specific resources path inside the jar by default, create that folder
-    let cdylib_java_resource_folder = if cdylib_path.extension().unwrap() == "dylib" {
-        format!("darwin-{}", ARCH).replace("_", "-")
-    } else {
-        format!("linux-{}", ARCH).replace("_", "-")
-    };
-    let cdylib_java_resource_path = out_dir.join("staging").join(cdylib_java_resource_folder);
-    fs::create_dir_all(&cdylib_java_resource_path)?;
-    let cdylib_dest = cdylib_java_resource_path.join(cdylib_path.file_name().unwrap());
+    // Copy the cdylib to a flat directory for java.library.path.
+    // System.loadLibrary expects "lib<name>.dylib" (macOS) or "lib<name>.so" (Linux).
+    // The cdylib from cargo has a hash suffix, so we create a symlink with the
+    // expected name that System.loadLibrary will find.
+    let native_lib_dir = out_dir.join("native");
+    fs::create_dir_all(&native_lib_dir)?;
+    let cdylib_filename = cdylib_path.file_name().unwrap();
+    let cdylib_dest = native_lib_dir.join(cdylib_filename);
     fs::copy(&cdylib_path, &cdylib_dest)?;
+
+    let extension = cdylib_path.extension().unwrap(); // "dylib" or "so"
+    let lib_base_name = cdylib_filename
+        .strip_prefix("lib")
+        .unwrap_or(cdylib_filename)
+        .split('-')
+        .next()
+        .unwrap_or(cdylib_filename);
+    let expected_lib_name = format!("lib{}.{}", lib_base_name, extension);
+    let symlink_path = native_lib_dir.join(&expected_lib_name);
+    if !symlink_path.exists() {
+        std::os::unix::fs::symlink(cdylib_dest.file_name().unwrap(), &symlink_path)?;
+    }
 
     // compile generated bindings and form jar
     let jar_file = build_jar(fixture_name, &out_dir)?;
@@ -110,6 +121,10 @@ fn run_test(fixture_name: &str, test_file: &str) -> Result<()> {
     let run_status = Command::new("java")
         // allow for runtime assertions
         .arg("-ea")
+        // Enable FFM native access
+        .arg("--enable-native-access=ALL-UNNAMED")
+        // Set native library path so System.loadLibrary can find the cdylib
+        .arg(format!("-Djava.library.path={}", native_lib_dir))
         .arg("-classpath")
         .arg(calc_classpath(vec![
             &out_dir,
@@ -172,7 +187,6 @@ fn build_jar(fixture_name: &str, out_dir: &Utf8PathBuf) -> Result<Utf8PathBuf> {
         .arg("-d")
         .arg(&staging_dir)
         .arg("-classpath")
-        // JNA must already be in the system classpath
         .arg(calc_classpath(vec![]))
         .args(
             glob::glob(&out_dir.join("**/*.java").into_string())?

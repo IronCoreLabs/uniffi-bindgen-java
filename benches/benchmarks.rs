@@ -16,7 +16,6 @@
 use anyhow::{Context, Result, bail};
 use camino::Utf8PathBuf;
 use std::env;
-use std::env::consts::ARCH;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -58,20 +57,31 @@ fn main() -> Result<()> {
         },
     )?;
 
-    // Set up JNA native library path: copy cdylib into {os}-{arch}/ inside a staging dir
-    let jna_resource_folder = if cdylib_path.extension().unwrap() == "dylib" {
-        format!("darwin-{}", ARCH).replace('_', "-")
-    } else {
-        format!("linux-{}", ARCH).replace('_', "-")
-    };
-    let staging_dir = tmp_dir.join("staging");
-    let native_resource_dir = staging_dir.join(&jna_resource_folder);
-    fs::create_dir_all(&native_resource_dir)?;
-    let cdylib_dest = native_resource_dir.join(cdylib_path.file_name().unwrap());
+    // Copy cdylib and create symlink for System.loadLibrary
+    let native_lib_dir = tmp_dir.join("native");
+    fs::create_dir_all(&native_lib_dir)?;
+    let cdylib_filename = cdylib_path.file_name().unwrap();
+    let cdylib_dest = native_lib_dir.join(cdylib_filename);
     fs::copy(cdylib_path.as_std_path(), &cdylib_dest)?;
+
+    let extension = cdylib_path.extension().unwrap();
+    let lib_base_name = cdylib_filename
+        .strip_prefix("lib")
+        .unwrap_or(cdylib_filename)
+        .split('-')
+        .next()
+        .unwrap_or(cdylib_filename);
+    let expected_lib_name = format!("lib{}.{}", lib_base_name, extension);
+    let symlink_path = native_lib_dir.join(&expected_lib_name);
+    if !symlink_path.exists() {
+        std::os::unix::fs::symlink(cdylib_dest.file_name().unwrap(), &symlink_path)?;
+    }
 
     // Compile generated bindings into a jar
     println!("Compiling Java bindings...");
+    let staging_dir = tmp_dir.join("staging");
+    fs::create_dir_all(&staging_dir)?;
+
     let java_sources: Vec<_> = glob::glob(&format!("{}/**/*.java", out_dir))?
         .flatten()
         .map(|p| p.to_string_lossy().to_string())
@@ -126,9 +136,7 @@ fn main() -> Result<()> {
         bail!("javac failed when compiling the benchmark runner")
     }
 
-    // Run the benchmark. The Java process calls Benchmarks.runBenchmarks() which
-    // drives Criterion internally. We pass CLI args through via "--" so that the
-    // fixture's Args::parse_for_run_benchmarks() can pick them up.
+    // Run the benchmark
     println!("Running benchmarks...");
     let run_classpath = calc_classpath(vec![
         jar_file.to_string_lossy().to_string(),
@@ -139,7 +147,10 @@ fn main() -> Result<()> {
     let pass_through_args: Vec<String> = env::args().skip_while(|a| a != "--").collect();
 
     let mut cmd = Command::new("java");
-    cmd.arg("-classpath")
+    cmd.arg("-Xmx2g")
+        .arg("--enable-native-access=ALL-UNNAMED")
+        .arg(format!("-Djava.library.path={}", native_lib_dir.display()))
+        .arg("-classpath")
         .arg(&run_classpath)
         .arg("RunBenchmarks")
         .args(&pass_through_args);

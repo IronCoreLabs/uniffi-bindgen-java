@@ -7,13 +7,9 @@ package {{ config.package_name() }};
 
 public class {{ class_name }}ExternalErrorHandler implements UniffiRustCallStatusErrorHandler<{{ external_package_name }}.{{ class_name }}> {
     @Override
-    public {{ external_package_name }}.{{ class_name }} lift(RustBuffer.ByValue errorBuf) {
-        // Convert local RustBuffer to external package's RustBuffer
-        {{ external_package_name }}.RustBuffer.ByValue externalBuf = new {{ external_package_name }}.RustBuffer.ByValue();
-        externalBuf.capacity = errorBuf.capacity;
-        externalBuf.len = errorBuf.len;
-        externalBuf.data = errorBuf.data;
-        return new {{ external_package_name }}.{{ class_name }}ErrorHandler().lift(externalBuf);
+    public {{ external_package_name }}.{{ class_name }} lift(java.lang.foreign.MemorySegment errorBuf) {
+        // In FFM, RustBuffer is already a java.lang.foreign.MemorySegment — pass directly to external package
+        return new {{ external_package_name }}.{{ class_name }}ErrorHandler().lift(errorBuf);
     }
 }
 {%- endif %}

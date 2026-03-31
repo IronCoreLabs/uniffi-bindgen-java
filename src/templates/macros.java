@@ -33,8 +33,14 @@
     {%- endif %}
     {%- else %}
     UniffiHelpers.uniffiRustCall(
-    {%- endmatch %} _status -> {
+    {%- endmatch %} (_allocator, _status) -> {
         {% if func.return_type().is_some() %}return {% endif %}UniffiLib.{{ func.ffi_func().name() }}(
+            {%- match func.return_type() %}
+            {%- when Some(return_type) %}
+            {%- let ffi_type = return_type|ffi_type %}
+            {%- if ffi_type.borrow()|ffi_type_is_struct %}_allocator, {% endif %}
+            {%- when None %}
+            {%- endmatch %}
             {%- match func.self_type() %}
             {%- when Some with (Type::Object { .. }) %}uniffiHandle,
             {%- when Some(t) %}{{ t|lower_fn(config, ci) }}(this),
@@ -172,20 +178,9 @@
 -#}
 {%- macro arg_list_ffi_decl(func) %}
     {%- for arg in func.arguments() %}
-        {{- arg.type_().borrow()|ffi_type_name_by_value(config, ci) }} {{arg.name()|var_name -}}{%- if !loop.last %}, {% endif -%}
+        {{- arg.type_().borrow()|ffi_type_name(config, ci) }} {{arg.name()|var_name -}}{%- if !loop.last %}, {% endif -%}
     {%- endfor %}
-    {%- if func.has_rust_call_status_arg() %}{% if func.arguments().len() != 0 %}, {% endif %}UniffiRustCallStatus uniffi_out_errmk{% endif %}
-{%- endmacro -%}
-
-{#-
-// Arglist for JNA direct mapping native method declarations.
-// Uses primitive types instead of boxed types.
--#}
-{%- macro arg_list_ffi_decl_primitive(func) %}
-    {%- for arg in func.arguments() %}
-        {{- arg.type_().borrow()|ffi_type_name_primitive(config, ci) }} {{arg.name()|var_name -}}{%- if !loop.last %}, {% endif -%}
-    {%- endfor %}
-    {%- if func.has_rust_call_status_arg() %}{% if func.arguments().len() != 0 %}, {% endif %}UniffiRustCallStatus uniffi_out_errmk{% endif %}
+    {%- if func.has_rust_call_status_arg() %}{% if func.arguments().len() != 0 %}, {% endif %}java.lang.foreign.MemorySegment uniffi_out_errmk{% endif %}
 {%- endmacro -%}
 
 {% macro field_name(field, field_num) %}

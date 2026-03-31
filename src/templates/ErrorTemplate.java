@@ -82,7 +82,7 @@ package {{ config.package_name() }};
 
 public class {{ type_name }}ErrorHandler implements UniffiRustCallStatusErrorHandler<{{ type_name }}> {
   @Override
-  public {{ type_name }} lift(RustBuffer.ByValue errorBuf){
+  public {{ type_name }} lift(java.lang.foreign.MemorySegment errorBuf){
      return {{ ffi_converter_instance }}.lift(errorBuf);
   }
 }
