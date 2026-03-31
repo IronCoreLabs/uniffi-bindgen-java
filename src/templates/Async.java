@@ -53,6 +53,12 @@ public final class UniffiAsyncHelpers {
             this.rustFuture = rustFuture;
         }
 
+        // Cancellation calls freeFunc immediately, which frees the underlying Rust future.
+        // This races with the thenApplyAsync pipeline stage that calls completeFunc on
+        // the same handle. The pipeline guards against this with isCancelled() checks
+        // before touching the Rust future, but a narrow race window remains if cancel()
+        // fires after the check passes. This is safe in practice because uniffi's
+        // rust_future_free is idempotent (see the double-free and poll-after-free tests).
         @Override
         public boolean cancel(boolean ignored) {
             boolean cancelled = super.cancel(ignored);
@@ -63,6 +69,8 @@ public final class UniffiAsyncHelpers {
         }
     }
 
+    // Helper so both the Java completable future and the job that handles it finishing and
+    // reports to Rust can be retrieved (and potentially cancelled) by handle.
     static class CancelableForeignFuture {
         private java.util.concurrent.CompletableFuture<?> childFuture;
         private java.util.concurrent.CompletableFuture<java.lang.Void> childFutureHandler;
@@ -117,6 +125,7 @@ public final class UniffiAsyncHelpers {
                 return;
             }
             try {
+                // If we failed in the chain somewhere, now complete the future with the failure
                 if (throwable != null) {
                     java.lang.Throwable cause = throwable;
                     if (cause instanceof java.util.concurrent.CompletionException && cause.getCause() != null) {
@@ -135,7 +144,8 @@ public final class UniffiAsyncHelpers {
     }
 
 
-    // overload specifically for Void cases, which aren't within the Object type.
+    // Overload specifically for Void cases, which aren't within the Object type.
+    // This is only necessary because of Java's lack of proper Any/Unit.
     static <E extends java.lang.Exception> java.util.concurrent.CompletableFuture<java.lang.Void> uniffiRustCallAsync(
         java.util.concurrent.Executor uniffiExecutor,
         long rustFuture,
@@ -173,6 +183,7 @@ public final class UniffiAsyncHelpers {
                 return;
             }
             try {
+                // If we failed in the chain somewhere, now complete the future with the failure
                 if (throwable != null) {
                     java.lang.Throwable cause = throwable;
                     if (cause instanceof java.util.concurrent.CompletionException && cause.getCause() != null) {
@@ -210,14 +221,27 @@ public final class UniffiAsyncHelpers {
         java.util.function.Consumer<java.lang.foreign.MemorySegment> handleError,
         java.lang.foreign.MemorySegment uniffiOutDroppedCallback
     ){
+        // Uniffi does its best to support structured concurrency across the FFI.
+        // If the Rust future is dropped, the free callback is invoked, which will
+        // cancel the Java completable future if it's still running.
+
         // Upcall parameter segments have zero size; reinterpret to actual struct size
         uniffiOutDroppedCallback = uniffiOutDroppedCallback.reinterpret({{ "ForeignFutureDroppedCallbackStruct"|ffi_struct_name }}.LAYOUT.byteSize());
         var foreignFutureCf = makeCall.get();
         java.util.concurrent.CompletableFuture<java.lang.Void> ffHandler = java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+            // Note: it's important we call either `handleSuccess` or `handleError` exactly once.
+            // Each call consumes an Arc reference, which means there should be no possibility of
+            // a double call. The following code is structured so that we will never call both
+            // `handleSuccess` and `handleError`, even in the face of weird exceptions.
+            //
+            // In extreme circumstances we may not call either, for example if we fail to invoke
+            // `handleSuccess`. This means we will leak the Arc reference, which is
+            // better than double-freeing it.
             T callResult;
             try {
                 callResult = foreignFutureCf.get();
             } catch(java.lang.Throwable e) {
+                // If we errored inside the CF, it's that error we want to send to Rust, not the wrapper
                 if (e instanceof java.util.concurrent.ExecutionException) {
                     e = e.getCause();
                 }
@@ -251,10 +275,13 @@ public final class UniffiAsyncHelpers {
         uniffiOutDroppedCallback = uniffiOutDroppedCallback.reinterpret({{ "ForeignFutureDroppedCallbackStruct"|ffi_struct_name }}.LAYOUT.byteSize());
         var foreignFutureCf = makeCall.get();
         java.util.concurrent.CompletableFuture<java.lang.Void> ffHandler = java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+            // See the note in uniffiTraitInterfaceCallAsync for details on `handleSuccess` and
+            // `handleError`.
             T callResult;
             try {
                 callResult = foreignFutureCf.get();
             } catch (java.lang.Throwable e) {
+                // If we errored inside the CF, it's that error we want to send to Rust, not the wrapper
                 if (e instanceof java.util.concurrent.ExecutionException) {
                     e = e.getCause();
                 }

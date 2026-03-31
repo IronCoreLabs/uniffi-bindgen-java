@@ -66,7 +66,7 @@ public interface FfiConverter<JavaType, FfiType> {
 
 package {{ config.package_name() }};
 
-// FfiConverter that uses `RustBuffer` (java.lang.foreign.MemorySegment) as the FfiType
+// FfiConverter that uses `RustBuffer` as the FfiType
 public interface FfiConverterRustBuffer<JavaType> extends FfiConverter<JavaType, java.lang.foreign.MemorySegment> {
     @Override
     default JavaType lift(java.lang.foreign.MemorySegment value) {

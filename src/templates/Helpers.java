@@ -102,6 +102,7 @@ public final class UniffiHelpers {
         java.lang.foreign.Arena.global().allocate(UniffiRustCallStatus.LAYOUT)
     );
 
+
     @FunctionalInterface
     public interface UniffiRustCallFunction<U> {
         U apply(java.lang.foreign.SegmentAllocator allocator, java.lang.foreign.MemorySegment status);
@@ -112,7 +113,8 @@ public final class UniffiHelpers {
         void apply(java.lang.foreign.SegmentAllocator allocator, java.lang.foreign.MemorySegment status);
     }
 
-    // Call a rust function that returns a Result<>.
+    // Call a rust function that returns a Result<>. Pass in the Error class companion that
+    // corresponds to the Err.
     static <U, E extends java.lang.Exception> U uniffiRustCallWithError(
             UniffiRustCallStatusErrorHandler<E> errorHandler,
             UniffiRustCallFunction<U> callback) throws E {

@@ -420,6 +420,10 @@ impl JavaCodeOracle {
         _ci: &ComponentInterface,
     ) -> String {
         match ffi_type {
+            // Note that unsigned values in Java don't have true native support. Signed primitives
+            // can contain unsigned values and there are methods like `Integer.compareUnsigned`
+            // that respect the unsigned value, but knowledge outside the type system is required.
+            // TODO(java): improve callers knowledge of what contains an unsigned value
             FfiType::Int8 | FfiType::UInt8 => "byte".to_string(),
             FfiType::Int16 | FfiType::UInt16 => "short".to_string(),
             FfiType::Int32 | FfiType::UInt32 => "int".to_string(),
