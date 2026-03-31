@@ -144,7 +144,7 @@ fn main() -> Result<()> {
     ]);
 
     // Collect args after "--" to pass through to the Java process
-    let pass_through_args: Vec<String> = env::args().skip_while(|a| a != "--").collect();
+    let pass_through_args: Vec<String> = env::args().skip_while(|a| a != "--").skip(1).collect();
 
     let mut cmd = Command::new("java");
     cmd.arg("-Xmx2g")

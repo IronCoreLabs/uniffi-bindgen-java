@@ -554,6 +554,22 @@ public class TestFixtureCoverall {
     }
 
     assert Coverall.getNumAlive() <= 1L : MessageFormat.format("Num alive is {0}. GC/Cleaner thread has starved", Coverall.getNumAlive());
+
+    // High-throughput backpressure test: allocate 100k objects in a tight loop without
+    // calling close(). The backpressure cleaner drains refs inline during register(),
+    // preventing unbounded memory growth. Without backpressure this OOMs because the
+    // single Cleaner daemon thread can't keep up with the allocation rate.
+    for (int i = 0; i < 100_000; i++) {
+      new Coveralls("backpressure " + i);
+    }
+    for (int i = 0; i < 100; i++) {
+      if (Coverall.getNumAlive() <= 1L) {
+        break;
+      }
+      System.gc();
+      Thread.sleep(100);
+    }
+    assert Coverall.getNumAlive() <= 1L : MessageFormat.format("Backpressure test: num alive is {0}. Cleaner could not keep up.", Coverall.getNumAlive());
   }
   
   public static boolean almostEquals(float a, float b) {

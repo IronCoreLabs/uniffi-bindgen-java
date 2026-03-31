@@ -92,7 +92,7 @@ public class {{ trait_impl }} {
                 java.lang.foreign.ValueLayout.JAVA_LONG, {{ result_struct_name }}.LAYOUT
             );
             java.util.function.Consumer<{{ meth|async_inner_return_type(ci, config) }}> uniffiHandleSuccess = ({% match meth.return_type() %}{%- when Some(return_type) %}returnValue{%- when None %}nothing{% endmatch %}) -> {
-                java.lang.foreign.MemorySegment uniffiResult = java.lang.foreign.Arena.global().allocate({{ result_struct_name }}.LAYOUT);
+                java.lang.foreign.MemorySegment uniffiResult = java.lang.foreign.Arena.ofAuto().allocate({{ result_struct_name }}.LAYOUT);
                 {%- match meth.return_type() %}
                 {%- when Some(return_type) %}
                 {%- let ffi_return_type = return_type|ffi_type %}
@@ -116,7 +116,7 @@ public class {{ trait_impl }} {
                 }
             };
             java.util.function.Consumer<java.lang.foreign.MemorySegment> uniffiHandleError = (callStatus) -> {
-                java.lang.foreign.MemorySegment uniffiResult = java.lang.foreign.Arena.global().allocate({{ result_struct_name }}.LAYOUT);
+                java.lang.foreign.MemorySegment uniffiResult = java.lang.foreign.Arena.ofAuto().allocate({{ result_struct_name }}.LAYOUT);
                 {{ result_struct_name }}.setcallStatus(uniffiResult, callStatus);
                 try {
                     java.lang.foreign.MemorySegment globalCallback = java.lang.foreign.MemorySegment.ofAddress(uniffiFutureCallback.address());
