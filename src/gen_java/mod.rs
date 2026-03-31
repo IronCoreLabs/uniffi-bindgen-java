@@ -462,9 +462,15 @@ impl JavaCodeOracle {
     fn ffi_value_layout(&self, ffi_type: &FfiType) -> String {
         match ffi_type {
             FfiType::Int8 | FfiType::UInt8 => "java.lang.foreign.ValueLayout.JAVA_BYTE".to_string(),
-            FfiType::Int16 | FfiType::UInt16 => "java.lang.foreign.ValueLayout.JAVA_SHORT".to_string(),
-            FfiType::Int32 | FfiType::UInt32 => "java.lang.foreign.ValueLayout.JAVA_INT".to_string(),
-            FfiType::Int64 | FfiType::UInt64 => "java.lang.foreign.ValueLayout.JAVA_LONG".to_string(),
+            FfiType::Int16 | FfiType::UInt16 => {
+                "java.lang.foreign.ValueLayout.JAVA_SHORT".to_string()
+            }
+            FfiType::Int32 | FfiType::UInt32 => {
+                "java.lang.foreign.ValueLayout.JAVA_INT".to_string()
+            }
+            FfiType::Int64 | FfiType::UInt64 => {
+                "java.lang.foreign.ValueLayout.JAVA_LONG".to_string()
+            }
             FfiType::Float32 => "java.lang.foreign.ValueLayout.JAVA_FLOAT".to_string(),
             FfiType::Float64 => "java.lang.foreign.ValueLayout.JAVA_DOUBLE".to_string(),
             FfiType::Handle => "java.lang.foreign.ValueLayout.JAVA_LONG".to_string(),
@@ -496,7 +502,10 @@ impl JavaCodeOracle {
             // RustBuffer has JAVA_LONG (8) as first field → 8-byte aligned
             // RustCallStatus starts with JAVA_BYTE but contains RustBuffer → 8-byte aligned
             // ForeignBytes starts with JAVA_INT → but contains ADDRESS → 8-byte aligned
-            FfiType::RustBuffer(_) | FfiType::RustCallStatus | FfiType::ForeignBytes | FfiType::Struct(_) => 8,
+            FfiType::RustBuffer(_)
+            | FfiType::RustCallStatus
+            | FfiType::ForeignBytes
+            | FfiType::Struct(_) => 8,
         }
     }
 
@@ -512,10 +521,10 @@ impl JavaCodeOracle {
             | FfiType::Reference(_)
             | FfiType::MutReference(_) => 8,
             // Struct sizes: these are hardcoded based on their layouts
-            FfiType::RustBuffer(_) => 24,       // long + long + pointer
-            FfiType::RustCallStatus => 32,      // byte + 7 pad + RustBuffer(24)
-            FfiType::ForeignBytes => 16,        // int + 4 pad + pointer
-            FfiType::Struct(_) => 0,            // unknown at codegen time, handled by LAYOUT
+            FfiType::RustBuffer(_) => 24,  // long + long + pointer
+            FfiType::RustCallStatus => 32, // byte + 7 pad + RustBuffer(24)
+            FfiType::ForeignBytes => 16,   // int + 4 pad + pointer
+            FfiType::Struct(_) => 0,       // unknown at codegen time, handled by LAYOUT
         }
     }
 
@@ -536,16 +545,24 @@ impl JavaCodeOracle {
     fn ffi_value_layout_unaligned(&self, ffi_type: &FfiType) -> String {
         match ffi_type {
             FfiType::Int8 | FfiType::UInt8 => "java.lang.foreign.ValueLayout.JAVA_BYTE".to_string(), // byte has no alignment
-            FfiType::Int16 | FfiType::UInt16 => "java.lang.foreign.ValueLayout.JAVA_SHORT_UNALIGNED".to_string(),
-            FfiType::Int32 | FfiType::UInt32 => "java.lang.foreign.ValueLayout.JAVA_INT_UNALIGNED".to_string(),
-            FfiType::Int64 | FfiType::UInt64 => "java.lang.foreign.ValueLayout.JAVA_LONG_UNALIGNED".to_string(),
+            FfiType::Int16 | FfiType::UInt16 => {
+                "java.lang.foreign.ValueLayout.JAVA_SHORT_UNALIGNED".to_string()
+            }
+            FfiType::Int32 | FfiType::UInt32 => {
+                "java.lang.foreign.ValueLayout.JAVA_INT_UNALIGNED".to_string()
+            }
+            FfiType::Int64 | FfiType::UInt64 => {
+                "java.lang.foreign.ValueLayout.JAVA_LONG_UNALIGNED".to_string()
+            }
             FfiType::Float32 => "java.lang.foreign.ValueLayout.JAVA_FLOAT_UNALIGNED".to_string(),
             FfiType::Float64 => "java.lang.foreign.ValueLayout.JAVA_DOUBLE_UNALIGNED".to_string(),
             FfiType::Handle => "java.lang.foreign.ValueLayout.JAVA_LONG_UNALIGNED".to_string(),
             FfiType::Callback(_)
             | FfiType::VoidPointer
             | FfiType::Reference(_)
-            | FfiType::MutReference(_) => "java.lang.foreign.ValueLayout.ADDRESS_UNALIGNED".to_string(),
+            | FfiType::MutReference(_) => {
+                "java.lang.foreign.ValueLayout.ADDRESS_UNALIGNED".to_string()
+            }
             // Structs use slice-based access, not ValueLayout access
             _ => self.ffi_value_layout(ffi_type),
         }
@@ -578,9 +595,7 @@ impl JavaCodeOracle {
         // RustCallStatus is passed as a pointer, not by value, so it doesn't need SegmentAllocator
         matches!(
             ffi_type,
-            FfiType::RustBuffer(_)
-                | FfiType::ForeignBytes
-                | FfiType::Struct(_)
+            FfiType::RustBuffer(_) | FfiType::ForeignBytes | FfiType::Struct(_)
         )
     }
 
@@ -606,7 +621,6 @@ impl JavaCodeOracle {
             _ => panic!("ffi_struct_type_name called on non-struct type: {ffi_type:?}"),
         }
     }
-
 
     /// Get the name of the interface and class name for an object.
     ///
@@ -968,6 +982,41 @@ mod filters {
         Ok(JavaCodeOracle.ffi_type_label(type_, config, ci))
     }
 
+    /// Returns the primitive call suffix (e.g. "Long", "Int") for primitive-specialized
+    /// uniffiRustCall variants. Returns empty string for types where the high-level Java
+    /// primitive doesn't match the FFI primitive (e.g. Boolean→byte) or non-primitive types.
+    pub fn primitive_call_suffix(
+        as_ct: &impl AsCodeType,
+        _v: &dyn askama::Values,
+    ) -> Result<String, askama::Error> {
+        // Only bypass FfiConverter when the Java primitive matches the FFI primitive.
+        // Boolean is excluded because it's `boolean` in Java but `byte` at the FFI level.
+        Ok(
+            match as_ct.as_codetype().type_label_primitive().as_deref() {
+                Some("byte") => "Byte",
+                Some("short") => "Short",
+                Some("int") => "Int",
+                Some("long") => "Long",
+                Some("float") => "Float",
+                Some("double") => "Double",
+                _ => "",
+            }
+            .to_string(),
+        )
+    }
+
+    /// Returns true if the argument's FFI type is a primitive where the Java type matches
+    /// the FFI type directly (no conversion needed). Used to skip lower_fn for primitive args.
+    /// Excludes boolean (Java `boolean` vs FFI `byte`).
+    pub fn has_primitive_ffi_type(
+        as_ct: &impl AsCodeType,
+        _v: &dyn askama::Values,
+    ) -> Result<bool, askama::Error> {
+        Ok(matches!(
+            as_ct.as_codetype().type_label_primitive().as_deref(),
+            Some("byte" | "short" | "int" | "long" | "float" | "double")
+        ))
+    }
 
     /// Maps FfiType to ValueLayout constant for FunctionDescriptor
     pub fn ffi_value_layout(
@@ -975,14 +1024,6 @@ mod filters {
         _v: &dyn askama::Values,
     ) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.ffi_value_layout(type_))
-    }
-
-    /// Maps FfiType to layout for struct field definitions (embedded structs use full LAYOUT)
-    pub fn ffi_struct_field_layout(
-        type_: &FfiType,
-        _v: &dyn askama::Values,
-    ) -> Result<String, askama::Error> {
-        Ok(JavaCodeOracle.ffi_struct_field_layout(type_))
     }
 
     /// Generate the full structLayout body for an FfiStruct, with computed padding
@@ -996,7 +1037,7 @@ mod filters {
             let field_type = field.type_();
             let alignment = JavaCodeOracle.ffi_type_alignment(&field_type);
             // Insert padding if needed for alignment
-            let padding = if offset % alignment != 0 {
+            let padding = if !offset.is_multiple_of(alignment) {
                 alignment - (offset % alignment)
             } else {
                 0
@@ -1063,7 +1104,6 @@ mod filters {
     ) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.ffi_struct_type_name(type_))
     }
-
 
     /// FFI type name using boxed types for generic contexts (accepts high-level Type)
     pub fn ffi_type_name_boxed(
@@ -1266,7 +1306,7 @@ mod filters {
         let ffi_func = callable.ffi_rust_future_complete(ci);
         // The complete function returns a RustBuffer for types that use RustBuffer FFI,
         // which is a struct and needs a SegmentAllocator.
-        let needs_allocator = callable.return_type().map_or(false, |t| {
+        let needs_allocator = callable.return_type().is_some_and(|t| {
             let ffi_type: FfiType = t.into();
             JavaCodeOracle.ffi_type_is_struct(&ffi_type)
         });

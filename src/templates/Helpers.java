@@ -155,6 +155,30 @@ public final class UniffiHelpers {
         }
     }
 
+    // Primitive-specialized variants that avoid autoboxing overhead.
+    // For each primitive type, we have a functional interface + call + callWithError.
+    {%- for (prim, suffix) in [("long", "Long"), ("int", "Int"), ("short", "Short"), ("byte", "Byte"), ("float", "Float"), ("double", "Double"), ("boolean", "Boolean")] %}
+
+    @FunctionalInterface
+    interface UniffiRustCall{{ suffix }}Function {
+        {{ prim }} apply(java.lang.foreign.SegmentAllocator allocator, java.lang.foreign.MemorySegment status);
+    }
+
+    static <E extends java.lang.Exception> {{ prim }} uniffiRustCallWithError{{ suffix }}(
+            UniffiRustCallStatusErrorHandler<E> errorHandler,
+            UniffiRustCall{{ suffix }}Function callback) throws E {
+        java.lang.foreign.MemorySegment status = REUSABLE_STATUS.get();
+        status.fill((byte) 0);
+        {{ prim }} returnValue = callback.apply(java.lang.foreign.Arena.global(), status);
+        uniffiCheckCallStatus(errorHandler, status);
+        return returnValue;
+    }
+
+    static {{ prim }} uniffiRustCall{{ suffix }}(UniffiRustCall{{ suffix }}Function callback) {
+        return uniffiRustCallWithError{{ suffix }}(new UniffiNullRustCallStatusErrorHandler(), callback);
+    }
+    {%- endfor %}
+
     // Call a rust function that returns a plain value
     static <U> U uniffiRustCall(UniffiRustCallFunction<U> callback) {
         return uniffiRustCallWithError(new UniffiNullRustCallStatusErrorHandler(), callback);
