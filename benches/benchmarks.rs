@@ -143,8 +143,10 @@ fn main() -> Result<()> {
         tmp_dir.to_string_lossy().to_string(),
     ]);
 
-    // Collect args after "--" to pass through to the Java process
-    let pass_through_args: Vec<String> = env::args().skip_while(|a| a != "--").skip(1).collect();
+    // Forward user args (filters, --save-baseline, etc.) to the Java process.
+    // cargo bench passes args as: [binary, filter..., --bench]
+    // We prepend "--" so parse_for_run_benchmarks() can find the separator.
+    let user_args: Vec<String> = env::args().skip(1).filter(|a| a != "--bench").collect();
 
     let mut cmd = Command::new("java");
     cmd.arg("-Xmx2g")
@@ -153,7 +155,11 @@ fn main() -> Result<()> {
         .arg("-classpath")
         .arg(&run_classpath)
         .arg("RunBenchmarks")
-        .args(&pass_through_args);
+        .arg("--")
+        // parse_for_run_benchmarks() uses clap's parse_from() which expects argv[0]
+        // to be a program name. Insert a dummy so the real args aren't consumed as argv[0].
+        .arg("java-bench")
+        .args(&user_args);
 
     let status = cmd
         .spawn()

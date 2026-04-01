@@ -9,10 +9,10 @@ Rust toolchain and JDK 21+ — all provided by `nix develop`.
 ## Running
 
 ```bash
-cargo bench                             # full suite
-cargo bench -- call-only                # filter by name
-cargo bench -- --save-baseline before   # save a Criterion baseline
-cargo bench -- --load-baseline before   # compare against a saved baseline
+cargo bench                                  # full suite
+cargo bench -- call-only                     # filter by name
+cargo bench -- --save-baseline before        # save a Criterion baseline
+cargo bench -- --load-baseline before        # compare against a saved baseline
 ```
 
 ## How It Works

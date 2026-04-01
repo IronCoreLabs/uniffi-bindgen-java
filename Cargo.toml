@@ -14,10 +14,12 @@ edition = "2024"
 [lib]
 name = "uniffi_bindgen_java"
 path = "src/lib.rs"
+bench = false
 
 [[bin]]
 name = "uniffi-bindgen-java"
 path = "src/main.rs"
+bench = false
 
 [dependencies]
 anyhow = "1"
