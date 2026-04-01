@@ -4,7 +4,7 @@ Criterion-based benchmarks measuring FFI call overhead for the generated Java bi
 
 ## Prerequisites
 
-Rust toolchain, JDK 21+, and JNA on the `CLASSPATH` — all provided by `nix develop`.
+Rust toolchain and JDK 21+ — all provided by `nix develop`.
 
 ## Running
 
@@ -35,40 +35,42 @@ Criterion runs inside the Rust fixture library. The Java side implements `TestCa
 
 HTML reports are written to `target/criterion/`. Raw data persists across runs for regression detection.
 
-### Pre-results
+### Comparison: Java FFM vs JNA and upstream languages
 
-A run of the benchmarks (and comparison to upstream) on March 26, 2026 with an M4 Max 2024 Macbook Pro, 36GB memory. There was an upstream error in Python's `nested-data` bench at this time. All calls are in microseconds unless noted.
+April 1, 2026 on an M4 Max 2024 MacBook Pro, 36GB memory. Java FFM uses JDK 25 with the Foreign Function & Memory API. Java JNA uses JDK 21. Kotlin, Python, and Swift results are from upstream `uniffi-rs` main.
 
 #### Function Calls (foreign code calling Rust)
 
-| Test Case          |     Java |   Kotlin |   Python |    Swift |
-|--------------------|----------|----------|----------|----------|
-| call-only          |      2.1 |      2.8 |   810 ns |   172 ns |
-| primitives         |      1.8 |      3.0 |      1.4 |   195 ns |
-| strings            |     14.7 |     16.8 |      9.2 |   973 ns |
-| large-strings      |     15.9 |     21.5 |     12.5 |      1.3 |
-| records            |     14.5 |     16.6 |     18.9 |      2.6 |
-| enums              |     12.6 |     16.7 |     14.6 |      2.1 |
-| vecs               |     15.6 |     17.2 |     18.3 |      4.4 |
-| hash-maps          |     12.3 |     16.9 |     23.4 |      6.3 |
-| interfaces         |      8.6 |     13.8 |      4.3 |   396 ns |
-| trait-interfaces   |      9.2 |     12.8 |      4.4 |   461 ns |
-| nested-data        |     13.5 |     17.9 |      --- |     20.6 |
-| errors             |      4.7 |      7.4 |      3.2 |   642 ns |
+| Test Case        | Java FFM | Java JNA  | Kotlin    | Python    | Swift     |
+|------------------|----------|-----------|-----------|-----------|-----------|
+| call-only        | 4.3 ns   | 1.83 us   | 2.89 us   | 792 ns    | 165 ns    |
+| primitives       | 4.5 ns   | 1.62 us   | 3.27 us   | 1.39 us   | 191 ns    |
+| strings          | 324 ns   | 11.46 us  | 15.08 us  | 9.06 us   | 929 ns    |
+| large-strings    | 3.69 us  | 15.63 us  | 21.69 us  | 12.33 us  | 1.28 us   |
+| records          | 371 ns   | 11.62 us  | 15.29 us  | 18.66 us  | 2.54 us   |
+| enums            | 334 ns   | 14.47 us  | 15.41 us  | 14.22 us  | 2.04 us   |
+| vecs             | 581 ns   | 13.14 us  | 15.36 us  | 18.02 us  | 4.55 us   |
+| hash-maps        | 638 ns   | 12.91 us  | 15.48 us  | 23.15 us  | 6.39 us   |
+| interfaces       | 530 ns * | 6.07 us   | 105.60 us | 4.21 us   | 409 ns    |
+| trait-interfaces | 532 ns * | 11.98 us  | 150.70 us | 4.30 us   | 477 ns    |
+| nested-data      | 1.90 us  | 12.56 us  | 15.64 us  | 77.09 us  | 20.86 us  |
+| errors           | 682 ns   | 4.51 us   | 6.44 us   | 3.20 us   | 646 ns    |
 
 #### Callbacks (Rust calling foreign code)
 
-| Test Case          |     Java |   Kotlin |   Python |    Swift |
-|--------------------|----------|----------|----------|----------|
-| call-only          |      2.6 |      3.2 |   477 ns |   121 ns |
-| primitives         |      4.3 |      3.9 |   793 ns |   166 ns |
-| strings            |     13.5 |     18.0 |      8.0 |   811 ns |
-| large-strings      |     18.2 |     22.6 |     10.7 |      1.6 |
-| records            |     16.6 |     17.5 |     14.0 |      2.8 |
-| enums              |     17.0 |     17.5 |     11.0 |      2.4 |
-| vecs               |     16.9 |     17.9 |     18.1 |      4.8 |
-| hash-maps          |     12.7 |     18.1 |     21.4 |      7.1 |
-| interfaces         |      7.8 |     35.6 |      4.1 |   429 ns |
-| trait-interfaces   |     11.1 |     27.2 |      4.3 |   528 ns |
-| nested-data        |     21.8 |     16.8 |      --- |     24.1 |
-| errors             |     10.4 |      8.9 |      4.3 |   566 ns |
+| Test Case        | Java FFM | Java JNA  | Kotlin    | Python    | Swift     |
+|------------------|----------|-----------|-----------|-----------|-----------|
+| call-only        | 55 ns    | 1.98 us   | 2.76 us   | 492 ns    | 121 ns    |
+| primitives       | 59 ns    | 2.66 us   | 3.40 us   | 804 ns    | 166 ns    |
+| strings          | 348 ns   | 13.76 us  | 15.69 us  | 8.17 us   | 811 ns    |
+| large-strings    | 3.84 us  | 17.47 us  | 20.55 us  | 10.77 us  | 1.60 us   |
+| records          | 449 ns   | 11.55 us  | 15.95 us  | 14.26 us  | 2.86 us   |
+| enums            | 406 ns   | 11.17 us  | 14.93 us  | 11.04 us  | 2.47 us   |
+| vecs             | 593 ns   | 11.11 us  | 15.02 us  | 17.95 us  | 5.01 us   |
+| hash-maps        | 723 ns   | 12.36 us  | 15.72 us  | 21.39 us  | 7.16 us   |
+| interfaces       | 964 ns * | 7.44 us   | 408.65 us | 4.19 us   | 448 ns    |
+| trait-interfaces | 790 ns * | 7.49 us   | 361.69 us | 4.33 us   | 552 ns    |
+| nested-data      | 1.93 us  | 19.77 us  | 16.29 us  | 67.20 us  | 24.54 us  |
+| errors           | 638 ns   | 6.37 us   | 7.98 us   | 4.35 us   | 574 ns    |
+
+\* Interface benchmarks have high variance due to GC pauses; min values are ~250-470ns.
