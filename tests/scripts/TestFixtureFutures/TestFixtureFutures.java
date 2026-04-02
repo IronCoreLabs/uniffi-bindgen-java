@@ -37,7 +37,9 @@ public class TestFixtureFutures {
   }
 
   public static void assertReturnsImmediately(long actualTime, String testName) {
-    assert actualTime <= 4 : MessageFormat.format("unexpected {0} time: {1}ms", testName, actualTime);
+    // this is usually 5ms or less even on CI, but setting to 10 to avoid flakiness, if there's a regression in
+    // this it'll likely go past 10 immediately.
+    assert actualTime <= 10 : MessageFormat.format("unexpected {0} time: {1}ms", testName, actualTime);
   }
   
   public static void assertApproximateTime(long actualTime, int expectedTime, String testName) {
