@@ -102,6 +102,46 @@ public final class UniffiHelpers {
         java.lang.foreign.Arena.global().allocate(UniffiRustCallStatus.LAYOUT)
     );
 
+    // Slab allocator for struct return values (RustBuffer, 24 bytes each).
+    //
+    // FFI downcalls that return structs need a SegmentAllocator to receive the return value.
+    // RustBuffer is the only struct returned by value from downcalls.
+    //
+    // Alternatives considered:
+    //   - Arena.global(): zero overhead but leaks ~24 bytes per call permanently.
+    //     At 100k calls that's 2.4 MB that never gets reclaimed.
+    //   - Arena.ofAuto() per call: correct but creates a new Arena + PhantomReference
+    //     per call, adding ~50-100ns of GC pressure to every struct-returning call.
+    //   - Thread-local reusable segment: zero overhead but causes SIGABRT — the FFM
+    //     runtime retains internal references to allocator-provided segments, so reusing
+    //     the same segment across calls corrupts FFM's internal state.
+    //
+    // This slab approach: allocate a batch of 1024 slots from one Arena.ofAuto(), then
+    // hand out slices. Each call gets a unique slice (avoiding the FFM reuse crash).
+    // When the slab is exhausted, a new one is allocated and the old one becomes
+    // GC-eligible once all its slices are consumed (which is immediate — callers always
+    // read struct fields before the next FFI call).
+    // Amortized cost: one Arena + one native malloc per 1024 calls — effectively zero.
+    private static final long SLAB_SLOTS = 1024;
+    private static final long SLAB_BYTES = RustBuffer.LAYOUT.byteSize() * SLAB_SLOTS;
+    private static final long SLOT_SIZE = RustBuffer.LAYOUT.byteSize();
+    private static final ThreadLocal<java.lang.foreign.MemorySegment> RETURN_SLAB = ThreadLocal.withInitial(() ->
+        java.lang.foreign.Arena.ofAuto().allocate(SLAB_BYTES, RustBuffer.LAYOUT.byteAlignment())
+    );
+    private static final ThreadLocal<long[]> SLAB_OFFSET = ThreadLocal.withInitial(() -> new long[]{0});
+    private static final java.lang.foreign.SegmentAllocator RETURN_ALLOCATOR = (byteSize, byteAlignment) -> {
+        long[] offset = SLAB_OFFSET.get();
+        java.lang.foreign.MemorySegment slab = RETURN_SLAB.get();
+        if (offset[0] + byteSize > slab.byteSize()) {
+            slab = java.lang.foreign.Arena.ofAuto().allocate(SLAB_BYTES, RustBuffer.LAYOUT.byteAlignment());
+            RETURN_SLAB.set(slab);
+            offset[0] = 0;
+        }
+        java.lang.foreign.MemorySegment result = slab.asSlice(offset[0], byteSize);
+        offset[0] += byteSize;
+        return result;
+    };
+
 
     @FunctionalInterface
     public interface UniffiRustCallFunction<U> {
@@ -120,7 +160,7 @@ public final class UniffiHelpers {
             UniffiRustCallFunction<U> callback) throws E {
         java.lang.foreign.MemorySegment status = REUSABLE_STATUS.get();
         status.fill((byte) 0);
-        U returnValue = callback.apply(java.lang.foreign.Arena.global(), status);
+        U returnValue = callback.apply(RETURN_ALLOCATOR, status);
         uniffiCheckCallStatus(errorHandler, status);
         return returnValue;
     }
@@ -131,7 +171,7 @@ public final class UniffiHelpers {
             UniffiRustCallVoidFunction callback) throws E {
         java.lang.foreign.MemorySegment status = REUSABLE_STATUS.get();
         status.fill((byte) 0);
-        callback.apply(java.lang.foreign.Arena.global(), status);
+        callback.apply(RETURN_ALLOCATOR, status);
         uniffiCheckCallStatus(errorHandler, status);
     }
 
@@ -169,7 +209,7 @@ public final class UniffiHelpers {
             UniffiRustCall{{ suffix }}Function callback) throws E {
         java.lang.foreign.MemorySegment status = REUSABLE_STATUS.get();
         status.fill((byte) 0);
-        {{ prim }} returnValue = callback.apply(java.lang.foreign.Arena.global(), status);
+        {{ prim }} returnValue = callback.apply(RETURN_ALLOCATOR, status);
         uniffiCheckCallStatus(errorHandler, status);
         return returnValue;
     }

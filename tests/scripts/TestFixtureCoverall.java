@@ -624,36 +624,45 @@ public class TestFixtureCoverall {
         : MessageFormat.format("Concurrent close/GC race test: num alive is {0}", Coverall.getNumAlive());
     }
 
-    // Test Arena.global() native memory stability for struct-returning FFI calls.
-    // FFM uses Arena.global() as the SegmentAllocator for struct returns (RustBuffer).
-    // Each call leaks ~24 bytes of arena metadata. This test verifies that calling
-    // struct-returning functions in a tight loop doesn't cause unbounded RSS growth.
-    // We use getStatus() which returns a String (lowered via RustBuffer round-trip).
+    // Regression test: struct return allocator must not permanently leak native memory.
+    // Each struct-returning FFI call (e.g., String/record/list returns) allocates a 24-byte
+    // RustBuffer metadata segment. With Arena.global() this leaked permanently — 100k calls
+    // would leak ~2.4 MB that GC could never reclaim.
+    //
+    // This test runs two 100k-call batches with GC between them and measures growth.
+    // With a permanent leak, the second batch adds ~2.4 MB of unreclaimable memory.
+    // With the slab allocator (Arena.ofAuto()-backed), exhausted slabs are GC'd and
+    // growth should be near zero. The 2 MB threshold is below the 2.4 MB leak signal
+    // but well above normal JVM heap noise between identical GC'd workloads.
     {
       Runtime runtime = Runtime.getRuntime();
-      try (Coveralls coveralls = new Coveralls("test_arena_stability")) {
-        // Warm up
+      try (Coveralls coveralls = new Coveralls("test_no_struct_return_leak")) {
         for (int i = 0; i < 1000; i++) {
           coveralls.getStatus("warmup");
         }
-        System.gc();
-        Thread.sleep(100);
-        long baselineMemory = runtime.totalMemory() - runtime.freeMemory();
 
-        // Make 100k calls that each return a RustBuffer (String)
         for (int i = 0; i < 100_000; i++) {
           String result = coveralls.getStatus("iter");
           assert result.equals("status: iter") : "Unexpected result: " + result;
         }
-        System.gc();
-        Thread.sleep(100);
-        long afterMemory = runtime.totalMemory() - runtime.freeMemory();
+        for (int i = 0; i < 5; i++) {
+          System.gc();
+          Thread.sleep(50);
+        }
+        long usedMemory = runtime.totalMemory() - runtime.freeMemory();
 
-        // Arena.global() leaks ~24 bytes per struct return.
-        // 100k calls * 24 bytes = ~2.4 MB. Allow 20 MB headroom for JVM overhead.
-        long growth = afterMemory - baselineMemory;
-        assert growth < 20_000_000L
-          : MessageFormat.format("Excessive memory growth: {0} bytes after 100k struct-returning calls", growth);
+        for (int i = 0; i < 100_000; i++) {
+          coveralls.getStatus("iter2");
+        }
+        for (int i = 0; i < 5; i++) {
+          System.gc();
+          Thread.sleep(50);
+        }
+        long usedMemoryAfter = runtime.totalMemory() - runtime.freeMemory();
+
+        long growth = usedMemoryAfter - usedMemory;
+        assert growth < 2_000_000L
+          : MessageFormat.format("Struct return memory leak: {0} bytes growth between two 100k-call batches (expected near-zero, leak would show ~2.4 MB)", growth);
       }
     }
 
