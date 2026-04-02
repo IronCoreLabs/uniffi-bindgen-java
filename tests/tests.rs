@@ -270,12 +270,13 @@ fixture_tests! {
     (test_arithmetic, "uniffi-example-arithmetic", "scripts/TestArithmetic.java"),
     (test_geometry, "uniffi-example-geometry", "scripts/TestGeometry.java"),
     (test_rondpoint, "uniffi-example-rondpoint", "scripts/TestRondpoint.java"),
-    // (test_todolist, "uniffi-example-todolist", "scripts/test_todolist.java"),
-    // (test_sprites, "uniffi-example-sprites", "scripts/test_sprites.java"),
+    // todolist: namespace class `Todolist` and object class `TodoList` produce filenames that
+    // collide on case-insensitive filesystems (macOS).
+    // (test_todolist, "uniffi-example-todolist", "scripts/TestTodolist.java"),
+    (test_sprites, "uniffi-example-sprites", "scripts/TestSprites.java"),
     (test_coverall, "uniffi-fixture-coverall", "scripts/TestFixtureCoverall.java"),
     (test_chronological, "uniffi-fixture-time", "scripts/TestChronological.java"),
     (test_custom_types, "uniffi-example-custom-types", "scripts/TestCustomTypes/TestCustomTypes.java"),
-    // (test_callbacks, "uniffi-fixture-callbacks", "scripts/test_callbacks.java"),
     (test_external_types, "uniffi-fixture-ext-types", "scripts/TestImportedTypes/TestImportedTypes.java"),
     (test_futures, "uniffi-example-futures", "scripts/TestFutures.java"),
     (test_futures_fixtures, "uniffi-fixture-futures", "scripts/TestFixtureFutures/TestFixtureFutures.java"),

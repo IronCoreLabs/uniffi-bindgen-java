@@ -540,6 +540,123 @@ public class TestFixtureCoverall {
       assert exception != null;
     }
 
+    // Test reentrant error handling with thread-local RustCallStatus.
+    // The FFM bindings use a thread-local reusable MemorySegment for RustCallStatus.
+    // This test verifies that rapid alternating success/error/panic calls on the
+    // same thread don't corrupt error data due to premature segment reuse.
+    try (Coveralls coveralls = new Coveralls("test_reentrant_errors")) {
+      for (int i = 0; i < 1000; i++) {
+        // Successful call
+        assert coveralls.maybeThrow(false);
+
+        // Error call — verify the error message is intact
+        try {
+          coveralls.maybeThrow(true);
+          throw new RuntimeException("Expected CoverallException");
+        } catch (CoverallException.TooManyHoles e) {
+          assert e.getMessage().equals("The coverall has too many holes")
+            : "Error message corrupted on iteration " + i + ": " + e.getMessage();
+        }
+
+        // Panic call — verify the panic message is intact
+        try {
+          coveralls.panic("reentrant panic " + i);
+          throw new RuntimeException("Expected InternalException");
+        } catch (InternalException e) {
+          assert e.getMessage().equals("reentrant panic " + i)
+            : "Panic message corrupted on iteration " + i + ": " + e.getMessage();
+        }
+
+        // Complex error with varying variants to stress different error buffer sizes
+        try {
+          coveralls.maybeThrowComplex((byte) (1 + (i % 3)));
+          throw new RuntimeException("Expected ComplexException");
+        } catch (ComplexException.OsException e) {
+          assert e.code() == 10 : "OsException.code corrupted on iteration " + i;
+        } catch (ComplexException.PermissionDenied e) {
+          assert e.reason().equals("Forbidden") : "PermissionDenied.reason corrupted on iteration " + i;
+        } catch (ComplexException.UnknownException e) {
+          // Expected, no fields to verify
+        }
+      }
+    }
+
+    // Test concurrent close() vs GC cleanup race.
+    // Verifies that the UniffiBackpressureCleaner's atomic CAS + linked-list
+    // unlink is safe when explicit close() races with GC-triggered PhantomReference cleanup.
+    {
+      int numThreads = 4;
+      int objectsPerThread = 5000;
+      ExecutorService pool = Executors.newFixedThreadPool(numThreads);
+      List<Future<?>> futures = new ArrayList<>();
+
+      for (int t = 0; t < numThreads; t++) {
+        final int threadId = t;
+        futures.add(pool.submit(() -> {
+          for (int i = 0; i < objectsPerThread; i++) {
+            Coveralls c = new Coveralls("race-" + threadId + "-" + i);
+            // Half the objects are explicitly closed, half are left for GC
+            if (i % 2 == 0) {
+              c.close();
+            }
+            // Occasionally trigger GC to race with close()
+            if (i % 500 == 0) {
+              System.gc();
+            }
+          }
+        }));
+      }
+
+      for (Future<?> f : futures) {
+        f.get();
+      }
+      pool.shutdown();
+
+      // Wait for GC to clean up the non-closed half
+      for (int i = 0; i < 100; i++) {
+        if (Coverall.getNumAlive() <= 1L) {
+          break;
+        }
+        System.gc();
+        Thread.sleep(100);
+      }
+      assert Coverall.getNumAlive() <= 1L
+        : MessageFormat.format("Concurrent close/GC race test: num alive is {0}", Coverall.getNumAlive());
+    }
+
+    // Test Arena.global() native memory stability for struct-returning FFI calls.
+    // FFM uses Arena.global() as the SegmentAllocator for struct returns (RustBuffer).
+    // Each call leaks ~24 bytes of arena metadata. This test verifies that calling
+    // struct-returning functions in a tight loop doesn't cause unbounded RSS growth.
+    // We use getStatus() which returns a String (lowered via RustBuffer round-trip).
+    {
+      Runtime runtime = Runtime.getRuntime();
+      try (Coveralls coveralls = new Coveralls("test_arena_stability")) {
+        // Warm up
+        for (int i = 0; i < 1000; i++) {
+          coveralls.getStatus("warmup");
+        }
+        System.gc();
+        Thread.sleep(100);
+        long baselineMemory = runtime.totalMemory() - runtime.freeMemory();
+
+        // Make 100k calls that each return a RustBuffer (String)
+        for (int i = 0; i < 100_000; i++) {
+          String result = coveralls.getStatus("iter");
+          assert result.equals("status: iter") : "Unexpected result: " + result;
+        }
+        System.gc();
+        Thread.sleep(100);
+        long afterMemory = runtime.totalMemory() - runtime.freeMemory();
+
+        // Arena.global() leaks ~24 bytes per struct return.
+        // 100k calls * 24 bytes = ~2.4 MB. Allow 20 MB headroom for JVM overhead.
+        long growth = afterMemory - baselineMemory;
+        assert growth < 20_000_000L
+          : MessageFormat.format("Excessive memory growth: {0} bytes after 100k struct-returning calls", growth);
+      }
+    }
+
     // This is from an earlier GC test; ealier, we made 1000 new objects.
     // By now, the GC has had time to clean up, and now we should see 0 alive.
     // (hah! Wishful-thinking there ;)
