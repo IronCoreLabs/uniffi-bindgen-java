@@ -172,8 +172,10 @@ impl Config {
         self.omit_checksums
     }
 
-    /// Whether to generate PanamaPort imports for Android compatibility
-    #[allow(dead_code)]
+    /// Whether to generate PanamaPort imports for Android compatibility.
+    /// When true, post-processes generated code to replace `java.lang.foreign.*` with
+    /// PanamaPort's `com.v7878.foreign.*` and `java.lang.invoke.VarHandle` with
+    /// `com.v7878.invoke.VarHandle`.
     pub fn android(&self) -> bool {
         self.android
     }
@@ -246,9 +248,21 @@ impl CustomTypeConfig {
 
 // Generate Java bindings for the given ComponentInterface, as a string.
 pub fn generate_bindings(config: &Config, ci: &ComponentInterface) -> Result<String> {
-    JavaWrapper::new(config.clone(), ci)
+    let output = JavaWrapper::new(config.clone(), ci)
         .render()
-        .context("failed to render java bindings")
+        .context("failed to render java bindings")?;
+
+    if config.android() {
+        // PanamaPort provides the FFM API under a different package prefix.
+        // The API surface is identical so a global string replacement is sufficient.
+        // `java.lang.invoke.MethodHandle/MethodHandles/MethodType` are available on
+        // Android API 26+ and are intentionally left unchanged.
+        Ok(output
+            .replace("java.lang.foreign.", "com.v7878.foreign.")
+            .replace("java.lang.invoke.VarHandle", "com.v7878.invoke.VarHandle"))
+    } else {
+        Ok(output)
+    }
 }
 
 #[derive(Template)]
@@ -1693,6 +1707,54 @@ mod tests {
         assert!(
             !bindings.contains("List<java.lang.Boolean>"),
             "should not contain List<java.lang.Boolean>"
+        );
+    }
+
+    #[test]
+    fn android_replaces_ffm_package() {
+        let mut group = MetadataGroup {
+            namespace: NamespaceMetadata {
+                crate_name: "test".to_string(),
+                name: "test".to_string(),
+            },
+            namespace_docstring: None,
+            items: Default::default(),
+        };
+        group.add_item(Metadata::Func(FnMetadata {
+            module_path: "test".to_string(),
+            name: "noop".to_string(),
+            is_async: false,
+            inputs: vec![],
+            return_type: None,
+            throws: None,
+            checksum: None,
+            docstring: None,
+        }));
+
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+
+        let android_config: Config = toml::from_str("android = true").unwrap();
+
+        let bindings = generate_bindings(&android_config, &ci).unwrap();
+
+        assert!(
+            !bindings.contains("java.lang.foreign."),
+            "android bindings should not contain java.lang.foreign"
+        );
+        assert!(
+            bindings.contains("com.v7878.foreign."),
+            "android bindings should contain com.v7878.foreign"
+        );
+        // MethodHandle/MethodHandles/MethodType should NOT be replaced
+        assert!(
+            bindings.contains("java.lang.invoke.MethodHandle"),
+            "android bindings should preserve java.lang.invoke.MethodHandle"
+        );
+        // Standard java.lang types should NOT be replaced
+        assert!(
+            bindings.contains("java.lang.Exception"),
+            "android bindings should preserve java.lang.Exception"
         );
     }
 }
