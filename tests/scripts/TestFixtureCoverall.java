@@ -418,12 +418,18 @@ public class TestFixtureCoverall {
     try (ThreadsafeCounter counter = new ThreadsafeCounter()) {
       ExecutorService executor = Executors.newFixedThreadPool(3);
       try {
+        // Latch ensures the busy-waiting thread has started before the incrementing thread runs.
+        var busyStarted = new java.util.concurrent.CountDownLatch(1);
         var busyWaiting = executor.submit(() -> {
+          busyStarted.countDown();
           // 300 ms should be long enough for the other thread to easily finish
           // its loop, but not so long as to annoy the user with a slow test.
           counter.busyWait(300);
         });
         Future<Integer> incrementing = executor.submit(() -> {
+          busyStarted.await();
+          // Give busyWait time to acquire the Rust-side lock on slow CI.
+          Thread.sleep(50);
           Integer count = 0;
           for (int n = 0; n < 100; n++) {
             // We expect most iterations of this loop to run concurrently with the busy-waiting thread.
