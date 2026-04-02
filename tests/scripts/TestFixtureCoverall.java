@@ -545,38 +545,53 @@ public class TestFixtureCoverall {
     // This test verifies that rapid alternating success/error/panic calls on the
     // same thread don't corrupt error data due to premature segment reuse.
     try (Coveralls coveralls = new Coveralls("test_reentrant_errors")) {
-      for (int i = 0; i < 1000; i++) {
-        // Successful call
+      // Interleaved success/error/panic/complex-error to verify the thread-local
+      // RustCallStatus isn't corrupted across different outcome types.
+      // Only a few iterations — the bug is deterministic and panics spam stderr.
+      for (int i = 0; i < 5; i++) {
         assert coveralls.maybeThrow(false);
-
-        // Error call — verify the error message is intact
         try {
           coveralls.maybeThrow(true);
           throw new RuntimeException("Expected CoverallException");
         } catch (CoverallException.TooManyHoles e) {
-          assert e.getMessage().equals("The coverall has too many holes")
-            : "Error message corrupted on iteration " + i + ": " + e.getMessage();
+          assert e.getMessage().equals("The coverall has too many holes");
         }
-
-        // Panic call — verify the panic message is intact
         try {
-          coveralls.panic("reentrant panic " + i);
+          coveralls.panic("expected reentrant panic " + i);
           throw new RuntimeException("Expected InternalException");
         } catch (InternalException e) {
-          assert e.getMessage().equals("reentrant panic " + i)
-            : "Panic message corrupted on iteration " + i + ": " + e.getMessage();
+          assert e.getMessage().equals("expected reentrant panic " + i);
         }
-
-        // Complex error with varying variants to stress different error buffer sizes
         try {
           coveralls.maybeThrowComplex((byte) (1 + (i % 3)));
           throw new RuntimeException("Expected ComplexException");
         } catch (ComplexException.OsException e) {
-          assert e.code() == 10 : "OsException.code corrupted on iteration " + i;
+          assert e.code() == 10;
         } catch (ComplexException.PermissionDenied e) {
-          assert e.reason().equals("Forbidden") : "PermissionDenied.reason corrupted on iteration " + i;
+          assert e.reason().equals("Forbidden");
         } catch (ComplexException.UnknownException e) {
-          // Expected, no fields to verify
+          // Expected
+        }
+      }
+      // Higher iteration count for error-only path to cycle through all complex error
+      // variants with their different serialized buffer sizes.
+      for (int i = 0; i < 1000; i++) {
+        assert coveralls.maybeThrow(false);
+        try {
+          coveralls.maybeThrow(true);
+          throw new RuntimeException("Expected CoverallException");
+        } catch (CoverallException.TooManyHoles e) {
+          assert e.getMessage().equals("The coverall has too many holes");
+        }
+        try {
+          coveralls.maybeThrowComplex((byte) (1 + (i % 3)));
+          throw new RuntimeException("Expected ComplexException");
+        } catch (ComplexException.OsException e) {
+          assert e.code() == 10;
+        } catch (ComplexException.PermissionDenied e) {
+          assert e.reason().equals("Forbidden");
+        } catch (ComplexException.UnknownException e) {
+          // Expected
         }
       }
     }
@@ -696,8 +711,132 @@ public class TestFixtureCoverall {
       Thread.sleep(100);
     }
     assert Coverall.getNumAlive() <= 1L : MessageFormat.format("Backpressure test: num alive is {0}. Cleaner could not keep up.", Coverall.getNumAlive());
+
+    // --- Multi-threaded slab allocator stress test ---
+    // The struct return slab allocator is thread-local. This validates thread-local
+    // isolation and GC reclamation of exhausted slabs under contention.
+    {
+      Runtime runtime = Runtime.getRuntime();
+      int numThreads = 8;
+      int callsPerThread = 50_000;
+
+      // Warmup
+      try (Coveralls warmup = new Coveralls("slab-warmup")) {
+        for (int i = 0; i < 1000; i++) {
+          warmup.getStatus("warmup");
+        }
+      }
+      for (int i = 0; i < 5; i++) { System.gc(); Thread.sleep(50); }
+      long baselineMemory = runtime.totalMemory() - runtime.freeMemory();
+
+      ExecutorService slabPool = Executors.newFixedThreadPool(numThreads);
+      List<Future<?>> slabFutures = new ArrayList<>();
+      for (int t = 0; t < numThreads; t++) {
+        final int threadId = t;
+        slabFutures.add(slabPool.submit(() -> {
+          try (Coveralls c = new Coveralls("slab-thread-" + threadId)) {
+            for (int i = 0; i < callsPerThread; i++) {
+              String result = c.getStatus("t" + threadId);
+              assert result.equals("status: t" + threadId)
+                  : "Wrong result on thread " + threadId + " iteration " + i;
+            }
+          }
+        }));
+      }
+      for (Future<?> f : slabFutures) { f.get(); }
+      slabPool.shutdown();
+
+      for (int i = 0; i < 5; i++) { System.gc(); Thread.sleep(50); }
+      long finalMemory = runtime.totalMemory() - runtime.freeMemory();
+
+      // 8 threads × 50k calls = 400k struct returns. With Arena.global() that would
+      // permanently leak 400k × 24 bytes ≈ 9.6 MB. With the slab allocator, exhausted
+      // slabs are GC'd and growth should be well under that.
+      long growth = finalMemory - baselineMemory;
+      assert growth < 5_000_000L
+          : MessageFormat.format("Multi-threaded slab leak: {0} bytes growth across {1} threads x {2} calls",
+              growth, numThreads, callsPerThread);
+      System.out.println(MessageFormat.format(
+          "multi-threaded slab allocator ({0} threads x {1} calls, {2} bytes growth) ... ok",
+          numThreads, callsPerThread, growth));
+    }
+
+    // --- Concurrent use-while-closing test ---
+    // Verifies that calling methods on an object while another thread calls close()
+    // results in a clean IllegalStateException, not a crash or data corruption.
+    {
+      int iterations = 1000;
+      int numCallers = 4;
+      ExecutorService racePool = Executors.newFixedThreadPool(numCallers + 1);
+
+      for (int iter = 0; iter < iterations; iter++) {
+        Coveralls coveralls = new Coveralls("use-close-race-" + iter);
+        CyclicBarrier barrier = new CyclicBarrier(numCallers + 1);
+
+        List<Future<?>> raceFutures = new ArrayList<>();
+        for (int t = 0; t < numCallers; t++) {
+          raceFutures.add(racePool.submit(() -> {
+            try { barrier.await(); } catch (Exception e) { return; }
+            try {
+              coveralls.getName();
+            } catch (IllegalStateException e) {
+              // Expected when close() beats us — object already destroyed
+            }
+          }));
+        }
+        raceFutures.add(racePool.submit(() -> {
+          try { barrier.await(); } catch (Exception e) { return; }
+          coveralls.close();
+        }));
+
+        for (Future<?> f : raceFutures) { f.get(); }
+      }
+
+      racePool.shutdown();
+
+      for (int i = 0; i < 100; i++) {
+        if (Coverall.getNumAlive() <= 1L) break;
+        System.gc();
+        Thread.sleep(100);
+      }
+      assert Coverall.getNumAlive() <= 1L
+          : MessageFormat.format("Use-while-closing: {0} objects leaked", Coverall.getNumAlive());
+      System.out.println("concurrent use-while-closing (1000 iterations x 5 threads) ... ok");
+    }
+
+    // --- Large RustBuffer roundtrip test ---
+    // Validates that megabyte-scale data passes correctly through FFM MemorySegment
+    // and that RustBuffer allocation/deallocation handles large sizes without leaks.
+    {
+      Runtime runtime = Runtime.getRuntime();
+      try (Coveralls coveralls = new Coveralls("large-data-test")) {
+        String largeInput = "0123456789".repeat(100_000); // 1 MB
+
+        coveralls.getStatus("warmup");
+        for (int i = 0; i < 5; i++) { System.gc(); Thread.sleep(50); }
+        long baseline = runtime.totalMemory() - runtime.freeMemory();
+
+        for (int i = 0; i < 100; i++) {
+          String result = coveralls.getStatus(largeInput);
+          assert result.length() == "status: ".length() + largeInput.length()
+              : "Large data length mismatch on iteration " + i;
+          assert result.startsWith("status: 0123456789")
+              : "Large data corruption on iteration " + i;
+        }
+
+        for (int i = 0; i < 5; i++) { System.gc(); Thread.sleep(50); }
+        long after = runtime.totalMemory() - runtime.freeMemory();
+
+        // 100 × ~1MB strings lower + lift = ~200 MB of RustBuffer traffic.
+        // If buffers leak, memory growth would be massive. Allow 10 MB for JVM noise.
+        long growth = after - baseline;
+        assert growth < 10_000_000L
+            : MessageFormat.format("Large RustBuffer leak: {0} bytes growth for 100 x 1MB roundtrips", growth);
+      }
+      System.out.println("large RustBuffer roundtrip (100 x 1MB) ... ok");
+    }
   }
-  
+
   public static boolean almostEquals(float a, float b) {
     return Math.abs(a - b) < .000001f;
   }

@@ -535,9 +535,146 @@ public class TestFixtureFutures {
 
         System.out.println("custom executor ... ok");
       }
+
+      // --- UniffiRustCallStatus.create() native memory leak test ---
+      // Two-batch approach: batch 1 warms up malloc's free list, batch 2 should reuse
+      // freed memory (no RSS growth). With a leak (Arena.global()), batch 2 always
+      // allocates fresh native memory, so RSS grows by ~16+ MB between batches.
+      {
+        var dummyBuf = java.lang.foreign.Arena.ofAuto().allocate(
+            uniffi.fixture.futures.RustBuffer.LAYOUT);
+
+        int batchSize = 500_000;
+
+        // Batch 1: fill malloc's free list with freed slabs
+        for (int i = 0; i < batchSize; i++) {
+          uniffi.fixture.futures.UniffiRustCallStatus.create(
+              uniffi.fixture.futures.UniffiRustCallStatus.UNIFFI_CALL_ERROR,
+              dummyBuf);
+        }
+        for (int i = 0; i < 5; i++) { System.gc(); Thread.sleep(50); }
+        long rssAfterBatch1 = getProcessRssKb();
+
+        // Batch 2: with slab, reuses freed memory; with Arena.global(), leaks ~16 MB more
+        for (int i = 0; i < batchSize; i++) {
+          uniffi.fixture.futures.UniffiRustCallStatus.create(
+              uniffi.fixture.futures.UniffiRustCallStatus.UNIFFI_CALL_ERROR,
+              dummyBuf);
+        }
+        for (int i = 0; i < 5; i++) { System.gc(); Thread.sleep(50); }
+        long rssAfterBatch2 = getProcessRssKb();
+
+        long growthKb = rssAfterBatch2 - rssAfterBatch1;
+        System.out.println(MessageFormat.format(
+            "UniffiRustCallStatus.create() RSS: batch1={0}KB batch2={1}KB delta={2}KB ({3} calls/batch)",
+            rssAfterBatch1, rssAfterBatch2, growthKb, batchSize));
+        // With Arena.global(): 500k × ~42 bytes ≈ 21 MB delta (never freed)
+        // With slab: delta ≈ 0 (batch 2 reuses freed slabs from batch 1)
+        assert growthKb < 10_000
+            : MessageFormat.format(
+                "create() leaked native memory: {0} KB growth between batches of {1} calls",
+                growthKb, batchSize);
+        System.out.println("create() memory test ... ok");
+      }
+
+      // --- Async callback error path stress test ---
+      // Exercises UniffiRustCallStatus allocation under sustained async callback errors.
+      // Validates no handle leaks or data corruption under rapid reuse.
+      {
+        class StressParser implements AsyncParser {
+          @Override
+          public CompletableFuture<String> asString(int delayMs, int value) {
+            return CompletableFuture.completedFuture(Integer.toString(value));
+          }
+          @Override
+          public CompletableFuture<Integer> tryFromString(int delayMs, String value) {
+            CompletableFuture<Integer> f = new CompletableFuture<>();
+            f.completeExceptionally(new ParserException.NotAnInt());
+            return f;
+          }
+          @Override
+          public CompletableFuture<Void> delay(int delayMs) {
+            return CompletableFuture.completedFuture(null);
+          }
+          @Override
+          public CompletableFuture<Void> tryDelay(String delayMs) {
+            CompletableFuture<Void> f = new CompletableFuture<>();
+            f.completeExceptionally(new ParserException.NotAnInt());
+            return f;
+          }
+        }
+
+        var stressParser = new StressParser();
+        int errorCount = 10_000;
+
+        for (int i = 0; i < errorCount; i++) {
+          try {
+            Futures.tryFromStringUsingTrait(stressParser, 0, "not-a-number").get();
+            throw new RuntimeException("Expected error on iteration " + i);
+          } catch (ExecutionException e) {
+            assert e.getCause() instanceof ParserException.NotAnInt
+                : "Wrong exception type on iteration " + i + ": " + e.getCause();
+          }
+        }
+
+        var handleCount = UniffiAsyncHelpers.uniffiForeignFutureHandleCount();
+        assert handleCount == 0
+            : MessageFormat.format("Leaked {0} handles after {1} async errors", handleCount, errorCount);
+
+        // Verify system still works after sustained errors
+        var check = Futures.asStringUsingTrait(stressParser, 0, 99).get();
+        assert check.equals("99") : "System broken after error stress: " + check;
+
+        System.out.println(MessageFormat.format("async error path stress ({0} errors) ... ok", errorCount));
+      }
+
+      // --- Async callback sustained success load test ---
+      // Each async trait callback allocates Arena.ofAuto() for the result struct.
+      // Validates no handle leaks or OOM under sustained successful calls.
+      {
+        class LoadParser implements AsyncParser {
+          @Override
+          public CompletableFuture<String> asString(int delayMs, int value) {
+            return CompletableFuture.completedFuture(Integer.toString(value));
+          }
+          @Override
+          public CompletableFuture<Integer> tryFromString(int delayMs, String value) {
+            return CompletableFuture.completedFuture(Integer.parseInt(value));
+          }
+          @Override
+          public CompletableFuture<Void> delay(int delayMs) {
+            return CompletableFuture.completedFuture(null);
+          }
+          @Override
+          public CompletableFuture<Void> tryDelay(String delayMs) {
+            return CompletableFuture.completedFuture(null);
+          }
+        }
+
+        var loadParser = new LoadParser();
+        int count = 5_000;
+
+        for (int i = 0; i < count; i++) {
+          var result = Futures.asStringUsingTrait(loadParser, 0, i).get();
+          assert result.equals(Integer.toString(i))
+              : "Wrong result on iteration " + i + ": " + result;
+        }
+
+        var handleCount = UniffiAsyncHelpers.uniffiForeignFutureHandleCount();
+        assert handleCount == 0
+            : MessageFormat.format("Leaked {0} handles after {1} async calls", handleCount, count);
+
+        System.out.println(MessageFormat.format("async callback sustained load ({0} calls) ... ok", count));
+      }
     } finally {
       // bring down the scheduler, if it's not shut down it'll hold the main thread open.
       scheduler.shutdown();
     }
+  }
+
+  private static long getProcessRssKb() throws Exception {
+    long pid = ProcessHandle.current().pid();
+    Process p = new ProcessBuilder("/bin/ps", "-o", "rss=", "-p", String.valueOf(pid)).start();
+    return Long.parseLong(new String(p.getInputStream().readAllBytes()).trim());
   }
 }

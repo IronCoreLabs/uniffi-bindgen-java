@@ -53,12 +53,16 @@ public final class UniffiRustCallStatus {
         return seg;
     }
 
+    // Slab allocator for RustCallStatus segments used by async callback error handling.
+    // See UniffiSlabAllocator for the design rationale.
+    private static final UniffiSlabAllocator STATUS_ALLOCATOR = new UniffiSlabAllocator(LAYOUT, 1024);
+
     /**
      * Create a RustCallStatus with the given code and error buffer.
      * Used by async callback interface error handling.
      */
     public static java.lang.foreign.MemorySegment create(byte code, java.lang.foreign.MemorySegment errorBuf) {
-        java.lang.foreign.MemorySegment seg = java.lang.foreign.Arena.global().allocate(LAYOUT);
+        java.lang.foreign.MemorySegment seg = STATUS_ALLOCATOR.allocate(LAYOUT);
         seg.fill((byte) 0);
         setCode(seg, code);
         setErrorBuf(seg, errorBuf);
@@ -78,6 +82,58 @@ package {{ config.package_name() }};
 
 public interface UniffiRustCallStatusErrorHandler<E extends java.lang.Exception> {
     E lift(java.lang.foreign.MemorySegment errorBuf);
+}
+
+package {{ config.package_name() }};
+
+// Thread-local slab allocator for short-lived native memory segments.
+//
+// Several FFM code paths need to allocate small struct-sized segments (RustBuffer
+// at 24 bytes, RustCallStatus at 32 bytes) that are consumed immediately and never
+// referenced again.
+//
+// Alternatives considered:
+//   - Arena.global(): zero overhead but leaks permanently. At high call rates this
+//     adds up fast (e.g. 100k calls × 24-32 bytes = 2.4-3.2 MB never reclaimed).
+//   - Arena.ofAuto() per call: correct but creates a new Arena + PhantomReference
+//     per call, adding ~50-100ns of GC pressure to every call.
+//   - Thread-local reusable segment: zero overhead but causes SIGABRT — the FFM
+//     runtime retains internal references to allocator-provided segments, so reusing
+//     the same segment across calls corrupts FFM's internal state.
+//
+// This slab approach: allocate a batch of slots from one Arena.ofAuto(), then hand
+// out slices. Each call gets a unique slice (avoiding the FFM reuse crash). When the
+// slab is exhausted, a new one is allocated and the old one becomes GC-eligible once
+// all its slices are consumed (which is immediate — callers read struct fields before
+// the next call). Amortized cost: one Arena + one native malloc per `slots` calls.
+class UniffiSlabAllocator implements java.lang.foreign.SegmentAllocator {
+    private final long slabBytes;
+    private final long alignment;
+    private final ThreadLocal<java.lang.foreign.MemorySegment> slab;
+    private final ThreadLocal<long[]> offset;
+
+    UniffiSlabAllocator(java.lang.foreign.MemoryLayout layout, long slots) {
+        this.slabBytes = layout.byteSize() * slots;
+        this.alignment = layout.byteAlignment();
+        this.slab = ThreadLocal.withInitial(() ->
+            java.lang.foreign.Arena.ofAuto().allocate(this.slabBytes, this.alignment)
+        );
+        this.offset = ThreadLocal.withInitial(() -> new long[]{0});
+    }
+
+    @Override
+    public java.lang.foreign.MemorySegment allocate(long byteSize, long byteAlignment) {
+        long[] off = this.offset.get();
+        java.lang.foreign.MemorySegment s = this.slab.get();
+        if (off[0] + byteSize > s.byteSize()) {
+            s = java.lang.foreign.Arena.ofAuto().allocate(this.slabBytes, this.alignment);
+            this.slab.set(s);
+            off[0] = 0;
+        }
+        java.lang.foreign.MemorySegment result = s.asSlice(off[0], byteSize);
+        off[0] += byteSize;
+        return result;
+    }
 }
 
 package {{ config.package_name() }};
@@ -102,45 +158,9 @@ public final class UniffiHelpers {
         java.lang.foreign.Arena.global().allocate(UniffiRustCallStatus.LAYOUT)
     );
 
-    // Slab allocator for struct return values (RustBuffer, 24 bytes each).
-    //
-    // FFI downcalls that return structs need a SegmentAllocator to receive the return value.
-    // RustBuffer is the only struct returned by value from downcalls.
-    //
-    // Alternatives considered:
-    //   - Arena.global(): zero overhead but leaks ~24 bytes per call permanently.
-    //     At 100k calls that's 2.4 MB that never gets reclaimed.
-    //   - Arena.ofAuto() per call: correct but creates a new Arena + PhantomReference
-    //     per call, adding ~50-100ns of GC pressure to every struct-returning call.
-    //   - Thread-local reusable segment: zero overhead but causes SIGABRT — the FFM
-    //     runtime retains internal references to allocator-provided segments, so reusing
-    //     the same segment across calls corrupts FFM's internal state.
-    //
-    // This slab approach: allocate a batch of 1024 slots from one Arena.ofAuto(), then
-    // hand out slices. Each call gets a unique slice (avoiding the FFM reuse crash).
-    // When the slab is exhausted, a new one is allocated and the old one becomes
-    // GC-eligible once all its slices are consumed (which is immediate — callers always
-    // read struct fields before the next FFI call).
-    // Amortized cost: one Arena + one native malloc per 1024 calls — effectively zero.
-    private static final long SLAB_SLOTS = 1024;
-    private static final long SLAB_BYTES = RustBuffer.LAYOUT.byteSize() * SLAB_SLOTS;
-    private static final long SLOT_SIZE = RustBuffer.LAYOUT.byteSize();
-    private static final ThreadLocal<java.lang.foreign.MemorySegment> RETURN_SLAB = ThreadLocal.withInitial(() ->
-        java.lang.foreign.Arena.ofAuto().allocate(SLAB_BYTES, RustBuffer.LAYOUT.byteAlignment())
-    );
-    private static final ThreadLocal<long[]> SLAB_OFFSET = ThreadLocal.withInitial(() -> new long[]{0});
-    private static final java.lang.foreign.SegmentAllocator RETURN_ALLOCATOR = (byteSize, byteAlignment) -> {
-        long[] offset = SLAB_OFFSET.get();
-        java.lang.foreign.MemorySegment slab = RETURN_SLAB.get();
-        if (offset[0] + byteSize > slab.byteSize()) {
-            slab = java.lang.foreign.Arena.ofAuto().allocate(SLAB_BYTES, RustBuffer.LAYOUT.byteAlignment());
-            RETURN_SLAB.set(slab);
-            offset[0] = 0;
-        }
-        java.lang.foreign.MemorySegment result = slab.asSlice(offset[0], byteSize);
-        offset[0] += byteSize;
-        return result;
-    };
+    // Slab allocator for struct return values from FFI downcalls.
+    // See UniffiSlabAllocator for the design rationale.
+    private static final UniffiSlabAllocator RETURN_ALLOCATOR = new UniffiSlabAllocator(RustBuffer.LAYOUT, 1024);
 
 
     @FunctionalInterface
