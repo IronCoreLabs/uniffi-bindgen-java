@@ -1,16 +1,16 @@
 package {{ config.package_name() }};
 
-public enum FfiConverterString implements FfiConverter<java.lang.String, RustBuffer.ByValue> {
+public enum FfiConverterString implements FfiConverter<java.lang.String, java.lang.foreign.MemorySegment> {
     INSTANCE;
 
     // Note: we don't inherit from FfiConverterRustBuffer, because we use a
     // special encoding when lowering/lifting.  We can use `RustBuffer.len` to
     // store our length and avoid writing it out to the buffer.
     @Override
-    public java.lang.String lift(RustBuffer.ByValue value) {
+    public java.lang.String lift(java.lang.foreign.MemorySegment value) {
         try {
-            byte[] byteArr = new byte[(int) value.len];
-            value.asByteBuffer().get(byteArr);
+            byte[] byteArr = new byte[(int) RustBuffer.getLen(value)];
+            RustBuffer.asByteBuffer(value).get(byteArr);
             return new java.lang.String(byteArr, java.nio.charset.StandardCharsets.UTF_8);
         } finally {
             RustBuffer.free(value);
@@ -37,12 +37,11 @@ public enum FfiConverterString implements FfiConverter<java.lang.String, RustBuf
     }
 
     @Override
-    public RustBuffer.ByValue lower(java.lang.String value) {
+    public java.lang.foreign.MemorySegment lower(java.lang.String value) {
         java.nio.ByteBuffer byteBuf = toUtf8(value);
-        // Ideally we'd pass these bytes to `ffi_bytebuffer_from_bytes`, but doing so would require us
-        // to copy them into a JNA `Memory`. So we might as well directly copy them into a `RustBuffer`.
-        RustBuffer.ByValue rbuf = RustBuffer.alloc((long) byteBuf.limit());
-        rbuf.asByteBuffer().put(byteBuf);
+        java.lang.foreign.MemorySegment rbuf = RustBuffer.alloc((long) byteBuf.limit());
+        RustBuffer.asWriteByteBuffer(rbuf).put(byteBuf);
+        RustBuffer.setLen(rbuf, (long) byteBuf.limit());
         return rbuf;
     }
 

@@ -1,8 +1,5 @@
 package {{ config.package_name() }};
 
-import com.sun.jna.*;
-import com.sun.jna.ptr.*;
-
 {%- call java::docstring_value(interface_docstring, 0) %}
 public interface {{ interface_name }} {
     {% for meth in methods.iter() -%}

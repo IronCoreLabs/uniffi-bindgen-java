@@ -24,17 +24,29 @@
 {%- endmacro %}
 
 {%- macro to_raw_ffi_call(func) -%}
+    {%- match func.return_type() %}
+    {%- when Some(return_type) %}
+    {%- let prim_suffix = return_type|primitive_call_suffix %}
+    {%- let ffi_type = return_type|ffi_type %}
+    {%- when None %}
+    {%- endmatch %}
     {%- match func.throws_type() %}
     {%- when Some(e) %}
     {%- if e|is_external(ci) %}
-    UniffiHelpers.uniffiRustCallWithError(new {{ e|class_name_from_type(ci) }}ExternalErrorHandler(),
+    UniffiHelpers.uniffiRustCallWithError{% match func.return_type() %}{%- when Some(return_type) %}{{ return_type|primitive_call_suffix }}{% when None %}{% endmatch %}(new {{ e|class_name_from_type(ci) }}ExternalErrorHandler(),
     {%- else %}
-    UniffiHelpers.uniffiRustCallWithError(new {{ e|type_name(ci, config) }}ErrorHandler(),
+    UniffiHelpers.uniffiRustCallWithError{% match func.return_type() %}{%- when Some(return_type) %}{{ return_type|primitive_call_suffix }}{% when None %}{% endmatch %}(new {{ e|type_name(ci, config) }}ErrorHandler(),
     {%- endif %}
     {%- else %}
-    UniffiHelpers.uniffiRustCall(
-    {%- endmatch %} _status -> {
+    UniffiHelpers.uniffiRustCall{% match func.return_type() %}{%- when Some(return_type) %}{{ return_type|primitive_call_suffix }}{% when None %}{% endmatch %}(
+    {%- endmatch %} (_allocator, _status) -> {
         {% if func.return_type().is_some() %}return {% endif %}UniffiLib.{{ func.ffi_func().name() }}(
+            {%- match func.return_type() %}
+            {%- when Some(return_type) %}
+            {%- let ffi_type = return_type|ffi_type %}
+            {%- if ffi_type.borrow()|ffi_type_is_struct %}_allocator, {% endif %}
+            {%- when None %}
+            {%- endmatch %}
             {%- match func.self_type() %}
             {%- when Some with (Type::Object { .. }) %}uniffiHandle,
             {%- when Some(t) %}{{ t|lower_fn(config, ci) }}(this),
@@ -75,7 +87,14 @@
         {%-     else -%}
         {%- endmatch %} {
             try {
-                {% match callable.return_type() -%}{%- when Some with (return_type) -%}return {{ return_type|lift_fn(config, ci) }}({% call to_ffi_call(callable) %}){%- when None %}{% call to_ffi_call(callable) %}{%- endmatch %};
+                {% match callable.return_type() -%}
+                {%- when Some with (return_type) -%}
+                {%- if return_type|has_primitive_ffi_type -%}
+                return {% call to_ffi_call(callable) %}
+                {%- else -%}
+                return {{ return_type|lift_fn(config, ci) }}({% call to_ffi_call(callable) %})
+                {%- endif -%}
+                {%- when None %}{% call to_ffi_call(callable) %}{%- endmatch %};
             } catch (java.lang.RuntimeException _uniffi_ex) {
                 {% match callable.throws_type() %}
                 {% when Some(throwable) %}
@@ -138,7 +157,11 @@
 
 {%- macro arg_list_lowered(func) %}
     {%- for arg in func.arguments() %}
+        {%- if arg|has_primitive_ffi_type -%}
+        {{- arg.name()|var_name }}
+        {%- else -%}
         {{- arg|lower_fn(config, ci) }}({{ arg.name()|var_name }})
+        {%- endif -%}
     {%- if !loop.last %}, {% endif -%}
     {%- endfor %}
 {%- endmacro -%}
@@ -172,20 +195,9 @@
 -#}
 {%- macro arg_list_ffi_decl(func) %}
     {%- for arg in func.arguments() %}
-        {{- arg.type_().borrow()|ffi_type_name_by_value(config, ci) }} {{arg.name()|var_name -}}{%- if !loop.last %}, {% endif -%}
+        {{- arg.type_().borrow()|ffi_type_name(config, ci) }} {{arg.name()|var_name -}}{%- if !loop.last %}, {% endif -%}
     {%- endfor %}
-    {%- if func.has_rust_call_status_arg() %}{% if func.arguments().len() != 0 %}, {% endif %}UniffiRustCallStatus uniffi_out_errmk{% endif %}
-{%- endmacro -%}
-
-{#-
-// Arglist for JNA direct mapping native method declarations.
-// Uses primitive types instead of boxed types.
--#}
-{%- macro arg_list_ffi_decl_primitive(func) %}
-    {%- for arg in func.arguments() %}
-        {{- arg.type_().borrow()|ffi_type_name_primitive(config, ci) }} {{arg.name()|var_name -}}{%- if !loop.last %}, {% endif -%}
-    {%- endfor %}
-    {%- if func.has_rust_call_status_arg() %}{% if func.arguments().len() != 0 %}, {% endif %}UniffiRustCallStatus uniffi_out_errmk{% endif %}
+    {%- if func.has_rust_call_status_arg() %}{% if func.arguments().len() != 0 %}, {% endif %}java.lang.foreign.MemorySegment uniffi_out_errmk{% endif %}
 {%- endmacro -%}
 
 {% macro field_name(field, field_num) %}

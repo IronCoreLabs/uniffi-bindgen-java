@@ -161,8 +161,6 @@ pub struct Config {
     pub(super) external_packages: HashMap<String, String>,
     #[serde(default)]
     android: bool,
-    #[serde(default)]
-    android_cleaner: Option<bool>,
     /// Renames for types, fields, methods, variants, and arguments.
     /// Uses dot notation: "OldRecord" = "NewRecord", "OldRecord.field" = "new_field"
     #[serde(default)]
@@ -170,12 +168,16 @@ pub struct Config {
 }
 
 impl Config {
-    pub(crate) fn android_cleaner(&self) -> bool {
-        self.android_cleaner.unwrap_or(self.android)
-    }
-
     pub fn omit_checksums(&self) -> bool {
         self.omit_checksums
+    }
+
+    /// Whether to generate PanamaPort imports for Android compatibility.
+    /// When true, post-processes generated code to replace `java.lang.foreign.*` with
+    /// PanamaPort's `com.v7878.foreign.*` and `java.lang.invoke.VarHandle` with
+    /// `com.v7878.invoke.VarHandle`.
+    pub fn android(&self) -> bool {
+        self.android
     }
 }
 
@@ -246,9 +248,21 @@ impl CustomTypeConfig {
 
 // Generate Java bindings for the given ComponentInterface, as a string.
 pub fn generate_bindings(config: &Config, ci: &ComponentInterface) -> Result<String> {
-    JavaWrapper::new(config.clone(), ci)
+    let output = JavaWrapper::new(config.clone(), ci)
         .render()
-        .context("failed to render java bindings")
+        .context("failed to render java bindings")?;
+
+    if config.android() {
+        // PanamaPort provides the FFM API under a different package prefix.
+        // The API surface is identical so a global string replacement is sufficient.
+        // `java.lang.invoke.MethodHandle/MethodHandles/MethodType` are available on
+        // Android API 26+ and are intentionally left unchanged.
+        Ok(output
+            .replace("java.lang.foreign.", "com.v7878.foreign.")
+            .replace("java.lang.invoke.VarHandle", "com.v7878.invoke.VarHandle"))
+    } else {
+        Ok(output)
+    }
 }
 
 #[derive(Template)]
@@ -385,7 +399,7 @@ impl JavaCodeOracle {
         fixup_keyword(self.var_name_raw(nm))
     }
 
-    /// `var_name` without the reserved word alteration.  Useful for using in `@Structure.FieldOrder`.
+    /// `var_name` without the reserved word alteration.  Useful for struct field names.
     pub fn var_name_raw(&self, nm: &str) -> String {
         nm.to_string().to_lower_camel_case()
     }
@@ -410,142 +424,20 @@ impl JavaCodeOracle {
         format!("Uniffi{}", nm.to_upper_camel_case())
     }
 
-    fn ffi_type_label_by_value(
-        &self,
-        ffi_type: &FfiType,
-        prefer_primitive: bool,
-        config: &Config,
-        ci: &ComponentInterface,
-    ) -> String {
-        match ffi_type {
-            FfiType::RustBuffer(_) => {
-                format!("{}.ByValue", self.ffi_type_label(ffi_type, config, ci))
-            }
-            FfiType::Struct(name) => format!("{}.UniffiByValue", self.ffi_struct_name(name)),
-            _ if prefer_primitive => self.ffi_type_primitive(ffi_type, config, ci),
-            _ => self.ffi_type_label(ffi_type, config, ci),
-        }
-    }
-
-    /// FFI type name to use inside structs
-    ///
-    /// The main requirement here is that all types must have default values or else the struct
-    /// won't work in some JNA contexts.
-    fn ffi_type_label_for_ffi_struct(
-        &self,
-        ffi_type: &FfiType,
-        config: &Config,
-        ci: &ComponentInterface,
-    ) -> String {
-        match ffi_type {
-            // Make callbacks function pointers nullable. This matches the semantics of a C
-            // function pointer better and allows for `null` as a default value.
-            // Everything is nullable in Java by default.
-            FfiType::Callback(name) => self.ffi_callback_name(name).to_string(),
-            _ => self.ffi_type_label_by_value(ffi_type, true, config, ci),
-        }
-    }
-
-    /// Default values for FFI
-    ///
-    /// This is used to:
-    ///   - Set a default return value for error results
-    ///   - Set a default for structs, which JNA sometimes requires
-    fn ffi_default_value(&self, ffi_type: &FfiType) -> String {
-        match ffi_type {
-            FfiType::UInt8 | FfiType::Int8 => "(byte)0".to_owned(),
-            FfiType::UInt16 | FfiType::Int16 => "(short)0".to_owned(),
-            FfiType::UInt32 | FfiType::Int32 => "0".to_owned(),
-            FfiType::UInt64 | FfiType::Int64 => "0L".to_owned(),
-            FfiType::Float32 => "0.0f".to_owned(),
-            FfiType::Float64 => "0.0".to_owned(),
-            FfiType::Handle => "0L".to_owned(),
-            FfiType::RustBuffer(_) => "new RustBuffer.ByValue()".to_owned(),
-            FfiType::Callback(_) => "null".to_owned(),
-            FfiType::RustCallStatus => "new UniffiRustCallStatus.ByValue()".to_owned(),
-            _ => unimplemented!("ffi_default_value: {ffi_type:?}"),
-        }
-    }
-
-    fn ffi_type_label_by_reference(
-        &self,
-        ffi_type: &FfiType,
-        config: &Config,
-        ci: &ComponentInterface,
-    ) -> String {
-        match ffi_type {
-            FfiType::Int32 | FfiType::UInt32 => "IntByReference".to_string(),
-            FfiType::Int8
-            | FfiType::UInt8
-            | FfiType::Int16
-            | FfiType::UInt16
-            | FfiType::Int64
-            | FfiType::UInt64
-            | FfiType::Float32
-            | FfiType::Float64 => {
-                format!("{}ByReference", self.ffi_type_label(ffi_type, config, ci))
-            }
-            FfiType::Handle => "LongByReference".to_owned(),
-            // JNA structs default to ByReference
-            FfiType::RustBuffer(_) | FfiType::Struct(_) => {
-                self.ffi_type_label(ffi_type, config, ci)
-            }
-            _ => panic!("{ffi_type:?} by reference is not implemented"),
-        }
-    }
-
+    /// FFI type label for use in method signatures and MethodHandle wrapper methods.
+    /// In FFM, primitives stay as primitives, everything else is MemorySegment
+    /// (except Handle/RustArcPtr which are long).
     fn ffi_type_label(
         &self,
         ffi_type: &FfiType,
-        config: &Config,
-        ci: &ComponentInterface,
+        _config: &Config,
+        _ci: &ComponentInterface,
     ) -> String {
         match ffi_type {
             // Note that unsigned values in Java don't have true native support. Signed primitives
             // can contain unsigned values and there are methods like `Integer.compareUnsigned`
             // that respect the unsigned value, but knowledge outside the type system is required.
             // TODO(java): improve callers knowledge of what contains an unsigned value
-            FfiType::Int8 | FfiType::UInt8 => "Byte".to_string(),
-            FfiType::Int16 | FfiType::UInt16 => "Short".to_string(),
-            FfiType::Int32 | FfiType::UInt32 => "Integer".to_string(),
-            FfiType::Int64 | FfiType::UInt64 => "Long".to_string(),
-            FfiType::Float32 => "Float".to_string(),
-            FfiType::Float64 => "Double".to_string(),
-            FfiType::Handle => "Long".to_string(),
-            FfiType::RustBuffer(maybe_external) => match maybe_external {
-                Some(external_meta) if external_meta.crate_name() != ci.crate_name() => {
-                    format!(
-                        "{}.RustBuffer",
-                        config.external_type_package_name(
-                            &external_meta.module_path,
-                            &external_meta.name
-                        )
-                    )
-                }
-                _ => "RustBuffer".to_string(),
-            },
-            FfiType::RustCallStatus => "UniffiRustCallStatus.ByValue".to_string(),
-            FfiType::ForeignBytes => "ForeignBytes.ByValue".to_string(),
-            FfiType::Callback(name) => self.ffi_callback_name(name),
-            FfiType::Struct(name) => self.ffi_struct_name(name),
-            FfiType::Reference(inner) | FfiType::MutReference(inner) => {
-                self.ffi_type_label_by_reference(inner, config, ci)
-            }
-            FfiType::VoidPointer => "Pointer".to_string(),
-        }
-    }
-
-    /// Generate primitive types where possible. Useful where we don't need or can't have boxed versions (ie structs).
-    fn ffi_type_primitive(
-        &self,
-        ffi_type: &FfiType,
-        config: &Config,
-        ci: &ComponentInterface,
-    ) -> String {
-        match ffi_type {
-            // Note that unsigned integers in Java are currently experimental, but java.nio.ByteBuffer does not
-            // support them yet. Thus, we use the signed variants to represent both signed and unsigned
-            // types from the component API.
             FfiType::Int8 | FfiType::UInt8 => "byte".to_string(),
             FfiType::Int16 | FfiType::UInt16 => "short".to_string(),
             FfiType::Int32 | FfiType::UInt32 => "int".to_string(),
@@ -553,26 +445,194 @@ impl JavaCodeOracle {
             FfiType::Float32 => "float".to_string(),
             FfiType::Float64 => "double".to_string(),
             FfiType::Handle => "long".to_string(),
-            FfiType::RustBuffer(maybe_external) => match maybe_external {
-                Some(external_meta) if external_meta.crate_name() != ci.crate_name() => {
-                    format!(
-                        "{}.RustBuffer",
-                        config.external_type_package_name(
-                            &external_meta.module_path,
-                            &external_meta.name
-                        )
-                    )
-                }
-                _ => "RustBuffer".to_string(),
-            },
-            FfiType::RustCallStatus => "UniffiRustCallStatus.ByValue".to_string(),
-            FfiType::ForeignBytes => "ForeignBytes.ByValue".to_string(),
-            FfiType::Callback(name) => self.ffi_callback_name(name),
-            FfiType::Struct(name) => self.ffi_struct_name(name),
-            FfiType::Reference(inner) | FfiType::MutReference(inner) => {
-                self.ffi_type_label_by_reference(inner, config, ci)
+            // In FFM, all struct types, buffers, pointers, and callbacks are MemorySegment
+            FfiType::RustBuffer(_)
+            | FfiType::RustCallStatus
+            | FfiType::ForeignBytes
+            | FfiType::Callback(_)
+            | FfiType::Struct(_)
+            | FfiType::VoidPointer
+            | FfiType::Reference(_)
+            | FfiType::MutReference(_) => "java.lang.foreign.MemorySegment".to_string(),
+        }
+    }
+
+    /// FFI type label using boxed types for use in generic contexts (e.g. FfiConverter<T, Long>).
+    /// Java generics don't accept primitives.
+    fn ffi_type_label_boxed(&self, ffi_type: &FfiType) -> String {
+        match ffi_type {
+            FfiType::Int8 | FfiType::UInt8 => "java.lang.Byte".to_string(),
+            FfiType::Int16 | FfiType::UInt16 => "java.lang.Short".to_string(),
+            FfiType::Int32 | FfiType::UInt32 => "java.lang.Integer".to_string(),
+            FfiType::Int64 | FfiType::UInt64 => "java.lang.Long".to_string(),
+            FfiType::Float32 => "java.lang.Float".to_string(),
+            FfiType::Float64 => "java.lang.Double".to_string(),
+            FfiType::Handle => "java.lang.Long".to_string(),
+            _ => "java.lang.foreign.MemorySegment".to_string(),
+        }
+    }
+
+    /// Maps FfiType to ValueLayout constant for FunctionDescriptor construction
+    fn ffi_value_layout(&self, ffi_type: &FfiType) -> String {
+        match ffi_type {
+            FfiType::Int8 | FfiType::UInt8 => "java.lang.foreign.ValueLayout.JAVA_BYTE".to_string(),
+            FfiType::Int16 | FfiType::UInt16 => {
+                "java.lang.foreign.ValueLayout.JAVA_SHORT".to_string()
             }
-            FfiType::VoidPointer => "Pointer".to_string(),
+            FfiType::Int32 | FfiType::UInt32 => {
+                "java.lang.foreign.ValueLayout.JAVA_INT".to_string()
+            }
+            FfiType::Int64 | FfiType::UInt64 => {
+                "java.lang.foreign.ValueLayout.JAVA_LONG".to_string()
+            }
+            FfiType::Float32 => "java.lang.foreign.ValueLayout.JAVA_FLOAT".to_string(),
+            FfiType::Float64 => "java.lang.foreign.ValueLayout.JAVA_DOUBLE".to_string(),
+            FfiType::Handle => "java.lang.foreign.ValueLayout.JAVA_LONG".to_string(),
+            FfiType::RustBuffer(_) => "RustBuffer.LAYOUT".to_string(),
+            // RustCallStatus is passed as a pointer in the C ABI
+            FfiType::RustCallStatus => "java.lang.foreign.ValueLayout.ADDRESS".to_string(),
+            FfiType::ForeignBytes => "ForeignBytes.LAYOUT".to_string(),
+            FfiType::Struct(name) => format!("{}.LAYOUT", self.ffi_struct_name(name)),
+            FfiType::Callback(_)
+            | FfiType::VoidPointer
+            | FfiType::Reference(_)
+            | FfiType::MutReference(_) => "java.lang.foreign.ValueLayout.ADDRESS".to_string(),
+        }
+    }
+
+    /// Returns the alignment requirement (in bytes) for an FFI type
+    fn ffi_type_alignment(&self, ffi_type: &FfiType) -> usize {
+        match ffi_type {
+            FfiType::Int8 | FfiType::UInt8 => 1,
+            FfiType::Int16 | FfiType::UInt16 => 2,
+            FfiType::Int32 | FfiType::UInt32 | FfiType::Float32 => 4,
+            FfiType::Int64 | FfiType::UInt64 | FfiType::Float64 | FfiType::Handle => 8,
+            // Pointers are pointer-aligned (8 bytes on 64-bit)
+            FfiType::Callback(_)
+            | FfiType::VoidPointer
+            | FfiType::Reference(_)
+            | FfiType::MutReference(_) => 8,
+            // Structs: alignment is the max alignment of their fields.
+            // RustBuffer has JAVA_LONG (8) as first field → 8-byte aligned
+            // RustCallStatus starts with JAVA_BYTE but contains RustBuffer → 8-byte aligned
+            // ForeignBytes starts with JAVA_INT → but contains ADDRESS → 8-byte aligned
+            FfiType::RustBuffer(_)
+            | FfiType::RustCallStatus
+            | FfiType::ForeignBytes
+            | FfiType::Struct(_) => 8,
+        }
+    }
+
+    /// Returns the size (in bytes) for an FFI type
+    fn ffi_type_size(&self, ffi_type: &FfiType) -> usize {
+        match ffi_type {
+            FfiType::Int8 | FfiType::UInt8 => 1,
+            FfiType::Int16 | FfiType::UInt16 => 2,
+            FfiType::Int32 | FfiType::UInt32 | FfiType::Float32 => 4,
+            FfiType::Int64 | FfiType::UInt64 | FfiType::Float64 | FfiType::Handle => 8,
+            FfiType::Callback(_)
+            | FfiType::VoidPointer
+            | FfiType::Reference(_)
+            | FfiType::MutReference(_) => 8,
+            // Struct sizes: these are hardcoded based on their layouts
+            FfiType::RustBuffer(_) => 24,  // long + long + pointer
+            FfiType::RustCallStatus => 32, // byte + 7 pad + RustBuffer(24)
+            FfiType::ForeignBytes => 16,   // int + 4 pad + pointer
+            FfiType::Struct(_) => 0,       // unknown at codegen time, handled by LAYOUT
+        }
+    }
+
+    /// Maps FfiType to layout for use as a struct field in StructLayout definitions.
+    /// Unlike ffi_value_layout (for FunctionDescriptors), embedded structs use their
+    /// full LAYOUT here rather than ADDRESS.
+    fn ffi_struct_field_layout(&self, ffi_type: &FfiType) -> String {
+        match ffi_type {
+            FfiType::RustBuffer(_) => "RustBuffer.LAYOUT".to_string(),
+            FfiType::RustCallStatus => "UniffiRustCallStatus.LAYOUT".to_string(),
+            FfiType::ForeignBytes => "ForeignBytes.LAYOUT".to_string(),
+            FfiType::Struct(name) => format!("{}.LAYOUT", self.ffi_struct_name(name)),
+            _ => self.ffi_value_layout(ffi_type),
+        }
+    }
+
+    /// Maps FfiType to UNALIGNED ValueLayout for struct field access
+    fn ffi_value_layout_unaligned(&self, ffi_type: &FfiType) -> String {
+        match ffi_type {
+            FfiType::Int8 | FfiType::UInt8 => "java.lang.foreign.ValueLayout.JAVA_BYTE".to_string(), // byte has no alignment
+            FfiType::Int16 | FfiType::UInt16 => {
+                "java.lang.foreign.ValueLayout.JAVA_SHORT_UNALIGNED".to_string()
+            }
+            FfiType::Int32 | FfiType::UInt32 => {
+                "java.lang.foreign.ValueLayout.JAVA_INT_UNALIGNED".to_string()
+            }
+            FfiType::Int64 | FfiType::UInt64 => {
+                "java.lang.foreign.ValueLayout.JAVA_LONG_UNALIGNED".to_string()
+            }
+            FfiType::Float32 => "java.lang.foreign.ValueLayout.JAVA_FLOAT_UNALIGNED".to_string(),
+            FfiType::Float64 => "java.lang.foreign.ValueLayout.JAVA_DOUBLE_UNALIGNED".to_string(),
+            FfiType::Handle => "java.lang.foreign.ValueLayout.JAVA_LONG_UNALIGNED".to_string(),
+            FfiType::Callback(_)
+            | FfiType::VoidPointer
+            | FfiType::Reference(_)
+            | FfiType::MutReference(_) => {
+                "java.lang.foreign.ValueLayout.ADDRESS_UNALIGNED".to_string()
+            }
+            // Structs use slice-based access, not ValueLayout access
+            _ => self.ffi_value_layout(ffi_type),
+        }
+    }
+
+    /// Cast prefix needed for invokeExact() return values
+    fn ffi_invoke_exact_cast(&self, ffi_type: &FfiType) -> String {
+        match ffi_type {
+            FfiType::Int8 | FfiType::UInt8 => "(byte) ".to_string(),
+            FfiType::Int16 | FfiType::UInt16 => "(short) ".to_string(),
+            FfiType::Int32 | FfiType::UInt32 => "(int) ".to_string(),
+            FfiType::Int64 | FfiType::UInt64 => "(long) ".to_string(),
+            FfiType::Float32 => "(float) ".to_string(),
+            FfiType::Float64 => "(double) ".to_string(),
+            FfiType::Handle => "(long) ".to_string(),
+            FfiType::RustBuffer(_)
+            | FfiType::RustCallStatus
+            | FfiType::ForeignBytes
+            | FfiType::Callback(_)
+            | FfiType::Struct(_)
+            | FfiType::VoidPointer
+            | FfiType::Reference(_)
+            | FfiType::MutReference(_) => "(java.lang.foreign.MemorySegment) ".to_string(),
+        }
+    }
+
+    /// Returns true if the FFI type is a struct that requires a SegmentAllocator
+    /// as the first argument to invokeExact() for downcall handles
+    fn ffi_type_is_struct(&self, ffi_type: &FfiType) -> bool {
+        // RustCallStatus is passed as a pointer, not by value, so it doesn't need SegmentAllocator
+        matches!(
+            ffi_type,
+            FfiType::RustBuffer(_) | FfiType::ForeignBytes | FfiType::Struct(_)
+        )
+    }
+
+    /// Returns true if this FFI type is an embedded struct inside another struct
+    /// (uses slice-based access rather than primitive get/set)
+    fn ffi_type_is_embedded_struct(&self, ffi_type: &FfiType) -> bool {
+        matches!(
+            ffi_type,
+            FfiType::RustBuffer(_)
+                | FfiType::RustCallStatus
+                | FfiType::ForeignBytes
+                | FfiType::Struct(_)
+        )
+    }
+
+    /// Get the struct class name for an FfiType::Struct
+    fn ffi_struct_type_name(&self, ffi_type: &FfiType) -> String {
+        match ffi_type {
+            FfiType::Struct(name) => self.ffi_struct_name(name),
+            FfiType::RustBuffer(_) => "RustBuffer".to_string(),
+            FfiType::RustCallStatus => "UniffiRustCallStatus".to_string(),
+            FfiType::ForeignBytes => "ForeignBytes".to_string(),
+            _ => panic!("ffi_struct_type_name called on non-struct type: {ffi_type:?}"),
         }
     }
 
@@ -705,7 +765,6 @@ impl AsCodeType for &'_ uniffi_bindgen::interface::CallbackInterface {
 mod filters {
     #![allow(unused_variables)]
     use super::*;
-    use uniffi_bindgen::interface::ffi::ExternalFfiMetadata;
     use uniffi_meta::AsType;
 
     // Askama 0.14 passes a Values parameter to all filters. We use `_v` to accept but ignore it.
@@ -927,39 +986,146 @@ mod filters {
         }
     }
 
-    pub fn ffi_type_name_by_value(
+    /// FFI type name (primitive for scalars, MemorySegment for everything else)
+    pub fn ffi_type_name(
         type_: &FfiType,
         _v: &dyn askama::Values,
         config: &Config,
         ci: &ComponentInterface,
     ) -> Result<String, askama::Error> {
-        Ok(JavaCodeOracle.ffi_type_label_by_value(type_, false, config, ci))
+        Ok(JavaCodeOracle.ffi_type_label(type_, config, ci))
     }
 
-    pub fn ffi_type_name_for_ffi_struct(
+    /// Returns the primitive call suffix (e.g. "Long", "Int") for primitive-specialized
+    /// uniffiRustCall variants. Returns empty string for types where the high-level Java
+    /// primitive doesn't match the FFI primitive (e.g. Boolean→byte) or non-primitive types.
+    pub fn primitive_call_suffix(
+        as_ct: &impl AsCodeType,
+        _v: &dyn askama::Values,
+    ) -> Result<String, askama::Error> {
+        // Only bypass FfiConverter when the Java primitive matches the FFI primitive.
+        // Boolean is excluded because it's `boolean` in Java but `byte` at the FFI level.
+        Ok(
+            match as_ct.as_codetype().type_label_primitive().as_deref() {
+                Some("byte") => "Byte",
+                Some("short") => "Short",
+                Some("int") => "Int",
+                Some("long") => "Long",
+                Some("float") => "Float",
+                Some("double") => "Double",
+                _ => "",
+            }
+            .to_string(),
+        )
+    }
+
+    /// Returns true if the argument's FFI type is a primitive where the Java type matches
+    /// the FFI type directly (no conversion needed). Used to skip lower_fn for primitive args.
+    /// Excludes boolean (Java `boolean` vs FFI `byte`).
+    pub fn has_primitive_ffi_type(
+        as_ct: &impl AsCodeType,
+        _v: &dyn askama::Values,
+    ) -> Result<bool, askama::Error> {
+        Ok(matches!(
+            as_ct.as_codetype().type_label_primitive().as_deref(),
+            Some("byte" | "short" | "int" | "long" | "float" | "double")
+        ))
+    }
+
+    /// Maps FfiType to ValueLayout constant for FunctionDescriptor
+    pub fn ffi_value_layout(
         type_: &FfiType,
         _v: &dyn askama::Values,
-        config: &Config,
-        ci: &ComponentInterface,
     ) -> Result<String, askama::Error> {
-        Ok(JavaCodeOracle.ffi_type_label_for_ffi_struct(type_, config, ci))
+        Ok(JavaCodeOracle.ffi_value_layout(type_))
     }
 
-    pub fn ffi_default_value(
-        type_: FfiType,
+    /// Generate the full structLayout body for an FfiStruct, with computed padding
+    pub fn ffi_struct_layout_body(
+        ffi_struct: &uniffi_bindgen::interface::FfiStruct,
         _v: &dyn askama::Values,
     ) -> Result<String, askama::Error> {
-        Ok(JavaCodeOracle.ffi_default_value(&type_))
+        let mut parts = Vec::new();
+        let mut offset: usize = 0;
+        for field in ffi_struct.fields() {
+            let field_type = field.type_();
+            let alignment = JavaCodeOracle.ffi_type_alignment(&field_type);
+            // Insert padding if needed for alignment
+            let padding = if !offset.is_multiple_of(alignment) {
+                alignment - (offset % alignment)
+            } else {
+                0
+            };
+            if padding > 0 {
+                parts.push(format!(
+                    "java.lang.foreign.MemoryLayout.paddingLayout({})",
+                    padding
+                ));
+                offset += padding;
+            }
+            let layout = JavaCodeOracle.ffi_struct_field_layout(&field_type);
+            let field_name = JavaCodeOracle.var_name_raw(field.name());
+            parts.push(format!("{}.withName(\"{}\")", layout, field_name));
+            // Advance offset
+            let size = JavaCodeOracle.ffi_type_size(&field_type);
+            if size > 0 {
+                offset += size;
+            } else {
+                // Unknown size (e.g., user-defined FfiStruct) — can't compute further padding
+                // but alignment was already handled
+                offset = 0; // reset; further padding may be wrong but this is rare
+            }
+        }
+        Ok(parts.join(",\n        "))
     }
 
-    /// FFI type name preferring primitive types (for JNA direct mapping native methods)
-    pub fn ffi_type_name_primitive(
+    /// Maps FfiType to UNALIGNED ValueLayout for struct field access
+    pub fn ffi_value_layout_unaligned(
         type_: &FfiType,
         _v: &dyn askama::Values,
-        config: &Config,
-        ci: &ComponentInterface,
     ) -> Result<String, askama::Error> {
-        Ok(JavaCodeOracle.ffi_type_label_by_value(type_, true, config, ci))
+        Ok(JavaCodeOracle.ffi_value_layout_unaligned(type_))
+    }
+
+    /// Cast prefix for invokeExact() return values
+    pub fn ffi_invoke_exact_cast(
+        type_: &FfiType,
+        _v: &dyn askama::Values,
+    ) -> Result<String, askama::Error> {
+        Ok(JavaCodeOracle.ffi_invoke_exact_cast(type_))
+    }
+
+    /// Returns true if the FFI return type is a struct needing SegmentAllocator
+    pub fn ffi_type_is_struct(
+        type_: &FfiType,
+        _v: &dyn askama::Values,
+    ) -> Result<bool, askama::Error> {
+        Ok(JavaCodeOracle.ffi_type_is_struct(type_))
+    }
+
+    /// Returns true if this is an embedded struct (slice-based access in struct fields)
+    pub fn ffi_type_is_embedded_struct(
+        type_: &FfiType,
+        _v: &dyn askama::Values,
+    ) -> Result<bool, askama::Error> {
+        Ok(JavaCodeOracle.ffi_type_is_embedded_struct(type_))
+    }
+
+    /// Get the struct class name for an FFI struct type
+    pub fn ffi_struct_type_name(
+        type_: &FfiType,
+        _v: &dyn askama::Values,
+    ) -> Result<String, askama::Error> {
+        Ok(JavaCodeOracle.ffi_struct_type_name(type_))
+    }
+
+    /// FFI type name using boxed types for generic contexts (accepts high-level Type)
+    pub fn ffi_type_name_boxed(
+        type_: &impl AsType,
+        _v: &dyn askama::Values,
+    ) -> Result<String, askama::Error> {
+        let ffi_type: FfiType = type_.as_type().into();
+        Ok(JavaCodeOracle.ffi_type_label_boxed(&ffi_type))
     }
 
     /// Get the interface name for a trait implementation (for external trait interfaces).
@@ -1141,7 +1307,7 @@ mod filters {
     ) -> Result<String, askama::Error> {
         let ffi_func = callable.ffi_rust_future_poll(ci);
         Ok(format!(
-            "(future, callback, continuation) -> UniffiLib.{ffi_func}(future, callback, continuation)"
+            "(future, callback, continuationHandle) -> UniffiLib.{ffi_func}(future, callback, continuationHandle)"
         ))
     }
 
@@ -1149,33 +1315,18 @@ mod filters {
         callable: impl Callable,
         _v: &dyn askama::Values,
         ci: &ComponentInterface,
-        config: &Config,
+        _config: &Config,
     ) -> Result<String, askama::Error> {
         let ffi_func = callable.ffi_rust_future_complete(ci);
-        let call = format!("UniffiLib.{ffi_func}(future, continuation)");
-        let call = match callable.return_type() {
-            Some(return_type) if ci.is_external(return_type) => {
-                let ffi_type = FfiType::from(return_type);
-                match ffi_type {
-                    FfiType::RustBuffer(Some(ExternalFfiMetadata { name, module_path })) => {
-                        // Need to convert the RustBuffer from our package to the RustBuffer of the external package
-                        let rust_buffer = format!(
-                            "{}.RustBuffer",
-                            config.external_type_package_name(&module_path, &name)
-                        );
-                        format!(
-                            "(future, continuation) -> {{
-                    var result = {call};
-                    return {rust_buffer}.create(result.capacity, result.len, result.data);
-                }}"
-                        )
-                    }
-                    _ => call,
-                }
-            }
-            _ => format!("(future, continuation) -> {call}"),
-        };
-        Ok(call)
+        // The complete function returns a RustBuffer for types that use RustBuffer FFI,
+        // which is a struct and needs a SegmentAllocator.
+        let needs_allocator = callable.return_type().is_some_and(|t| {
+            let ffi_type: FfiType = t.into();
+            JavaCodeOracle.ffi_type_is_struct(&ffi_type)
+        });
+        let allocator_arg = if needs_allocator { "_allocator, " } else { "" };
+        let call = format!("UniffiLib.{ffi_func}({allocator_arg}future, continuation)");
+        Ok(format!("(_allocator, future, continuation) -> {call}"))
     }
 
     pub fn async_free(
@@ -1556,6 +1707,54 @@ mod tests {
         assert!(
             !bindings.contains("List<java.lang.Boolean>"),
             "should not contain List<java.lang.Boolean>"
+        );
+    }
+
+    #[test]
+    fn android_replaces_ffm_package() {
+        let mut group = MetadataGroup {
+            namespace: NamespaceMetadata {
+                crate_name: "test".to_string(),
+                name: "test".to_string(),
+            },
+            namespace_docstring: None,
+            items: Default::default(),
+        };
+        group.add_item(Metadata::Func(FnMetadata {
+            module_path: "test".to_string(),
+            name: "noop".to_string(),
+            is_async: false,
+            inputs: vec![],
+            return_type: None,
+            throws: None,
+            checksum: None,
+            docstring: None,
+        }));
+
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+
+        let android_config: Config = toml::from_str("android = true").unwrap();
+
+        let bindings = generate_bindings(&android_config, &ci).unwrap();
+
+        assert!(
+            !bindings.contains("java.lang.foreign."),
+            "android bindings should not contain java.lang.foreign"
+        );
+        assert!(
+            bindings.contains("com.v7878.foreign."),
+            "android bindings should contain com.v7878.foreign"
+        );
+        // MethodHandle/MethodHandles/MethodType should NOT be replaced
+        assert!(
+            bindings.contains("java.lang.invoke.MethodHandle"),
+            "android bindings should preserve java.lang.invoke.MethodHandle"
+        );
+        // Standard java.lang types should NOT be replaced
+        assert!(
+            bindings.contains("java.lang.Exception"),
+            "android bindings should preserve java.lang.Exception"
         );
     }
 }

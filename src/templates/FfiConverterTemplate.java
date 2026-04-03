@@ -33,13 +33,12 @@ public interface FfiConverter<JavaType, FfiType> {
     // FfiType.  It's used by the callback interface code.  Callback interface
     // returns are always serialized into a `RustBuffer` regardless of their
     // normal FFI type.
-    default RustBuffer.ByValue lowerIntoRustBuffer(JavaType value) {
-        RustBuffer.ByValue rbuf = RustBuffer.alloc(allocationSize(value));
+    default java.lang.foreign.MemorySegment lowerIntoRustBuffer(JavaType value) {
+        java.lang.foreign.MemorySegment rbuf = RustBuffer.alloc(allocationSize(value));
         try {
-            java.nio.ByteBuffer bbuf = rbuf.data.getByteBuffer(0, rbuf.capacity);
-            bbuf.order(java.nio.ByteOrder.BIG_ENDIAN);
+            java.nio.ByteBuffer bbuf = RustBuffer.asWriteByteBuffer(rbuf);
             write(value, bbuf);
-            rbuf.writeField("len", (long)bbuf.position());
+            RustBuffer.setLen(rbuf, (long) bbuf.position());
             return rbuf;
         } catch (java.lang.Throwable e) {
             RustBuffer.free(rbuf);
@@ -51,8 +50,8 @@ public interface FfiConverter<JavaType, FfiType> {
     //
     // This here mostly because of the symmetry with `lowerIntoRustBuffer()`.
     // It's currently only used by the `FfiConverterRustBuffer` class below.
-    default JavaType liftFromRustBuffer(RustBuffer.ByValue rbuf) {
-        java.nio.ByteBuffer byteBuf = rbuf.asByteBuffer();
+    default JavaType liftFromRustBuffer(java.lang.foreign.MemorySegment rbuf) {
+        java.nio.ByteBuffer byteBuf = RustBuffer.asByteBuffer(rbuf);
         try {
            JavaType item = read(byteBuf);
            if (byteBuf.hasRemaining()) {
@@ -68,13 +67,13 @@ public interface FfiConverter<JavaType, FfiType> {
 package {{ config.package_name() }};
 
 // FfiConverter that uses `RustBuffer` as the FfiType
-public interface FfiConverterRustBuffer<JavaType> extends FfiConverter<JavaType, RustBuffer.ByValue> {
+public interface FfiConverterRustBuffer<JavaType> extends FfiConverter<JavaType, java.lang.foreign.MemorySegment> {
     @Override
-    default JavaType lift(RustBuffer.ByValue value) {
+    default JavaType lift(java.lang.foreign.MemorySegment value) {
         return liftFromRustBuffer(value);
     }
     @Override
-    default RustBuffer.ByValue lower(JavaType value) {
+    default java.lang.foreign.MemorySegment lower(JavaType value) {
         return lowerIntoRustBuffer(value);
     }
 }

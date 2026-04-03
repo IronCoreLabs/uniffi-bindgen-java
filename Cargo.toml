@@ -1,6 +1,6 @@
 [package]
 name = "uniffi-bindgen-java"
-version = "0.3.1"
+version = "0.4.0"
 authors = ["IronCore Labs <info@ironcorelabs.com>"]
 readme = "README.md"
 license = "MPL-2.0"
@@ -14,10 +14,12 @@ edition = "2024"
 [lib]
 name = "uniffi_bindgen_java"
 path = "src/lib.rs"
+bench = false
 
 [[bin]]
 name = "uniffi-bindgen-java"
 path = "src/main.rs"
+bench = false
 
 [dependencies]
 anyhow = "1"
@@ -48,6 +50,8 @@ uniffi-example-custom-types = { git = "https://github.com/mozilla/uniffi-rs.git"
 uniffi-example-futures = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
 uniffi-example-geometry = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
 uniffi-example-rondpoint = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
+uniffi-example-sprites = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
+uniffi-example-todolist = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
 uniffi-fixture-benchmarks = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
 uniffi-fixture-coverall = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }
 uniffi-fixture-ext-types = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.31.0" }

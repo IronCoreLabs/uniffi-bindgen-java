@@ -418,12 +418,18 @@ public class TestFixtureCoverall {
     try (ThreadsafeCounter counter = new ThreadsafeCounter()) {
       ExecutorService executor = Executors.newFixedThreadPool(3);
       try {
+        // Latch ensures the busy-waiting thread has started before the incrementing thread runs.
+        var busyStarted = new java.util.concurrent.CountDownLatch(1);
         var busyWaiting = executor.submit(() -> {
+          busyStarted.countDown();
           // 300 ms should be long enough for the other thread to easily finish
           // its loop, but not so long as to annoy the user with a slow test.
           counter.busyWait(300);
         });
         Future<Integer> incrementing = executor.submit(() -> {
+          busyStarted.await();
+          // Give busyWait time to acquire the Rust-side lock on slow CI.
+          Thread.sleep(50);
           Integer count = 0;
           for (int n = 0; n < 100; n++) {
             // We expect most iterations of this loop to run concurrently with the busy-waiting thread.
@@ -540,6 +546,147 @@ public class TestFixtureCoverall {
       assert exception != null;
     }
 
+    // Test reentrant error handling with thread-local RustCallStatus.
+    // The FFM bindings use a thread-local reusable MemorySegment for RustCallStatus.
+    // This test verifies that rapid alternating success/error/panic calls on the
+    // same thread don't corrupt error data due to premature segment reuse.
+    try (Coveralls coveralls = new Coveralls("test_reentrant_errors")) {
+      // Interleaved success/error/panic/complex-error to verify the thread-local
+      // RustCallStatus isn't corrupted across different outcome types.
+      // Only a few iterations — the bug is deterministic and panics spam stderr.
+      for (int i = 0; i < 5; i++) {
+        assert coveralls.maybeThrow(false);
+        try {
+          coveralls.maybeThrow(true);
+          throw new RuntimeException("Expected CoverallException");
+        } catch (CoverallException.TooManyHoles e) {
+          assert e.getMessage().equals("The coverall has too many holes");
+        }
+        try {
+          coveralls.panic("expected reentrant panic " + i);
+          throw new RuntimeException("Expected InternalException");
+        } catch (InternalException e) {
+          assert e.getMessage().equals("expected reentrant panic " + i);
+        }
+        try {
+          coveralls.maybeThrowComplex((byte) (1 + (i % 3)));
+          throw new RuntimeException("Expected ComplexException");
+        } catch (ComplexException.OsException e) {
+          assert e.code() == 10;
+        } catch (ComplexException.PermissionDenied e) {
+          assert e.reason().equals("Forbidden");
+        } catch (ComplexException.UnknownException e) {
+          // Expected
+        }
+      }
+      // Higher iteration count for error-only path to cycle through all complex error
+      // variants with their different serialized buffer sizes.
+      for (int i = 0; i < 1000; i++) {
+        assert coveralls.maybeThrow(false);
+        try {
+          coveralls.maybeThrow(true);
+          throw new RuntimeException("Expected CoverallException");
+        } catch (CoverallException.TooManyHoles e) {
+          assert e.getMessage().equals("The coverall has too many holes");
+        }
+        try {
+          coveralls.maybeThrowComplex((byte) (1 + (i % 3)));
+          throw new RuntimeException("Expected ComplexException");
+        } catch (ComplexException.OsException e) {
+          assert e.code() == 10;
+        } catch (ComplexException.PermissionDenied e) {
+          assert e.reason().equals("Forbidden");
+        } catch (ComplexException.UnknownException e) {
+          // Expected
+        }
+      }
+    }
+
+    // Test concurrent close() vs GC cleanup race.
+    // Verifies that the UniffiBackpressureCleaner's atomic CAS + linked-list
+    // unlink is safe when explicit close() races with GC-triggered PhantomReference cleanup.
+    {
+      int numThreads = 4;
+      int objectsPerThread = 5000;
+      ExecutorService pool = Executors.newFixedThreadPool(numThreads);
+      List<Future<?>> futures = new ArrayList<>();
+
+      for (int t = 0; t < numThreads; t++) {
+        final int threadId = t;
+        futures.add(pool.submit(() -> {
+          for (int i = 0; i < objectsPerThread; i++) {
+            Coveralls c = new Coveralls("race-" + threadId + "-" + i);
+            // Half the objects are explicitly closed, half are left for GC
+            if (i % 2 == 0) {
+              c.close();
+            }
+            // Occasionally trigger GC to race with close()
+            if (i % 500 == 0) {
+              System.gc();
+            }
+          }
+        }));
+      }
+
+      for (Future<?> f : futures) {
+        f.get();
+      }
+      pool.shutdown();
+
+      // Wait for GC to clean up the non-closed half
+      for (int i = 0; i < 100; i++) {
+        if (Coverall.getNumAlive() <= 1L) {
+          break;
+        }
+        System.gc();
+        Thread.sleep(100);
+      }
+      assert Coverall.getNumAlive() <= 1L
+        : MessageFormat.format("Concurrent close/GC race test: num alive is {0}", Coverall.getNumAlive());
+    }
+
+    // Regression test: struct return allocator must not permanently leak native memory.
+    // Each struct-returning FFI call (e.g., String/record/list returns) allocates a 24-byte
+    // RustBuffer metadata segment. With Arena.global() this leaked permanently — 100k calls
+    // would leak ~2.4 MB that GC could never reclaim.
+    //
+    // This test runs two 100k-call batches with GC between them and measures growth.
+    // With a permanent leak, the second batch adds ~2.4 MB of unreclaimable memory.
+    // With the slab allocator (Arena.ofAuto()-backed), exhausted slabs are GC'd and
+    // growth should be near zero. The 2 MB threshold is below the 2.4 MB leak signal
+    // but well above normal JVM heap noise between identical GC'd workloads.
+    {
+      Runtime runtime = Runtime.getRuntime();
+      try (Coveralls coveralls = new Coveralls("test_no_struct_return_leak")) {
+        for (int i = 0; i < 1000; i++) {
+          coveralls.getStatus("warmup");
+        }
+
+        for (int i = 0; i < 100_000; i++) {
+          String result = coveralls.getStatus("iter");
+          assert result.equals("status: iter") : "Unexpected result: " + result;
+        }
+        for (int i = 0; i < 5; i++) {
+          System.gc();
+          Thread.sleep(50);
+        }
+        long usedMemory = runtime.totalMemory() - runtime.freeMemory();
+
+        for (int i = 0; i < 100_000; i++) {
+          coveralls.getStatus("iter2");
+        }
+        for (int i = 0; i < 5; i++) {
+          System.gc();
+          Thread.sleep(50);
+        }
+        long usedMemoryAfter = runtime.totalMemory() - runtime.freeMemory();
+
+        long growth = usedMemoryAfter - usedMemory;
+        assert growth < 2_000_000L
+          : MessageFormat.format("Struct return memory leak: {0} bytes growth between two 100k-call batches (expected near-zero, leak would show ~2.4 MB)", growth);
+      }
+    }
+
     // This is from an earlier GC test; ealier, we made 1000 new objects.
     // By now, the GC has had time to clean up, and now we should see 0 alive.
     // (hah! Wishful-thinking there ;)
@@ -554,8 +701,148 @@ public class TestFixtureCoverall {
     }
 
     assert Coverall.getNumAlive() <= 1L : MessageFormat.format("Num alive is {0}. GC/Cleaner thread has starved", Coverall.getNumAlive());
+
+    // High-throughput backpressure test: allocate 100k objects in a tight loop without
+    // calling close(). The backpressure cleaner drains refs inline during register(),
+    // preventing unbounded memory growth. Without backpressure this OOMs because the
+    // single Cleaner daemon thread can't keep up with the allocation rate.
+    for (int i = 0; i < 100_000; i++) {
+      new Coveralls("backpressure " + i);
+    }
+    for (int i = 0; i < 100; i++) {
+      if (Coverall.getNumAlive() <= 1L) {
+        break;
+      }
+      System.gc();
+      Thread.sleep(100);
+    }
+    assert Coverall.getNumAlive() <= 1L : MessageFormat.format("Backpressure test: num alive is {0}. Cleaner could not keep up.", Coverall.getNumAlive());
+
+    // --- Multi-threaded slab allocator stress test ---
+    // The struct return slab allocator is thread-local. This validates thread-local
+    // isolation and GC reclamation of exhausted slabs under contention.
+    {
+      Runtime runtime = Runtime.getRuntime();
+      int numThreads = 8;
+      int callsPerThread = 50_000;
+
+      // Warmup
+      try (Coveralls warmup = new Coveralls("slab-warmup")) {
+        for (int i = 0; i < 1000; i++) {
+          warmup.getStatus("warmup");
+        }
+      }
+      for (int i = 0; i < 5; i++) { System.gc(); Thread.sleep(50); }
+      long baselineMemory = runtime.totalMemory() - runtime.freeMemory();
+
+      ExecutorService slabPool = Executors.newFixedThreadPool(numThreads);
+      List<Future<?>> slabFutures = new ArrayList<>();
+      for (int t = 0; t < numThreads; t++) {
+        final int threadId = t;
+        slabFutures.add(slabPool.submit(() -> {
+          try (Coveralls c = new Coveralls("slab-thread-" + threadId)) {
+            for (int i = 0; i < callsPerThread; i++) {
+              String result = c.getStatus("t" + threadId);
+              assert result.equals("status: t" + threadId)
+                  : "Wrong result on thread " + threadId + " iteration " + i;
+            }
+          }
+        }));
+      }
+      for (Future<?> f : slabFutures) { f.get(); }
+      slabPool.shutdown();
+
+      for (int i = 0; i < 5; i++) { System.gc(); Thread.sleep(50); }
+      long finalMemory = runtime.totalMemory() - runtime.freeMemory();
+
+      // 8 threads × 50k calls = 400k struct returns. With Arena.global() that would
+      // permanently leak 400k × 24 bytes ≈ 9.6 MB. With the slab allocator, exhausted
+      // slabs are GC'd and growth should be well under that.
+      long growth = finalMemory - baselineMemory;
+      assert growth < 5_000_000L
+          : MessageFormat.format("Multi-threaded slab leak: {0} bytes growth across {1} threads x {2} calls",
+              growth, numThreads, callsPerThread);
+      System.out.println(MessageFormat.format(
+          "multi-threaded slab allocator ({0} threads x {1} calls, {2} bytes growth) ... ok",
+          numThreads, callsPerThread, growth));
+    }
+
+    // --- Concurrent use-while-closing test ---
+    // Verifies that calling methods on an object while another thread calls close()
+    // results in a clean IllegalStateException, not a crash or data corruption.
+    {
+      int iterations = 1000;
+      int numCallers = 4;
+      ExecutorService racePool = Executors.newFixedThreadPool(numCallers + 1);
+
+      for (int iter = 0; iter < iterations; iter++) {
+        Coveralls coveralls = new Coveralls("use-close-race-" + iter);
+        CyclicBarrier barrier = new CyclicBarrier(numCallers + 1);
+
+        List<Future<?>> raceFutures = new ArrayList<>();
+        for (int t = 0; t < numCallers; t++) {
+          raceFutures.add(racePool.submit(() -> {
+            try { barrier.await(); } catch (Exception e) { return; }
+            try {
+              coveralls.getName();
+            } catch (IllegalStateException e) {
+              // Expected when close() beats us — object already destroyed
+            }
+          }));
+        }
+        raceFutures.add(racePool.submit(() -> {
+          try { barrier.await(); } catch (Exception e) { return; }
+          coveralls.close();
+        }));
+
+        for (Future<?> f : raceFutures) { f.get(); }
+      }
+
+      racePool.shutdown();
+
+      for (int i = 0; i < 100; i++) {
+        if (Coverall.getNumAlive() <= 1L) break;
+        System.gc();
+        Thread.sleep(100);
+      }
+      assert Coverall.getNumAlive() <= 1L
+          : MessageFormat.format("Use-while-closing: {0} objects leaked", Coverall.getNumAlive());
+      System.out.println("concurrent use-while-closing (1000 iterations x 5 threads) ... ok");
+    }
+
+    // --- Large RustBuffer roundtrip test ---
+    // Validates that megabyte-scale data passes correctly through FFM MemorySegment
+    // and that RustBuffer allocation/deallocation handles large sizes without leaks.
+    {
+      Runtime runtime = Runtime.getRuntime();
+      try (Coveralls coveralls = new Coveralls("large-data-test")) {
+        String largeInput = "0123456789".repeat(100_000); // 1 MB
+
+        coveralls.getStatus("warmup");
+        for (int i = 0; i < 5; i++) { System.gc(); Thread.sleep(50); }
+        long baseline = runtime.totalMemory() - runtime.freeMemory();
+
+        for (int i = 0; i < 100; i++) {
+          String result = coveralls.getStatus(largeInput);
+          assert result.length() == "status: ".length() + largeInput.length()
+              : "Large data length mismatch on iteration " + i;
+          assert result.startsWith("status: 0123456789")
+              : "Large data corruption on iteration " + i;
+        }
+
+        for (int i = 0; i < 5; i++) { System.gc(); Thread.sleep(50); }
+        long after = runtime.totalMemory() - runtime.freeMemory();
+
+        // 100 × ~1MB strings lower + lift = ~200 MB of RustBuffer traffic.
+        // If buffers leak, memory growth would be massive. Allow 10 MB for JVM noise.
+        long growth = after - baseline;
+        assert growth < 10_000_000L
+            : MessageFormat.format("Large RustBuffer leak: {0} bytes growth for 100 x 1MB roundtrips", growth);
+      }
+      System.out.println("large RustBuffer roundtrip (100 x 1MB) ... ok");
+    }
   }
-  
+
   public static boolean almostEquals(float a, float b) {
     return Math.abs(a - b) < .000001f;
   }

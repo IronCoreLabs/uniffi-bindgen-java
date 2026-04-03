@@ -19,7 +19,7 @@
 {% include "HandleMap.java" %}
 
 // Contains loading, initialization code,
-// and the FFI Function declarations in a com.sun.jna.Library.
+// and the FFI Function declarations using Java FFM (Foreign Function & Memory API).
 {% include "NamespaceLibraryTemplate.java" %}
 
 // Async support

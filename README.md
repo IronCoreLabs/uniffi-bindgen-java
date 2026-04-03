@@ -4,12 +4,14 @@ Generate [UniFFI](https://github.com/mozilla/uniffi-rs) bindings for Java.
 
 Official Kotlin bindings already exist, which can be used by any JVM language including Java. The Java specific bindings use Java-native types where possible for a more ergonomic interface, for example the Java bindings use `CompletableFutures` instead of `kotlinx.coroutines`.
 
+Generated bindings use Java's [Foreign Function & Memory API](https://docs.oracle.com/en/java/javase/21/core/foreign-function-and-memory-api.html) (Project Panama) instead of JNA. See [benches/](benches/) for performance comparisons with Kotlin, Python, and Swift.
+
 We highly reccommend you use [UniFFI's proc-macro definition](https://mozilla.github.io/uniffi-rs/latest/proc_macro/index.html) instead of UDL where possible. 
 
 ## Requirements
 
-* Java 20+: `javac`, and `jar`
-* The [Java Native Access](https://github.com/java-native-access/jna#download) JAR downloaded and its path added to your `$CLASSPATH` environment variable.
+* Java 22+: `javac`, and `jar`
+* At runtime, the JVM must be allowed to use the Foreign Function & Memory API. For classpath-based applications, pass `--enable-native-access=ALL-UNNAMED` to `java`. For JPMS modules, use `--enable-native-access=your.module.name`. See [Java's documentation](https://docs.oracle.com/en/java/javase/25/core/restricted-methods.html#GUID-080FE2FA-F96A-4987-B4E1-A9F089D11B54__GUID-70A202F4-46C0-4D4D-8CD0-9D147854F776) for more information.
 
 ## Installation
 
@@ -115,7 +117,7 @@ Arguments:
 
 ## Integrating Bindings
 
-After generation you'll have an `--out-dir` full of Java files. Package those into a `.jar` using your build tools of choice, and the result can be imported and used as per normal in any Java project with the `JNA` dependency available.
+After generation you'll have an `--out-dir` full of Java files. Package those into a `.jar` using your build tools of choice, and the result can be imported and used as per normal in any Java project. The generated code uses the Foreign Function & Memory API (no external dependencies like JNA are required).
 
 Any top level functions in the Rust library will be static methods in a class named after the crate.
 
@@ -131,8 +133,7 @@ The generated Java can be configured using a `uniffi.toml` configuration file.
 | `custom_types` | | A map which controls how custom types are exposed to Java. See the [custom types section of the UniFFI manual](https://mozilla.github.io/uniffi-rs/latest/udl/custom_types.html#custom-types-in-the-bindings-code) |
 | `external_packages` | | A map of packages to be used for the specified external crates. The key is the Rust crate name, the value is the Java package which will be used referring to types in that crate. See the [external types section of the manual](https://mozilla.github.io/uniffi-rs/latest/udl/ext_types_external.html#kotlin) |
 | `rename` | | A map to rename types, functions, methods, and their members in the generated Java bindings. See the [renaming section](https://mozilla.github.io/uniffi-rs/latest/renaming.html). |
-| `android` | `false` | Used to toggle on Android specific optimizations (warning: not well tested yet) |
-| `android_cleaner` | `android` | Use the `android.system.SystemCleaner` instead of `java.lang.ref.Cleaner`. Fallback in both instances is the one shipped with JNA. |
+| `android` | `false` | Generate [PanamaPort](https://github.com/vova7878/PanamaPort)-compatible code for Android. Replaces `java.lang.foreign.*` with `com.v7878.foreign.*` and `java.lang.invoke.VarHandle` with `com.v7878.invoke.VarHandle`. Requires PanamaPort `io.github.vova7878.panama:Core` as a runtime dependency and Android API 26+. |
 | `omit_checksums` | `false` | Whether to omit checking the library checksums as the library is initialized. Changing this will shoot yourself in the foot if you mixup your build pipeline in any way, but might speed up initialization. |
 
 ### Example

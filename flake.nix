@@ -17,7 +17,8 @@
         # nix develop
         devShell = pkgs.mkShell {
           buildInputs = with pkgs;
-            [ rusttoolchain pkg-config openjdk21 jna ];
+            [ rusttoolchain pkg-config jdk25 ]
+            ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [ pkgs.apple-sdk_15 ];
         };
 
       });
