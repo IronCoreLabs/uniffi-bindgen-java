@@ -1134,15 +1134,15 @@ mod filters {
         _v: &dyn askama::Values,
         ci: &ComponentInterface,
     ) -> Result<String, askama::Error> {
-        let Some(module_path) = trait_ty.module_path() else {
+        let Some(crate_name) = trait_ty.crate_name() else {
             return Err(to_askama_error(&format!(
                 "Invalid trait_type: {trait_ty:?}"
             )));
         };
-        let Some(ci_look) = ci.find_component_interface(module_path) else {
+        let Some(ci_look) = ci.find_component_interface(crate_name) else {
             return Err(to_askama_error(&format!(
-                "no interface with module_path: {}",
-                module_path
+                "no interface with crate_name: {}",
+                crate_name
             )));
         };
 
@@ -1433,7 +1433,8 @@ mod tests {
     use uniffi_bindgen::interface::ComponentInterface;
     use uniffi_meta::{
         EnumMetadata, EnumShape, FnMetadata, FnParamMetadata, Metadata, MetadataGroup,
-        NamespaceMetadata, Type, VariantMetadata,
+        NamespaceMetadata, ObjectImpl, ObjectMetadata, ObjectTraitImplMetadata, Type,
+        VariantMetadata,
     };
 
     #[test]
@@ -1755,6 +1756,71 @@ mod tests {
         assert!(
             bindings.contains("java.lang.Exception"),
             "android bindings should preserve java.lang.Exception"
+        );
+    }
+
+    #[test]
+    fn trait_impl_with_submodule_path() {
+        // Regression test: when a crate has multiple modules, module_path is
+        // "crate_name::submodule" but find_component_interface() matches on
+        // crate_name alone. Using module_path() instead of crate_name() would
+        // fail to find the CI for multi-module crates.
+        let submodule_path = "mycrate::inner";
+        let mut group = MetadataGroup {
+            namespace: NamespaceMetadata {
+                crate_name: "mycrate".to_string(),
+                name: "mycrate".to_string(),
+            },
+            namespace_docstring: None,
+            items: Default::default(),
+        };
+
+        // A trait object defined in a submodule
+        group.add_item(Metadata::Object(ObjectMetadata {
+            module_path: submodule_path.to_string(),
+            name: "MyTrait".to_string(),
+            remote: false,
+            imp: ObjectImpl::CallbackTrait,
+            docstring: None,
+        }));
+
+        // A concrete object that implements the trait, also in the submodule
+        group.add_item(Metadata::Object(ObjectMetadata {
+            module_path: submodule_path.to_string(),
+            name: "MyObj".to_string(),
+            remote: false,
+            imp: ObjectImpl::Struct,
+            docstring: None,
+        }));
+
+        group.add_item(Metadata::ObjectTraitImpl(ObjectTraitImplMetadata {
+            ty: Type::Object {
+                module_path: submodule_path.to_string(),
+                name: "MyObj".to_string(),
+                imp: ObjectImpl::Struct,
+            },
+            trait_ty: Type::Object {
+                module_path: submodule_path.to_string(),
+                name: "MyTrait".to_string(),
+                imp: ObjectImpl::CallbackTrait,
+            },
+        }));
+
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+        // The CI needs to know about itself for find_component_interface() lookups
+        ci.set_all_component_interfaces(vec![ci.clone()]);
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+
+        // The object should implement the trait interface
+        assert!(
+            bindings.contains("implements AutoCloseable, MyObjInterface, MyTrait"),
+            "MyObj should implement MyTrait via trait_interface_name even with submodule path:\n{}",
+            bindings
+                .lines()
+                .filter(|l| l.contains("MyObj") || l.contains("MyTrait"))
+                .collect::<Vec<_>>()
+                .join("\n")
         );
     }
 }
