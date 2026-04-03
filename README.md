@@ -10,7 +10,7 @@ We highly reccommend you use [UniFFI's proc-macro definition](https://mozilla.gi
 
 ## Requirements
 
-* Java 21+: `javac`, and `jar`
+* Java 22+: `javac`, and `jar`
 * At runtime, the JVM must be allowed to use the Foreign Function & Memory API. For classpath-based applications, pass `--enable-native-access=ALL-UNNAMED` to `java`. For JPMS modules, use `--enable-native-access=your.module.name`. See [Java's documentation](https://docs.oracle.com/en/java/javase/25/core/restricted-methods.html#GUID-080FE2FA-F96A-4987-B4E1-A9F089D11B54__GUID-70A202F4-46C0-4D4D-8CD0-9D147854F776) for more information.
 
 ## Installation

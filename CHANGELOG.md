@@ -1,3 +1,12 @@
+## 0.4.0
+
+- switched from JNA generated bindings to FFM ones. Benchmarked performance speedup (via upstream benchmark suite) is from 4.2x-426x.
+
+### Breaking
+
+- the "major" (pre-release) bump is primarily because the switch from JNA to FFM is so foundational.
+- Java 22+ is required (though 21+ could work using preview features).
+
 ## 0.3.1
 
 - remove spinlock where Java checks for Rust future completion (uses a thenCompose based CF chain to prevent unnecessary blocking)
