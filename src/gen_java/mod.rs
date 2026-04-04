@@ -862,6 +862,19 @@ mod filters {
         }
     }
 
+    fn component_interface_for_module_path<'a>(
+        ci: &'a ComponentInterface,
+        module_path: &str,
+    ) -> Option<&'a ComponentInterface> {
+        let crate_name = module_path.split("::").next().unwrap_or(module_path);
+        if crate_name == ci.crate_name() {
+            Some(ci)
+        } else {
+            ci.find_component_interface(module_path)
+                .or_else(|| ci.find_component_interface(crate_name))
+        }
+    }
+
     pub(super) fn canonical_name(
         as_ct: &impl AsCodeType,
         _v: &dyn askama::Values,
@@ -1139,7 +1152,7 @@ mod filters {
                 "Invalid trait_type: {trait_ty:?}"
             )));
         };
-        let Some(ci_look) = ci.find_component_interface(module_path) else {
+        let Some(ci_look) = component_interface_for_module_path(ci, module_path) else {
             return Err(to_askama_error(&format!(
                 "no interface with module_path: {}",
                 module_path
@@ -1432,8 +1445,9 @@ mod tests {
     use super::*;
     use uniffi_bindgen::interface::ComponentInterface;
     use uniffi_meta::{
-        EnumMetadata, EnumShape, FnMetadata, FnParamMetadata, Metadata, MetadataGroup,
-        NamespaceMetadata, Type, VariantMetadata,
+        CallbackInterfaceMetadata, EnumMetadata, EnumShape, FnMetadata, FnParamMetadata, Metadata,
+        MetadataGroup, NamespaceMetadata, ObjectImpl, ObjectMetadata, ObjectTraitImplMetadata,
+        Type, VariantMetadata,
     };
 
     #[test]
@@ -1755,6 +1769,66 @@ mod tests {
         assert!(
             bindings.contains("java.lang.Exception"),
             "android bindings should preserve java.lang.Exception"
+        );
+    }
+
+    #[test]
+    fn local_trait_impls_accept_submodule_module_paths() {
+        let mut group = MetadataGroup {
+            namespace: NamespaceMetadata {
+                crate_name: "test".to_string(),
+                name: "test".to_string(),
+            },
+            namespace_docstring: None,
+            items: Default::default(),
+        };
+        group.add_item(Metadata::Object(ObjectMetadata {
+            module_path: "test".to_string(),
+            name: "DefaultMetricsRecorder".to_string(),
+            remote: false,
+            imp: ObjectImpl::Struct,
+            docstring: None,
+        }));
+        group.add_item(Metadata::CallbackInterface(CallbackInterfaceMetadata {
+            module_path: "test::metrics".to_string(),
+            name: "MetricsRecorder".to_string(),
+            docstring: None,
+        }));
+        group.add_item(Metadata::ObjectTraitImpl(ObjectTraitImplMetadata {
+            ty: Type::Object {
+                module_path: "test".to_string(),
+                name: "DefaultMetricsRecorder".to_string(),
+                imp: ObjectImpl::Struct,
+            },
+            trait_ty: Type::CallbackInterface {
+                module_path: "test::metrics".to_string(),
+                name: "MetricsRecorder".to_string(),
+            },
+        }));
+
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+
+        let interface_name = super::filters::trait_interface_name(
+            &Type::CallbackInterface {
+                module_path: "test::metrics".to_string(),
+                name: "MetricsRecorder".to_string(),
+            },
+            &(),
+            &ci,
+        )
+        .unwrap();
+        assert_eq!(interface_name, "MetricsRecorder");
+
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+        let relevant_lines = bindings
+            .lines()
+            .filter(|line| line.contains("class DefaultMetricsRecorder"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            bindings.contains("DefaultMetricsRecorderInterface, MetricsRecorder"),
+            "expected local callback trait impls with submodule paths to render successfully:\n{relevant_lines}"
         );
     }
 }
