@@ -862,6 +862,19 @@ mod filters {
         }
     }
 
+    /// Returns the [`ComponentInterface`] that owns `module_path`.
+    ///
+    /// `ci` is the local component interface for the crate currently being generated.
+    /// `module_path` is the UniFFI module path recorded on a type or trait, such as
+    /// `crate_name::nested_module`.
+    ///
+    /// If `module_path` belongs to the current crate, this returns `ci` directly.
+    /// Otherwise it looks up an external component interface first by the full
+    /// module path and then by the crate name derived from the first `::` segment.
+    /// That fallback handles metadata that may identify external items by either
+    /// their full module path or just their crate.
+    ///
+    /// Returns `None` if no loaded component interface matches either lookup.
     fn component_interface_for_module_path<'a>(
         ci: &'a ComponentInterface,
         module_path: &str,
