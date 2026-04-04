@@ -1447,7 +1447,7 @@ mod tests {
     use uniffi_meta::{
         CallbackInterfaceMetadata, EnumMetadata, EnumShape, FnMetadata, FnParamMetadata, Metadata,
         MetadataGroup, NamespaceMetadata, ObjectImpl, ObjectMetadata, ObjectTraitImplMetadata,
-        Type, VariantMetadata,
+        TraitMethodMetadata, Type, VariantMetadata,
     };
 
     #[test]
@@ -1829,6 +1829,64 @@ mod tests {
         assert!(
             bindings.contains("DefaultMetricsRecorderInterface, MetricsRecorder"),
             "expected local callback trait impls with submodule paths to render successfully:\n{relevant_lines}"
+        );
+    }
+
+    #[test]
+    fn callback_interface_helpers_use_class_style_names() {
+        let mut group = MetadataGroup {
+            namespace: NamespaceMetadata {
+                crate_name: "test".to_string(),
+                name: "test".to_string(),
+            },
+            namespace_docstring: None,
+            items: Default::default(),
+        };
+        group.add_item(Metadata::CallbackInterface(CallbackInterfaceMetadata {
+            module_path: "test".to_string(),
+            name: "Histogram".to_string(),
+            docstring: None,
+        }));
+        group.add_item(Metadata::TraitMethod(TraitMethodMetadata {
+            module_path: "test".to_string(),
+            trait_name: "Histogram".to_string(),
+            index: 0,
+            name: "record".to_string(),
+            is_async: false,
+            inputs: vec![FnParamMetadata {
+                name: "value".to_string(),
+                ty: Type::Float64,
+                by_ref: false,
+                optional: false,
+                default: None,
+            }],
+            return_type: None,
+            throws: None,
+            takes_self_by_arc: false,
+            checksum: None,
+            docstring: None,
+        }));
+
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+
+        assert!(
+            bindings.contains("public void record(double value);"),
+            "expected callback interface API to preserve the Rust method name:\n{bindings}"
+        );
+        assert!(
+            bindings.contains("public static final class RecordCallback implements UniffiCallbackInterfaceHistogramMethod0.Fn"),
+            "expected callback helper class to use a Java class-style name:\n{bindings}"
+        );
+        assert!(
+            bindings.contains("RecordCallback.INSTANCE"),
+            "expected generated callback helper references to use the renamed helper class:\n{bindings}"
+        );
+        assert!(
+            !bindings.contains("public static class record implements"),
+            "unexpected lowercase helper class leaked into generated bindings:\n{bindings}"
         );
     }
 }
