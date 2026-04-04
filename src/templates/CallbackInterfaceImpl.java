@@ -27,9 +27,10 @@ public class {{ trait_impl }} {
     }
 
     {%- for (ffi_callback, meth) in vtable_methods.iter() %}
-    public static final class {{ meth.name()|class_name(ci) }}Callback implements {{ ffi_callback.name()|ffi_callback_name }}.Fn {
-        public static final {{ meth.name()|class_name(ci) }}Callback INSTANCE = new {{ meth.name()|class_name(ci) }}Callback();
-        private {{ meth.name()|class_name(ci) }}Callback() {}
+    {% let callback_class = meth.name()|class_name(ci) %}
+    public static final class {{ callback_class }}Callback implements {{ ffi_callback.name()|ffi_callback_name }}.Fn {
+        public static final {{ callback_class }}Callback INSTANCE = new {{ callback_class }}Callback();
+        private {{ callback_class }}Callback() {}
 
         @Override
         public {% match ffi_callback.return_type() %}{% when Some(return_type) %}{{ return_type|ffi_type_name(config, ci) }}{% when None %}void{% endmatch %} callback(
