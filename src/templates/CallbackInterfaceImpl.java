@@ -17,7 +17,7 @@ public class {{ trait_impl }} {
         {{ vtable|ffi_struct_type_name }}.setuniffiFree(vtable, {{ "CallbackInterfaceFree"|ffi_callback_name }}.toUpcallStub(UniffiFree.INSTANCE, java.lang.foreign.Arena.global()));
         {{ vtable|ffi_struct_type_name }}.setuniffiClone(vtable, {{ "CallbackInterfaceClone"|ffi_callback_name }}.toUpcallStub(UniffiClone.INSTANCE, java.lang.foreign.Arena.global()));
         {%- for (ffi_callback, meth) in vtable_methods.iter() %}
-        {{ vtable|ffi_struct_type_name }}.set{{ meth.name()|var_name_raw }}(vtable, {{ ffi_callback.name()|ffi_callback_name }}.toUpcallStub({{ meth.name()|var_name }}.INSTANCE, java.lang.foreign.Arena.global()));
+        {{ vtable|ffi_struct_type_name }}.set{{ meth.name()|var_name_raw }}(vtable, {{ ffi_callback.name()|ffi_callback_name }}.toUpcallStub({{ meth.name()|class_name(ci) }}Callback.INSTANCE, java.lang.foreign.Arena.global()));
         {%- endfor %}
     }
 
@@ -27,10 +27,10 @@ public class {{ trait_impl }} {
     }
 
     {%- for (ffi_callback, meth) in vtable_methods.iter() %}
-    {% let inner_method_class = meth.name()|var_name %}
-    public static class {{ inner_method_class }} implements {{ ffi_callback.name()|ffi_callback_name }}.Fn {
-        public static final {{ inner_method_class }} INSTANCE = new {{ inner_method_class }}();
-        private {{ inner_method_class }}() {}
+    {% let callback_class = meth.name()|class_name(ci) %}
+    public static final class {{ callback_class }}Callback implements {{ ffi_callback.name()|ffi_callback_name }}.Fn {
+        public static final {{ callback_class }}Callback INSTANCE = new {{ callback_class }}Callback();
+        private {{ callback_class }}Callback() {}
 
         @Override
         public {% match ffi_callback.return_type() %}{% when Some(return_type) %}{{ return_type|ffi_type_name(config, ci) }}{% when None %}void{% endmatch %} callback(

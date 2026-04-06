@@ -862,6 +862,24 @@ mod filters {
         }
     }
 
+    /// Returns the [`ComponentInterface`] that owns `module_path`.
+    ///
+    /// If `module_path` belongs to the current crate, returns `ci` directly.
+    /// Otherwise looks up an external component interface by the full module
+    /// path first, then by the crate name (first `::` segment).
+    fn component_interface_for_module_path<'a>(
+        ci: &'a ComponentInterface,
+        module_path: &str,
+    ) -> Option<&'a ComponentInterface> {
+        let crate_name = module_path.split("::").next().unwrap_or(module_path);
+        if crate_name == ci.crate_name() {
+            Some(ci)
+        } else {
+            ci.find_component_interface(module_path)
+                .or_else(|| ci.find_component_interface(crate_name))
+        }
+    }
+
     pub(super) fn canonical_name(
         as_ct: &impl AsCodeType,
         _v: &dyn askama::Values,
@@ -1139,7 +1157,7 @@ mod filters {
                 "Invalid trait_type: {trait_ty:?}"
             )));
         };
-        let Some(ci_look) = ci.find_component_interface(module_path) else {
+        let Some(ci_look) = component_interface_for_module_path(ci, module_path) else {
             return Err(to_askama_error(&format!(
                 "no interface with module_path: {}",
                 module_path
@@ -1432,8 +1450,9 @@ mod tests {
     use super::*;
     use uniffi_bindgen::interface::ComponentInterface;
     use uniffi_meta::{
-        EnumMetadata, EnumShape, FnMetadata, FnParamMetadata, Metadata, MetadataGroup,
-        NamespaceMetadata, Type, VariantMetadata,
+        CallbackInterfaceMetadata, EnumMetadata, EnumShape, FnMetadata, FnParamMetadata, Metadata,
+        MetadataGroup, NamespaceMetadata, ObjectImpl, ObjectMetadata, ObjectTraitImplMetadata,
+        TraitMethodMetadata, Type, VariantMetadata,
     };
 
     #[test]
@@ -1755,6 +1774,207 @@ mod tests {
         assert!(
             bindings.contains("java.lang.Exception"),
             "android bindings should preserve java.lang.Exception"
+        );
+    }
+
+    #[test]
+    fn trait_impl_with_submodule_path() {
+        // Regression test: when a crate has multiple modules, module_path is
+        // "crate_name::submodule". component_interface_for_module_path() handles
+        // this by checking the local CI's crate_name first before falling back
+        // to find_component_interface() for external crates.
+        let submodule_path = "mycrate::inner";
+        let mut group = MetadataGroup {
+            namespace: NamespaceMetadata {
+                crate_name: "mycrate".to_string(),
+                name: "mycrate".to_string(),
+            },
+            namespace_docstring: None,
+            items: Default::default(),
+        };
+
+        // A trait object defined in a submodule
+        group.add_item(Metadata::Object(ObjectMetadata {
+            module_path: submodule_path.to_string(),
+            name: "MyTrait".to_string(),
+            remote: false,
+            imp: ObjectImpl::CallbackTrait,
+            docstring: None,
+        }));
+
+        // A concrete object that implements the trait, also in the submodule
+        group.add_item(Metadata::Object(ObjectMetadata {
+            module_path: submodule_path.to_string(),
+            name: "MyObj".to_string(),
+            remote: false,
+            imp: ObjectImpl::Struct,
+            docstring: None,
+        }));
+
+        group.add_item(Metadata::ObjectTraitImpl(ObjectTraitImplMetadata {
+            ty: Type::Object {
+                module_path: submodule_path.to_string(),
+                name: "MyObj".to_string(),
+                imp: ObjectImpl::Struct,
+            },
+            trait_ty: Type::Object {
+                module_path: submodule_path.to_string(),
+                name: "MyTrait".to_string(),
+                imp: ObjectImpl::CallbackTrait,
+            },
+        }));
+
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+
+        // The object should implement the trait interface
+        assert!(
+            bindings.contains("implements AutoCloseable, MyObjInterface, MyTrait"),
+            "MyObj should implement MyTrait via trait_interface_name even with submodule path:\n{}",
+            bindings
+                .lines()
+                .filter(|l| l.contains("MyObj") || l.contains("MyTrait"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+
+    #[test]
+    fn local_trait_impls_accept_submodule_module_paths() {
+        let mut group = MetadataGroup {
+            namespace: NamespaceMetadata {
+                crate_name: "test".to_string(),
+                name: "test".to_string(),
+            },
+            namespace_docstring: None,
+            items: Default::default(),
+        };
+        group.add_item(Metadata::Object(ObjectMetadata {
+            module_path: "test".to_string(),
+            name: "DefaultMetricsRecorder".to_string(),
+            remote: false,
+            imp: ObjectImpl::Struct,
+            docstring: None,
+        }));
+        group.add_item(Metadata::CallbackInterface(CallbackInterfaceMetadata {
+            module_path: "test::metrics".to_string(),
+            name: "MetricsRecorder".to_string(),
+            docstring: None,
+        }));
+        group.add_item(Metadata::ObjectTraitImpl(ObjectTraitImplMetadata {
+            ty: Type::Object {
+                module_path: "test".to_string(),
+                name: "DefaultMetricsRecorder".to_string(),
+                imp: ObjectImpl::Struct,
+            },
+            trait_ty: Type::CallbackInterface {
+                module_path: "test::metrics".to_string(),
+                name: "MetricsRecorder".to_string(),
+            },
+        }));
+
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+
+        let interface_name = super::filters::trait_interface_name(
+            &Type::CallbackInterface {
+                module_path: "test::metrics".to_string(),
+                name: "MetricsRecorder".to_string(),
+            },
+            &(),
+            &ci,
+        )
+        .unwrap();
+        assert_eq!(interface_name, "MetricsRecorder");
+
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+        assert!(
+            bindings.contains("DefaultMetricsRecorderInterface, MetricsRecorder"),
+            "expected local callback trait impls with submodule paths to render successfully:\n{}",
+            bindings
+                .lines()
+                .filter(|line| line.contains("class DefaultMetricsRecorder"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+
+    #[test]
+    fn callback_interface_helpers_use_class_style_names() {
+        let mut group = MetadataGroup {
+            namespace: NamespaceMetadata {
+                crate_name: "test".to_string(),
+                name: "test".to_string(),
+            },
+            namespace_docstring: None,
+            items: Default::default(),
+        };
+        group.add_item(Metadata::CallbackInterface(CallbackInterfaceMetadata {
+            module_path: "test".to_string(),
+            name: "Histogram".to_string(),
+            docstring: None,
+        }));
+        group.add_item(Metadata::TraitMethod(TraitMethodMetadata {
+            module_path: "test".to_string(),
+            trait_name: "Histogram".to_string(),
+            index: 0,
+            name: "record".to_string(),
+            is_async: false,
+            inputs: vec![FnParamMetadata {
+                name: "value".to_string(),
+                ty: Type::Float64,
+                by_ref: false,
+                optional: false,
+                default: None,
+            }],
+            return_type: None,
+            throws: None,
+            takes_self_by_arc: false,
+            checksum: None,
+            docstring: None,
+        }));
+
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+
+        assert!(
+            bindings.contains("public void record(double value);"),
+            "expected callback interface API to preserve the Rust method name:\n{}",
+            bindings
+                .lines()
+                .filter(|l| l.contains("double value"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+        assert!(
+            bindings.contains("public static final class RecordCallback implements UniffiCallbackInterfaceHistogramMethod0.Fn"),
+            "expected callback helper class to use a Java class-style name:\n{}",
+            bindings
+                .lines()
+                .filter(|l| l.contains("implements UniffiCallbackInterfaceHistogramMethod0.Fn"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+        assert!(
+            bindings.contains("RecordCallback.INSTANCE"),
+            "expected generated callback helper references to use the renamed helper class:\n{}",
+            bindings
+                .lines()
+                .filter(|l| l.contains(".INSTANCE"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+        assert!(
+            !bindings.contains("public static class record implements"),
+            "unexpected lowercase helper class leaked into generated bindings:\n{}",
+            bindings
+                .lines()
+                .filter(|l| l.contains("class record"))
+                .collect::<Vec<_>>()
+                .join("\n")
         );
     }
 }
