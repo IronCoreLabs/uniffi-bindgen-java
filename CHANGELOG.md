@@ -1,8 +1,8 @@
-## Unreleased
+## 0.4.1
 
-- Fix resolving callback trait implementations declared in submodules of the current crate. Previously, traits like `my_crate::metrics::MetricsRecorder` failed with "no interface with module_path" during code generation.
-- Fix Java keyword collisions in generated callback helper class names. Callback methods named after Java keywords (e.g., `record`) no longer produce invalid nested type declarations. Thanks @criccomini for this and the above fix!
-- Fix `libraryOverride` system property to work with absolute paths. Previously, passing an absolute path via `-Duniffi.component.<namespace>.libraryOverride=/path/to/lib.so` would fail because it was always passed to `System.loadLibrary()`. Now absolute paths are correctly routed to `System.load()`.
+- fix resolving callback trait implementations declared in submodules of the current crate. Previously, traits like `my_crate::metrics::MetricsRecorder` failed with "no interface with module_path" during code generation.
+- fix Java keyword collisions in generated callback helper class names. Callback methods named after Java keywords (e.g., `record`) no longer produce invalid nested type declarations. Thanks @criccomini for this and the above fix!
+- fix `libraryOverride` system property to work with absolute paths. Previously, passing an absolute path via `-Duniffi.component.<namespace>.libraryOverride=/path/to/lib.so` would fail because it was always passed to `System.loadLibrary()`. Now absolute paths are correctly routed to `System.load()`.
 
 ## 0.4.0
 
