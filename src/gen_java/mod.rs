@@ -864,17 +864,9 @@ mod filters {
 
     /// Returns the [`ComponentInterface`] that owns `module_path`.
     ///
-    /// `ci` is the local component interface for the crate currently being generated.
-    /// `module_path` is the UniFFI module path recorded on a type or trait, such as
-    /// `crate_name::nested_module`.
-    ///
-    /// If `module_path` belongs to the current crate, this returns `ci` directly.
-    /// Otherwise it looks up an external component interface first by the full
-    /// module path and then by the crate name derived from the first `::` segment.
-    /// That fallback handles metadata that may identify external items by either
-    /// their full module path or just their crate.
-    ///
-    /// Returns `None` if no loaded component interface matches either lookup.
+    /// If `module_path` belongs to the current crate, returns `ci` directly.
+    /// Otherwise looks up an external component interface by the full module
+    /// path first, then by the crate name (first `::` segment).
     fn component_interface_for_module_path<'a>(
         ci: &'a ComponentInterface,
         module_path: &str,
@@ -1786,6 +1778,69 @@ mod tests {
     }
 
     #[test]
+    fn trait_impl_with_submodule_path() {
+        // Regression test: when a crate has multiple modules, module_path is
+        // "crate_name::submodule". component_interface_for_module_path() handles
+        // this by checking the local CI's crate_name first before falling back
+        // to find_component_interface() for external crates.
+        let submodule_path = "mycrate::inner";
+        let mut group = MetadataGroup {
+            namespace: NamespaceMetadata {
+                crate_name: "mycrate".to_string(),
+                name: "mycrate".to_string(),
+            },
+            namespace_docstring: None,
+            items: Default::default(),
+        };
+
+        // A trait object defined in a submodule
+        group.add_item(Metadata::Object(ObjectMetadata {
+            module_path: submodule_path.to_string(),
+            name: "MyTrait".to_string(),
+            remote: false,
+            imp: ObjectImpl::CallbackTrait,
+            docstring: None,
+        }));
+
+        // A concrete object that implements the trait, also in the submodule
+        group.add_item(Metadata::Object(ObjectMetadata {
+            module_path: submodule_path.to_string(),
+            name: "MyObj".to_string(),
+            remote: false,
+            imp: ObjectImpl::Struct,
+            docstring: None,
+        }));
+
+        group.add_item(Metadata::ObjectTraitImpl(ObjectTraitImplMetadata {
+            ty: Type::Object {
+                module_path: submodule_path.to_string(),
+                name: "MyObj".to_string(),
+                imp: ObjectImpl::Struct,
+            },
+            trait_ty: Type::Object {
+                module_path: submodule_path.to_string(),
+                name: "MyTrait".to_string(),
+                imp: ObjectImpl::CallbackTrait,
+            },
+        }));
+
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+
+        // The object should implement the trait interface
+        assert!(
+            bindings.contains("implements AutoCloseable, MyObjInterface, MyTrait"),
+            "MyObj should implement MyTrait via trait_interface_name even with submodule path:\n{}",
+            bindings
+                .lines()
+                .filter(|l| l.contains("MyObj") || l.contains("MyTrait"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+
+    #[test]
     fn local_trait_impls_accept_submodule_module_paths() {
         let mut group = MetadataGroup {
             namespace: NamespaceMetadata {
@@ -1834,14 +1889,14 @@ mod tests {
         assert_eq!(interface_name, "MetricsRecorder");
 
         let bindings = generate_bindings(&Config::default(), &ci).unwrap();
-        let relevant_lines = bindings
-            .lines()
-            .filter(|line| line.contains("class DefaultMetricsRecorder"))
-            .collect::<Vec<_>>()
-            .join("\n");
         assert!(
             bindings.contains("DefaultMetricsRecorderInterface, MetricsRecorder"),
-            "expected local callback trait impls with submodule paths to render successfully:\n{relevant_lines}"
+            "expected local callback trait impls with submodule paths to render successfully:\n{}",
+            bindings
+                .lines()
+                .filter(|line| line.contains("class DefaultMetricsRecorder"))
+                .collect::<Vec<_>>()
+                .join("\n")
         );
     }
 
@@ -1887,19 +1942,39 @@ mod tests {
 
         assert!(
             bindings.contains("public void record(double value);"),
-            "expected callback interface API to preserve the Rust method name:\n{bindings}"
+            "expected callback interface API to preserve the Rust method name:\n{}",
+            bindings
+                .lines()
+                .filter(|l| l.contains("double value"))
+                .collect::<Vec<_>>()
+                .join("\n")
         );
         assert!(
             bindings.contains("public static final class RecordCallback implements UniffiCallbackInterfaceHistogramMethod0.Fn"),
-            "expected callback helper class to use a Java class-style name:\n{bindings}"
+            "expected callback helper class to use a Java class-style name:\n{}",
+            bindings
+                .lines()
+                .filter(|l| l.contains("implements UniffiCallbackInterfaceHistogramMethod0.Fn"))
+                .collect::<Vec<_>>()
+                .join("\n")
         );
         assert!(
             bindings.contains("RecordCallback.INSTANCE"),
-            "expected generated callback helper references to use the renamed helper class:\n{bindings}"
+            "expected generated callback helper references to use the renamed helper class:\n{}",
+            bindings
+                .lines()
+                .filter(|l| l.contains(".INSTANCE"))
+                .collect::<Vec<_>>()
+                .join("\n")
         );
         assert!(
             !bindings.contains("public static class record implements"),
-            "unexpected lowercase helper class leaked into generated bindings:\n{bindings}"
+            "unexpected lowercase helper class leaked into generated bindings:\n{}",
+            bindings
+                .lines()
+                .filter(|l| l.contains("class record"))
+                .collect::<Vec<_>>()
+                .join("\n")
         );
     }
 }
