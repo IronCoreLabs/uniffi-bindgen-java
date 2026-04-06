@@ -162,6 +162,18 @@ lower = "{}.toString()"
 rust-crate-name = "java.package.name"
 ```
 
+## Library Loading
+
+By default, the generated code uses `System.loadLibrary()` to find the native library via `java.library.path`. If your native library lives outside the standard search paths or automatic discovery doesn't work for your environment, you can specify an absolute path at runtime using a system property:
+
+```
+java -Duniffi.component.<namespace>.libraryOverride=/path/to/libmylib.so ...
+```
+
+Where `<namespace>` is the UniFFI namespace of your component (e.g., `arithmetic`). When the override is an absolute path, the generated code uses `System.load()` instead of `System.loadLibrary()`, bypassing `java.library.path` entirely.
+
+You can also pass a plain library name as the override, in which case it behaves like `System.loadLibrary()` and still requires the library to be on `java.library.path`.
+
 ## Notes
 
 - failures in CompletableFutures will cause them to `completeExceptionally`. The error that caused the failure can be checked with `e.getCause()`. When implementing an async Rust trait in Java, you'll need to `completeExceptionally` instead of throwing. See `TestFixtureFutures.java` for an example trait implementation with errors.

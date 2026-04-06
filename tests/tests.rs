@@ -143,6 +143,97 @@ fn run_test(fixture_name: &str, test_file: &str) -> Result<()> {
     Ok(())
 }
 
+/// Run a test using an absolute path library override instead of java.library.path.
+/// This validates that the generated loadLibrary() code uses System.load() for absolute paths.
+fn run_test_with_library_override(
+    fixture_name: &str,
+    test_file: &str,
+    namespace: &str,
+) -> Result<()> {
+    let test_path = Utf8Path::new(".").join("tests").join(test_file);
+    let test_helper = UniFFITestHelper::new(fixture_name)?;
+    // Use a synthetic path for out_dir so it doesn't collide with run_test's out_dir
+    // (create_out_dir is deterministic based on the path).
+    let out_dir_key = Utf8Path::new(".")
+        .join("tests")
+        .join("library_override")
+        .join(test_file);
+    let out_dir = test_helper.create_out_dir(env!("CARGO_TARGET_TMPDIR"), &out_dir_key)?;
+    let cdylib_path = test_helper.cdylib_path()?;
+
+    let mut paths = BindgenPaths::default();
+    paths.add_cargo_metadata_layer(false)?;
+    let loader = BindgenLoader::new(paths);
+
+    generate(
+        &loader,
+        &GenerateOptions {
+            source: cdylib_path.clone(),
+            out_dir: out_dir.clone(),
+            format: true,
+            crate_filter: None,
+        },
+    )?;
+
+    // Copy the cdylib to a known absolute path (no symlink needed since we pass the full path)
+    let native_lib_dir = out_dir.join("native");
+    fs::create_dir_all(&native_lib_dir)?;
+    let cdylib_filename = cdylib_path.file_name().unwrap();
+    let extension = cdylib_path.extension().unwrap();
+    let lib_base_name = cdylib_filename
+        .strip_prefix("lib")
+        .unwrap_or(cdylib_filename)
+        .split('-')
+        .next()
+        .unwrap_or(cdylib_filename);
+    let canonical_lib_name = format!("lib{}.{}", lib_base_name, extension);
+    let lib_absolute_path = native_lib_dir.join(&canonical_lib_name);
+    fs::copy(&cdylib_path, &lib_absolute_path)?;
+
+    let jar_file = build_jar(fixture_name, &out_dir)?;
+
+    let status = Command::new("javac")
+        .arg("-classpath")
+        .arg(calc_classpath(vec![&out_dir, &jar_file]))
+        .arg("-Werror")
+        .arg(&test_path)
+        .spawn()
+        .context("Failed to spawn `javac` to compile Java test")?
+        .wait()
+        .context("Failed to wait for `javac` when compiling Java test")?;
+    if !status.success() {
+        anyhow::bail!("running `javac` failed when compiling the Java test")
+    }
+
+    // Run with library override set to an absolute path and NO java.library.path,
+    // so this can only work if the generated code uses System.load() for absolute paths.
+    let compiled_path = test_path.file_stem().unwrap();
+    let run_status = Command::new("java")
+        .arg("-ea")
+        .arg("--enable-native-access=ALL-UNNAMED")
+        .arg(format!(
+            "-Duniffi.component.{}.libraryOverride={}",
+            namespace, lib_absolute_path
+        ))
+        // Deliberately NOT setting -Djava.library.path
+        .arg("-classpath")
+        .arg(calc_classpath(vec![
+            &out_dir,
+            &jar_file,
+            &test_path.parent().unwrap().to_path_buf(),
+        ]))
+        .arg(compiled_path)
+        .spawn()
+        .context("Failed to spawn `java` to run Java test")?
+        .wait()
+        .context("Failed to wait for `java` when running Java test")?;
+    if !run_status.success() {
+        anyhow::bail!("Running the `java` test with library override failed.")
+    }
+
+    Ok(())
+}
+
 /// Get the uniffi_toml of the fixture if it exists.
 /// It looks for it in the root directory of the project `name`.
 fn find_uniffi_toml(name: &str) -> Result<Option<Utf8PathBuf>> {
@@ -285,4 +376,13 @@ fixture_tests! {
     (test_proc_macro, "uniffi-fixture-proc-macro", "scripts/TestProcMacro.java"),
     (test_rename, "uniffi-fixture-rename", "scripts/TestRename/TestRename.java"),
     (test_primitive_arrays, "uniffi-fixture-primitive-arrays", "scripts/TestPrimitiveArrays.java"),
+}
+
+#[test]
+fn test_library_override_absolute_path() -> Result<()> {
+    run_test_with_library_override(
+        "uniffi-example-arithmetic",
+        "scripts/TestArithmetic.java",
+        "arithmetic",
+    )
 }

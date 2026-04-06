@@ -10,7 +10,15 @@ final class NamespaceLibrary {
     }
 
     static java.lang.foreign.SymbolLookup loadLibrary() {
-        System.loadLibrary(findLibraryName("{{ ci.namespace() }}"));
+        String name = findLibraryName("{{ ci.namespace() }}");
+        if (name.startsWith("/") // Unix absolute path
+                || name.startsWith("\\\\") // Windows UNC path
+                || (name.length() > 2 && name.charAt(1) == ':')) // Windows drive path (e.g. C:\)
+        {
+            System.load(name);
+        } else {
+            System.loadLibrary(name);
+        }
         return java.lang.foreign.SymbolLookup.loaderLookup();
     }
 
