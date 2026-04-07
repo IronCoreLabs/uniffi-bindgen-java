@@ -2259,8 +2259,8 @@ mod tests {
         let ci = ComponentInterface::from_metadata(group).unwrap();
         let bindings = generate_bindings(&nullness_config(), &ci).unwrap();
         assert!(
-            bindings.contains("@org.jspecify.annotations.Nullable"),
-            "enum variant with optional field should have @Nullable:\n{}",
+            bindings.contains("@org.jspecify.annotations.Nullable java.lang.String value"),
+            "enum variant optional field should have @Nullable on the field declaration:\n{}",
             bindings
                 .lines()
                 .filter(|l| l.contains("value"))
@@ -2310,8 +2310,8 @@ mod tests {
         let ci = ComponentInterface::from_metadata(group).unwrap();
         let bindings = generate_bindings(&nullness_config(), &ci).unwrap();
         assert!(
-            bindings.contains("@org.jspecify.annotations.Nullable"),
-            "error variant with optional field should have @Nullable:\n{}",
+            bindings.contains("@org.jspecify.annotations.Nullable java.lang.String detail"),
+            "error variant optional field should have @Nullable on the field declaration:\n{}",
             bindings
                 .lines()
                 .filter(|l| l.contains("detail"))
