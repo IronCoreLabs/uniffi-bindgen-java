@@ -22,10 +22,14 @@ impl OptionalCodeType {
 
 impl CodeType for OptionalCodeType {
     fn type_label(&self, ci: &ComponentInterface, config: &Config) -> String {
-        super::JavaCodeOracle
+        let inner = super::JavaCodeOracle
             .find(self.inner())
-            .type_label(ci, config)
-            .to_string()
+            .type_label(ci, config);
+        if config.nullness_annotations() {
+            format!("@org.jspecify.annotations.Nullable {}", inner)
+        } else {
+            inner
+        }
     }
 
     fn canonical_name(&self) -> String {

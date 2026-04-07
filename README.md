@@ -133,6 +133,7 @@ The generated Java can be configured using a `uniffi.toml` configuration file.
 | `custom_types` | | A map which controls how custom types are exposed to Java. See the [custom types section of the UniFFI manual](https://mozilla.github.io/uniffi-rs/latest/udl/custom_types.html#custom-types-in-the-bindings-code) |
 | `external_packages` | | A map of packages to be used for the specified external crates. The key is the Rust crate name, the value is the Java package which will be used referring to types in that crate. See the [external types section of the manual](https://mozilla.github.io/uniffi-rs/latest/udl/ext_types_external.html#kotlin) |
 | `rename` | | A map to rename types, functions, methods, and their members in the generated Java bindings. See the [renaming section](https://mozilla.github.io/uniffi-rs/latest/renaming.html). |
+| `nullness_annotations` | `false` | Generate [JSpecify](https://jspecify.dev/) nullness annotations. Rust `Option<T>` maps to `@Nullable T`; all other types are non-null by default via `@NullMarked`. Requires `org.jspecify:jspecify` on the compile classpath. See [Nullness Annotations](#nullness-annotations). |
 | `android` | `false` | Generate [PanamaPort](https://github.com/vova7878/PanamaPort)-compatible code for Android. Replaces `java.lang.foreign.*` with `com.v7878.foreign.*` and `java.lang.invoke.VarHandle` with `com.v7878.invoke.VarHandle`. Requires PanamaPort `io.github.vova7878.panama:Core` as a runtime dependency and Android API 26+. |
 | `omit_checksums` | `false` | Whether to omit checking the library checksums as the library is initialized. Changing this will shoot yourself in the foot if you mixup your build pipeline in any way, but might speed up initialization. |
 
@@ -173,6 +174,63 @@ java -Duniffi.component.<namespace>.libraryOverride=/path/to/libmylib.so ...
 Where `<namespace>` is the UniFFI namespace of your component (e.g., `arithmetic`). When the override is an absolute path, the generated code uses `System.load()` instead of `System.loadLibrary()`, bypassing `java.library.path` entirely.
 
 You can also pass a plain library name as the override, in which case it behaves like `System.loadLibrary()` and still requires the library to be on `java.library.path`.
+
+## Nullness Annotations
+
+Generated bindings can include [JSpecify](https://jspecify.dev/) nullness annotations so that
+Kotlin consumers get proper nullable/non-null types and Java consumers get IDE and static
+analysis support.
+
+Enable in `uniffi.toml`:
+
+```toml
+[bindings.java]
+nullness_annotations = true
+```
+
+When enabled:
+- A `package-info.java` is generated with `@NullMarked`, making all types non-null by default
+- Rust `Option<T>` types are annotated with `@Nullable`, including inside generic type
+  arguments (e.g., `Map<String, @Nullable Integer>` for `HashMap<String, Option<i32>>`)
+- All non-optional types (primitives, strings, records, objects, enums) are non-null
+
+### Build Setup
+
+JSpecify must be on the compile classpath when compiling the generated Java source.
+
+**Gradle:**
+```kotlin
+// Use `api` if publishing a library so Kotlin/Java consumers benefit automatically.
+// Use `compileOnly` if the bindings are only used within this project.
+dependencies {
+    api("org.jspecify:jspecify:1.0.0")
+}
+```
+
+**Maven:**
+```xml
+<!-- Use default scope if publishing a library. Use <scope>provided</scope> for internal use. -->
+<dependency>
+    <groupId>org.jspecify</groupId>
+    <artifactId>jspecify</artifactId>
+    <version>1.0.0</version>
+</dependency>
+```
+
+There is no runtime dependency — the JVM ignores annotation classes that are not present at
+runtime.
+
+### Kotlin Interop
+
+Without nullness annotations, Kotlin sees all Java types from the generated bindings as
+**platform types** (`String!`), which bypass null-safety checks. With annotations enabled,
+Kotlin correctly maps:
+
+- Non-optional types → non-null (`String`, `MyRecord`)
+- `Option<T>` types → nullable (`String?`, `MyRecord?`)
+
+This requires JSpecify to be on Kotlin's compile classpath (automatic if declared with `api`
+scope).
 
 ## Notes
 

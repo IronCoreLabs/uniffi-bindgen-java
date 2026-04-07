@@ -118,7 +118,7 @@ public class {{ impl_class_name }} extends Exception implements AutoCloseable, {
 public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }}{% for t in obj.trait_impls() %}, {{ t.trait_ty|trait_interface_name(ci) }}{% endfor %}{% if uniffi_trait_methods.ord_cmp.is_some() %}, Comparable<{{ impl_class_name }}>{% endif %} {
 {%- endif %}
   protected long handle;
-  protected UniffiCleaner.Cleanable cleanable;
+  protected {% if config.nullness_annotations() %}@org.jspecify.annotations.Nullable {% endif %}UniffiCleaner.Cleanable cleanable;
 
   private java.util.concurrent.atomic.AtomicBoolean wasDestroyed = new java.util.concurrent.atomic.AtomicBoolean(false);
   private java.util.concurrent.atomic.AtomicLong callCounter = new java.util.concurrent.atomic.AtomicLong(1);
