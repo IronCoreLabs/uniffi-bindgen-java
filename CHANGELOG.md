@@ -1,3 +1,10 @@
+## Unreleased
+
+- Added `nullness_annotations` config option to emit JSpecify `@NullMarked` and
+  `@Nullable` annotations in generated code. When enabled, Rust `Option<T>` maps to
+  `@Nullable T` and all other types are non-null by default. Requires
+  `org.jspecify:jspecify` on the compile classpath.
+
 ## 0.4.1
 
 - fix resolving callback trait implementations declared in submodules of the current crate. Previously, traits like `my_crate::metrics::MetricsRecorder` failed with "no interface with module_path" during code generation.

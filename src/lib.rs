@@ -73,6 +73,11 @@ pub fn generate(loader: &BindgenLoader, options: &GenerateOptions) -> Result<()>
             fs::write(&java_file_location, format!("{}\n{}", package_line, file))?;
         }
 
+        if config.nullness_annotations() {
+            let package_info = format!("@org.jspecify.annotations.NullMarked\n{}", package_line);
+            fs::write(java_package_out_dir.join("package-info.java"), package_info)?;
+        }
+
         if options.format {
             // TODO: if there's a CLI formatter that makes sense to use here, use it, PRs welcome
             // seems like palantir-java-format is popular, but it's only exposed through plugins
