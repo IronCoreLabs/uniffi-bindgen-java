@@ -26,7 +26,7 @@ impl CodeType for OptionalCodeType {
             .find(self.inner())
             .type_label(ci, config);
         if config.nullness_annotations() {
-            format!("@org.jspecify.annotations.Nullable {}", inner)
+            super::nullable_type_label(&inner)
         } else {
             inner
         }

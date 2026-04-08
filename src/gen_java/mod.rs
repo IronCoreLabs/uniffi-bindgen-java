@@ -21,6 +21,32 @@ mod primitives;
 mod record;
 mod variant;
 
+/// Insert a JSpecify `@Nullable` TYPE_USE annotation at the correct position
+/// in a (possibly fully-qualified) Java type name.
+///
+/// Per JLS §9.7.4, TYPE_USE annotations must appear directly before the simple
+/// name of the type, not before the package/enclosing-class qualifier:
+///   - `java.lang.String`          → `java.lang.@Nullable String`
+///   - `UniffiCleaner.Cleanable`   → `UniffiCleaner.@Nullable Cleanable`
+///   - `String`                    → `@Nullable String`
+///   - `java.util.Map<K, V>`       → `java.util.@Nullable Map<K, V>`
+pub(crate) fn nullable_type_label(type_label: &str) -> String {
+    const ANNOTATION: &str = "@org.jspecify.annotations.Nullable ";
+    // Only look at the portion before any generic '<' to find the right '.'
+    let before_generics = type_label.find('<').unwrap_or(type_label.len());
+    let prefix = &type_label[..before_generics];
+    if let Some(dot_pos) = prefix.rfind('.') {
+        format!(
+            "{}{}{}",
+            &type_label[..dot_pos + 1],
+            ANNOTATION,
+            &type_label[dot_pos + 1..]
+        )
+    } else {
+        format!("{}{}", ANNOTATION, type_label)
+    }
+}
+
 pub fn potentially_add_external_package(
     config: &Config,
     ci: &ComponentInterface,
@@ -817,7 +843,7 @@ mod filters {
             Type::Optional { inner_type } => {
                 let inner = fully_qualified_type_label(inner_type, ci, config)?;
                 if config.nullness_annotations() {
-                    Ok(format!("@org.jspecify.annotations.Nullable {}", inner))
+                    Ok(nullable_type_label(&inner))
                 } else {
                     Ok(inner)
                 }
@@ -1917,6 +1943,58 @@ mod tests {
         toml::from_str("nullness_annotations = true").unwrap()
     }
 
+    #[test]
+    fn nullable_type_label_fully_qualified() {
+        assert_eq!(
+            super::nullable_type_label("java.lang.String"),
+            "java.lang.@org.jspecify.annotations.Nullable String"
+        );
+    }
+
+    #[test]
+    fn nullable_type_label_unqualified() {
+        assert_eq!(
+            super::nullable_type_label("String"),
+            "@org.jspecify.annotations.Nullable String"
+        );
+    }
+
+    #[test]
+    fn nullable_type_label_nested_class() {
+        assert_eq!(
+            super::nullable_type_label("UniffiCleaner.Cleanable"),
+            "UniffiCleaner.@org.jspecify.annotations.Nullable Cleanable"
+        );
+    }
+
+    #[test]
+    fn nullable_type_label_generic_type() {
+        assert_eq!(
+            super::nullable_type_label("java.util.Map<java.lang.String, java.lang.Integer>"),
+            "java.util.@org.jspecify.annotations.Nullable Map<java.lang.String, java.lang.Integer>"
+        );
+    }
+
+    #[test]
+    fn nullable_type_label_generic_with_nullable_inner() {
+        // Simulates Optional<Map<String, Optional<Int32>>>: the inner Optional
+        // is already annotated, then the outer Optional annotates the Map itself.
+        assert_eq!(
+            super::nullable_type_label(
+                "java.util.Map<java.lang.String, java.lang.@org.jspecify.annotations.Nullable Integer>"
+            ),
+            "java.util.@org.jspecify.annotations.Nullable Map<java.lang.String, java.lang.@org.jspecify.annotations.Nullable Integer>"
+        );
+    }
+
+    #[test]
+    fn nullable_type_label_generic_unqualified() {
+        assert_eq!(
+            super::nullable_type_label("CompletableFuture<java.lang.String>"),
+            "@org.jspecify.annotations.Nullable CompletableFuture<java.lang.String>"
+        );
+    }
+
     fn test_group() -> MetadataGroup {
         MetadataGroup {
             namespace: NamespaceMetadata {
@@ -1996,16 +2074,18 @@ mod tests {
         let ci = ComponentInterface::from_metadata(group).unwrap();
         let bindings = generate_bindings(&nullness_config(), &ci).unwrap();
         assert!(
-            bindings.contains("@org.jspecify.annotations.Nullable java.lang.Integer"),
+            bindings.contains("java.lang.@org.jspecify.annotations.Nullable Integer"),
             "return type should be @Nullable Integer"
         );
         assert!(
-            bindings.contains("@org.jspecify.annotations.Nullable java.lang.String optional"),
+            bindings.contains("java.lang.@org.jspecify.annotations.Nullable String optional"),
             "optional param should be @Nullable String"
         );
         // The required param should NOT have @Nullable
         assert!(
-            bindings.contains("java.lang.String required, @org.jspecify.annotations.Nullable"),
+            bindings.contains(
+                "java.lang.String required, java.lang.@org.jspecify.annotations.Nullable"
+            ),
             "required param should not have @Nullable"
         );
     }
@@ -2053,7 +2133,7 @@ mod tests {
         let bindings = generate_bindings(&nullness_config(), &ci).unwrap();
         assert!(
             bindings
-                .contains("private @org.jspecify.annotations.Nullable java.lang.String nickname"),
+                .contains("private java.lang.@org.jspecify.annotations.Nullable String nickname"),
             "optional field should have @Nullable:\n{}",
             bindings
                 .lines()
@@ -2063,7 +2143,7 @@ mod tests {
         );
         // Non-optional field should NOT have @Nullable
         assert!(
-            !bindings.contains("@org.jspecify.annotations.Nullable java.lang.String name"),
+            !bindings.contains("java.lang.@org.jspecify.annotations.Nullable String name"),
             "non-optional field should not have @Nullable"
         );
     }
@@ -2112,7 +2192,7 @@ mod tests {
                 .unwrap();
         let bindings = generate_bindings(&config, &ci).unwrap();
         assert!(
-            bindings.contains("@org.jspecify.annotations.Nullable java.lang.String nickname"),
+            bindings.contains("java.lang.@org.jspecify.annotations.Nullable String nickname"),
             "immutable record should have @Nullable on optional component:\n{}",
             bindings
                 .lines()
@@ -2121,7 +2201,7 @@ mod tests {
                 .join("\n")
         );
         assert!(
-            !bindings.contains("@org.jspecify.annotations.Nullable java.lang.String name"),
+            !bindings.contains("java.lang.@org.jspecify.annotations.Nullable String name"),
             "non-optional component should not have @Nullable"
         );
     }
@@ -2160,7 +2240,7 @@ mod tests {
         ci.derive_ffi_funcs().unwrap();
         let bindings = generate_bindings(&nullness_config(), &ci).unwrap();
         assert!(
-            bindings.contains("@org.jspecify.annotations.Nullable java.lang.String input"),
+            bindings.contains("java.lang.@org.jspecify.annotations.Nullable String input"),
             "object method param should have @Nullable:\n{}",
             bindings
                 .lines()
@@ -2185,7 +2265,7 @@ mod tests {
         let bindings = generate_bindings(&nullness_config(), &ci).unwrap();
         assert!(
             bindings
-                .contains("@org.jspecify.annotations.Nullable UniffiCleaner.Cleanable cleanable"),
+                .contains("UniffiCleaner.@org.jspecify.annotations.Nullable Cleanable cleanable"),
             "cleanable field should have @Nullable when annotations enabled:\n{}",
             bindings
                 .lines()
@@ -2213,7 +2293,7 @@ mod tests {
             "cleanable field should not have @Nullable by default"
         );
         assert!(
-            !bindings.contains("@org.jspecify.annotations.Nullable UniffiCleaner.Cleanable"),
+            !bindings.contains("UniffiCleaner.@org.jspecify.annotations.Nullable Cleanable"),
             "cleanable field should not have @Nullable when annotations disabled"
         );
     }
@@ -2259,7 +2339,7 @@ mod tests {
         let ci = ComponentInterface::from_metadata(group).unwrap();
         let bindings = generate_bindings(&nullness_config(), &ci).unwrap();
         assert!(
-            bindings.contains("@org.jspecify.annotations.Nullable java.lang.String value"),
+            bindings.contains("java.lang.@org.jspecify.annotations.Nullable String value"),
             "enum variant optional field should have @Nullable on the field declaration:\n{}",
             bindings
                 .lines()
@@ -2310,7 +2390,7 @@ mod tests {
         let ci = ComponentInterface::from_metadata(group).unwrap();
         let bindings = generate_bindings(&nullness_config(), &ci).unwrap();
         assert!(
-            bindings.contains("@org.jspecify.annotations.Nullable java.lang.String detail"),
+            bindings.contains("java.lang.@org.jspecify.annotations.Nullable String detail"),
             "error variant optional field should have @Nullable on the field declaration:\n{}",
             bindings
                 .lines()
@@ -2339,7 +2419,7 @@ mod tests {
         let bindings = generate_bindings(&nullness_config(), &ci).unwrap();
         assert!(
             bindings
-                .contains("CompletableFuture<@org.jspecify.annotations.Nullable java.lang.String>"),
+                .contains("CompletableFuture<java.lang.@org.jspecify.annotations.Nullable String>"),
             "async optional return should be CompletableFuture<@Nullable String>:\n{}",
             bindings
                 .lines()
@@ -2419,7 +2499,7 @@ mod tests {
         let ci = ComponentInterface::from_metadata(group).unwrap();
         let bindings = generate_bindings(&nullness_config(), &ci).unwrap();
         assert!(
-            bindings.contains("java.util.Map<java.lang.String, @org.jspecify.annotations.Nullable java.lang.Integer>"),
+            bindings.contains("java.util.Map<java.lang.String, java.lang.@org.jspecify.annotations.Nullable Integer>"),
             "map with optional value should have @Nullable on value type:\n{}",
             bindings.lines().filter(|l| l.contains("processMap")).collect::<Vec<_>>().join("\n")
         );
@@ -2452,7 +2532,7 @@ mod tests {
         let bindings = generate_bindings(&nullness_config(), &ci).unwrap();
         assert!(
             bindings
-                .contains("java.util.List<@org.jspecify.annotations.Nullable java.lang.String>"),
+                .contains("java.util.List<java.lang.@org.jspecify.annotations.Nullable String>"),
             "list with optional element should have @Nullable on element type:\n{}",
             bindings
                 .lines()
