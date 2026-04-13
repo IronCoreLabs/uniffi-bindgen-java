@@ -1,4 +1,4 @@
-## Unreleased
+## 0.4.2
 
 - Added `nullness_annotations` config option to emit JSpecify `@NullMarked` and
   `@Nullable` annotations in generated code. When enabled, Rust `Option<T>` maps to
