@@ -21,6 +21,32 @@ mod primitives;
 mod record;
 mod variant;
 
+/// Insert a JSpecify `@Nullable` TYPE_USE annotation at the correct position
+/// in a (possibly fully-qualified) Java type name.
+///
+/// Per JLS §9.7.4, TYPE_USE annotations must appear directly before the simple
+/// name of the type, not before the package/enclosing-class qualifier:
+///   - `java.lang.String`          → `java.lang.@Nullable String`
+///   - `UniffiCleaner.Cleanable`   → `UniffiCleaner.@Nullable Cleanable`
+///   - `String`                    → `@Nullable String`
+///   - `java.util.Map<K, V>`       → `java.util.@Nullable Map<K, V>`
+pub(crate) fn nullable_type_label(type_label: &str) -> String {
+    const ANNOTATION: &str = "@org.jspecify.annotations.Nullable ";
+    // Only look at the portion before any generic '<' to find the right '.'
+    let before_generics = type_label.find('<').unwrap_or(type_label.len());
+    let prefix = &type_label[..before_generics];
+    if let Some(dot_pos) = prefix.rfind('.') {
+        format!(
+            "{}{}{}",
+            &type_label[..dot_pos + 1],
+            ANNOTATION,
+            &type_label[dot_pos + 1..]
+        )
+    } else {
+        format!("{}{}", ANNOTATION, type_label)
+    }
+}
+
 pub fn potentially_add_external_package(
     config: &Config,
     ci: &ComponentInterface,
@@ -161,6 +187,8 @@ pub struct Config {
     pub(super) external_packages: HashMap<String, String>,
     #[serde(default)]
     android: bool,
+    #[serde(default)]
+    nullness_annotations: bool,
     /// Renames for types, fields, methods, variants, and arguments.
     /// Uses dot notation: "OldRecord" = "NewRecord", "OldRecord.field" = "new_field"
     #[serde(default)]
@@ -178,6 +206,11 @@ impl Config {
     /// `com.v7878.invoke.VarHandle`.
     pub fn android(&self) -> bool {
         self.android
+    }
+
+    /// Whether to generate JSpecify `@NullMarked` and `@Nullable` annotations.
+    pub fn nullness_annotations(&self) -> bool {
+        self.nullness_annotations
     }
 }
 
@@ -808,7 +841,12 @@ mod filters {
     ) -> anyhow::Result<String> {
         match ty {
             Type::Optional { inner_type } => {
-                Ok(fully_qualified_type_label(inner_type, ci, config)?.to_string())
+                let inner = fully_qualified_type_label(inner_type, ci, config)?;
+                if config.nullness_annotations() {
+                    Ok(nullable_type_label(&inner))
+                } else {
+                    Ok(inner)
+                }
             }
             Type::Sequence { inner_type } => match inner_type.as_ref() {
                 Type::Int16 | Type::UInt16 => Ok("short[]".to_string()),
@@ -1450,9 +1488,10 @@ mod tests {
     use super::*;
     use uniffi_bindgen::interface::ComponentInterface;
     use uniffi_meta::{
-        CallbackInterfaceMetadata, EnumMetadata, EnumShape, FnMetadata, FnParamMetadata, Metadata,
-        MetadataGroup, NamespaceMetadata, ObjectImpl, ObjectMetadata, ObjectTraitImplMetadata,
-        TraitMethodMetadata, Type, VariantMetadata,
+        CallbackInterfaceMetadata, EnumMetadata, EnumShape, FieldMetadata, FnMetadata,
+        FnParamMetadata, Metadata, MetadataGroup, MethodMetadata, NamespaceMetadata, ObjectImpl,
+        ObjectMetadata, ObjectTraitImplMetadata, RecordMetadata, TraitMethodMetadata, Type,
+        VariantMetadata,
     };
 
     #[test]
@@ -1895,6 +1934,609 @@ mod tests {
             bindings
                 .lines()
                 .filter(|line| line.contains("class DefaultMetricsRecorder"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+
+    fn nullness_config() -> Config {
+        toml::from_str("nullness_annotations = true").unwrap()
+    }
+
+    #[test]
+    fn nullable_type_label_fully_qualified() {
+        assert_eq!(
+            super::nullable_type_label("java.lang.String"),
+            "java.lang.@org.jspecify.annotations.Nullable String"
+        );
+    }
+
+    #[test]
+    fn nullable_type_label_unqualified() {
+        assert_eq!(
+            super::nullable_type_label("String"),
+            "@org.jspecify.annotations.Nullable String"
+        );
+    }
+
+    #[test]
+    fn nullable_type_label_nested_class() {
+        assert_eq!(
+            super::nullable_type_label("UniffiCleaner.Cleanable"),
+            "UniffiCleaner.@org.jspecify.annotations.Nullable Cleanable"
+        );
+    }
+
+    #[test]
+    fn nullable_type_label_generic_type() {
+        assert_eq!(
+            super::nullable_type_label("java.util.Map<java.lang.String, java.lang.Integer>"),
+            "java.util.@org.jspecify.annotations.Nullable Map<java.lang.String, java.lang.Integer>"
+        );
+    }
+
+    #[test]
+    fn nullable_type_label_generic_with_nullable_inner() {
+        // Simulates Optional<Map<String, Optional<Int32>>>: the inner Optional
+        // is already annotated, then the outer Optional annotates the Map itself.
+        assert_eq!(
+            super::nullable_type_label(
+                "java.util.Map<java.lang.String, java.lang.@org.jspecify.annotations.Nullable Integer>"
+            ),
+            "java.util.@org.jspecify.annotations.Nullable Map<java.lang.String, java.lang.@org.jspecify.annotations.Nullable Integer>"
+        );
+    }
+
+    #[test]
+    fn nullable_type_label_generic_unqualified() {
+        assert_eq!(
+            super::nullable_type_label("CompletableFuture<java.lang.String>"),
+            "@org.jspecify.annotations.Nullable CompletableFuture<java.lang.String>"
+        );
+    }
+
+    fn test_group() -> MetadataGroup {
+        MetadataGroup {
+            namespace: NamespaceMetadata {
+                crate_name: "test".to_string(),
+                name: "test".to_string(),
+            },
+            namespace_docstring: None,
+            items: Default::default(),
+        }
+    }
+
+    #[test]
+    fn nullness_annotations_disabled_by_default() {
+        let mut group = test_group();
+        group.add_item(Metadata::Func(FnMetadata {
+            module_path: "test".to_string(),
+            name: "maybe_string".to_string(),
+            is_async: false,
+            inputs: vec![FnParamMetadata {
+                name: "input".to_string(),
+                ty: Type::String,
+                by_ref: false,
+                optional: false,
+                default: None,
+            }],
+            return_type: Some(Type::Optional {
+                inner_type: Box::new(Type::String),
+            }),
+            throws: None,
+            checksum: None,
+            docstring: None,
+        }));
+        let ci = ComponentInterface::from_metadata(group).unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+        assert!(
+            !bindings.contains("@org.jspecify.annotations.NullMarked"),
+            "should not contain @NullMarked when disabled"
+        );
+        assert!(
+            !bindings.contains("@org.jspecify.annotations.Nullable"),
+            "should not contain @Nullable when disabled"
+        );
+    }
+
+    #[test]
+    fn nullness_function_with_optional_param_and_return() {
+        let mut group = test_group();
+        group.add_item(Metadata::Func(FnMetadata {
+            module_path: "test".to_string(),
+            name: "foo".to_string(),
+            is_async: false,
+            inputs: vec![
+                FnParamMetadata {
+                    name: "required".to_string(),
+                    ty: Type::String,
+                    by_ref: false,
+                    optional: false,
+                    default: None,
+                },
+                FnParamMetadata {
+                    name: "optional".to_string(),
+                    ty: Type::Optional {
+                        inner_type: Box::new(Type::String),
+                    },
+                    by_ref: false,
+                    optional: false,
+                    default: None,
+                },
+            ],
+            return_type: Some(Type::Optional {
+                inner_type: Box::new(Type::Int32),
+            }),
+            throws: None,
+            checksum: None,
+            docstring: None,
+        }));
+        let ci = ComponentInterface::from_metadata(group).unwrap();
+        let bindings = generate_bindings(&nullness_config(), &ci).unwrap();
+        assert!(
+            bindings.contains("java.lang.@org.jspecify.annotations.Nullable Integer"),
+            "return type should be @Nullable Integer"
+        );
+        assert!(
+            bindings.contains("java.lang.@org.jspecify.annotations.Nullable String optional"),
+            "optional param should be @Nullable String"
+        );
+        // The required param should NOT have @Nullable
+        assert!(
+            bindings.contains(
+                "java.lang.String required, java.lang.@org.jspecify.annotations.Nullable"
+            ),
+            "required param should not have @Nullable"
+        );
+    }
+
+    #[test]
+    fn nullness_record_with_optional_field() {
+        let mut group = test_group();
+        group.add_item(Metadata::Record(RecordMetadata {
+            module_path: "test".to_string(),
+            name: "Person".to_string(),
+            remote: false,
+            fields: vec![
+                FieldMetadata {
+                    name: "name".to_string(),
+                    ty: Type::String,
+                    default: None,
+                    docstring: None,
+                },
+                FieldMetadata {
+                    name: "nickname".to_string(),
+                    ty: Type::Optional {
+                        inner_type: Box::new(Type::String),
+                    },
+                    default: None,
+                    docstring: None,
+                },
+            ],
+            docstring: None,
+        }));
+        // Need a function to make the record reachable
+        group.add_item(Metadata::Func(FnMetadata {
+            module_path: "test".to_string(),
+            name: "get_person".to_string(),
+            is_async: false,
+            inputs: vec![],
+            return_type: Some(Type::Record {
+                module_path: "test".to_string(),
+                name: "Person".to_string(),
+            }),
+            throws: None,
+            checksum: None,
+            docstring: None,
+        }));
+        let ci = ComponentInterface::from_metadata(group).unwrap();
+        let bindings = generate_bindings(&nullness_config(), &ci).unwrap();
+        assert!(
+            bindings
+                .contains("private java.lang.@org.jspecify.annotations.Nullable String nickname"),
+            "optional field should have @Nullable:\n{}",
+            bindings
+                .lines()
+                .filter(|l| l.contains("nickname"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+        // Non-optional field should NOT have @Nullable
+        assert!(
+            !bindings.contains("java.lang.@org.jspecify.annotations.Nullable String name"),
+            "non-optional field should not have @Nullable"
+        );
+    }
+
+    #[test]
+    fn nullness_immutable_record_with_optional_field() {
+        let mut group = test_group();
+        group.add_item(Metadata::Record(RecordMetadata {
+            module_path: "test".to_string(),
+            name: "Person".to_string(),
+            remote: false,
+            fields: vec![
+                FieldMetadata {
+                    name: "name".to_string(),
+                    ty: Type::String,
+                    default: None,
+                    docstring: None,
+                },
+                FieldMetadata {
+                    name: "nickname".to_string(),
+                    ty: Type::Optional {
+                        inner_type: Box::new(Type::String),
+                    },
+                    default: None,
+                    docstring: None,
+                },
+            ],
+            docstring: None,
+        }));
+        group.add_item(Metadata::Func(FnMetadata {
+            module_path: "test".to_string(),
+            name: "get_person".to_string(),
+            is_async: false,
+            inputs: vec![],
+            return_type: Some(Type::Record {
+                module_path: "test".to_string(),
+                name: "Person".to_string(),
+            }),
+            throws: None,
+            checksum: None,
+            docstring: None,
+        }));
+        let ci = ComponentInterface::from_metadata(group).unwrap();
+        let config: Config =
+            toml::from_str("nullness_annotations = true\ngenerate_immutable_records = true")
+                .unwrap();
+        let bindings = generate_bindings(&config, &ci).unwrap();
+        assert!(
+            bindings.contains("java.lang.@org.jspecify.annotations.Nullable String nickname"),
+            "immutable record should have @Nullable on optional component:\n{}",
+            bindings
+                .lines()
+                .filter(|l| l.contains("nickname"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+        assert!(
+            !bindings.contains("java.lang.@org.jspecify.annotations.Nullable String name"),
+            "non-optional component should not have @Nullable"
+        );
+    }
+
+    #[test]
+    fn nullness_object_method_with_optional_param() {
+        let mut group = test_group();
+        group.add_item(Metadata::Object(ObjectMetadata {
+            module_path: "test".to_string(),
+            name: "MyObj".to_string(),
+            remote: false,
+            imp: ObjectImpl::Struct,
+            docstring: None,
+        }));
+        group.add_item(Metadata::Method(MethodMetadata {
+            module_path: "test".to_string(),
+            self_name: "MyObj".to_string(),
+            name: "do_thing".to_string(),
+            is_async: false,
+            inputs: vec![FnParamMetadata {
+                name: "input".to_string(),
+                ty: Type::Optional {
+                    inner_type: Box::new(Type::String),
+                },
+                by_ref: false,
+                optional: false,
+                default: None,
+            }],
+            return_type: None,
+            throws: None,
+            takes_self_by_arc: false,
+            checksum: None,
+            docstring: None,
+        }));
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+        let bindings = generate_bindings(&nullness_config(), &ci).unwrap();
+        assert!(
+            bindings.contains("java.lang.@org.jspecify.annotations.Nullable String input"),
+            "object method param should have @Nullable:\n{}",
+            bindings
+                .lines()
+                .filter(|l| l.contains("doThing"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+
+    #[test]
+    fn nullness_object_cleanable_field_annotated() {
+        let mut group = test_group();
+        group.add_item(Metadata::Object(ObjectMetadata {
+            module_path: "test".to_string(),
+            name: "MyObj".to_string(),
+            remote: false,
+            imp: ObjectImpl::Struct,
+            docstring: None,
+        }));
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+        let bindings = generate_bindings(&nullness_config(), &ci).unwrap();
+        assert!(
+            bindings
+                .contains("UniffiCleaner.@org.jspecify.annotations.Nullable Cleanable cleanable"),
+            "cleanable field should have @Nullable when annotations enabled:\n{}",
+            bindings
+                .lines()
+                .filter(|l| l.contains("cleanable"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+
+    #[test]
+    fn nullness_object_cleanable_field_not_annotated_by_default() {
+        let mut group = test_group();
+        group.add_item(Metadata::Object(ObjectMetadata {
+            module_path: "test".to_string(),
+            name: "MyObj".to_string(),
+            remote: false,
+            imp: ObjectImpl::Struct,
+            docstring: None,
+        }));
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+        assert!(
+            bindings.contains("UniffiCleaner.Cleanable cleanable"),
+            "cleanable field should not have @Nullable by default"
+        );
+        assert!(
+            !bindings.contains("UniffiCleaner.@org.jspecify.annotations.Nullable Cleanable"),
+            "cleanable field should not have @Nullable when annotations disabled"
+        );
+    }
+
+    #[test]
+    fn nullness_enum_variant_with_optional_field() {
+        let mut group = test_group();
+        group.add_item(Metadata::Enum(EnumMetadata {
+            module_path: "test".to_string(),
+            name: "MyEnum".to_string(),
+            shape: EnumShape::Enum,
+            remote: false,
+            variants: vec![VariantMetadata {
+                name: "WithOptional".to_string(),
+                discr: None,
+                fields: vec![FieldMetadata {
+                    name: "value".to_string(),
+                    ty: Type::Optional {
+                        inner_type: Box::new(Type::String),
+                    },
+                    default: None,
+                    docstring: None,
+                }],
+                docstring: None,
+            }],
+            discr_type: None,
+            non_exhaustive: false,
+            docstring: None,
+        }));
+        group.add_item(Metadata::Func(FnMetadata {
+            module_path: "test".to_string(),
+            name: "get_enum".to_string(),
+            is_async: false,
+            inputs: vec![],
+            return_type: Some(Type::Enum {
+                module_path: "test".to_string(),
+                name: "MyEnum".to_string(),
+            }),
+            throws: None,
+            checksum: None,
+            docstring: None,
+        }));
+        let ci = ComponentInterface::from_metadata(group).unwrap();
+        let bindings = generate_bindings(&nullness_config(), &ci).unwrap();
+        assert!(
+            bindings.contains("java.lang.@org.jspecify.annotations.Nullable String value"),
+            "enum variant optional field should have @Nullable on the field declaration:\n{}",
+            bindings
+                .lines()
+                .filter(|l| l.contains("value"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+
+    #[test]
+    fn nullness_error_variant_with_optional_field() {
+        let mut group = test_group();
+        group.add_item(Metadata::Enum(EnumMetadata {
+            module_path: "test".to_string(),
+            name: "MyError".to_string(),
+            shape: EnumShape::Error { flat: false },
+            remote: false,
+            variants: vec![VariantMetadata {
+                name: "BadInput".to_string(),
+                discr: None,
+                fields: vec![FieldMetadata {
+                    name: "detail".to_string(),
+                    ty: Type::Optional {
+                        inner_type: Box::new(Type::String),
+                    },
+                    default: None,
+                    docstring: None,
+                }],
+                docstring: None,
+            }],
+            discr_type: None,
+            non_exhaustive: false,
+            docstring: None,
+        }));
+        group.add_item(Metadata::Func(FnMetadata {
+            module_path: "test".to_string(),
+            name: "do_stuff".to_string(),
+            is_async: false,
+            inputs: vec![],
+            return_type: None,
+            throws: Some(Type::Enum {
+                module_path: "test".to_string(),
+                name: "MyError".to_string(),
+            }),
+            checksum: None,
+            docstring: None,
+        }));
+        let ci = ComponentInterface::from_metadata(group).unwrap();
+        let bindings = generate_bindings(&nullness_config(), &ci).unwrap();
+        assert!(
+            bindings.contains("java.lang.@org.jspecify.annotations.Nullable String detail"),
+            "error variant optional field should have @Nullable on the field declaration:\n{}",
+            bindings
+                .lines()
+                .filter(|l| l.contains("detail"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+
+    #[test]
+    fn nullness_async_function_with_optional_return() {
+        let mut group = test_group();
+        group.add_item(Metadata::Func(FnMetadata {
+            module_path: "test".to_string(),
+            name: "fetch".to_string(),
+            is_async: true,
+            inputs: vec![],
+            return_type: Some(Type::Optional {
+                inner_type: Box::new(Type::String),
+            }),
+            throws: None,
+            checksum: None,
+            docstring: None,
+        }));
+        let ci = ComponentInterface::from_metadata(group).unwrap();
+        let bindings = generate_bindings(&nullness_config(), &ci).unwrap();
+        assert!(
+            bindings
+                .contains("CompletableFuture<java.lang.@org.jspecify.annotations.Nullable String>"),
+            "async optional return should be CompletableFuture<@Nullable String>:\n{}",
+            bindings
+                .lines()
+                .filter(|l| l.contains("fetch"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+
+    #[test]
+    fn nullness_non_optional_types_never_nullable() {
+        let mut group = test_group();
+        group.add_item(Metadata::Func(FnMetadata {
+            module_path: "test".to_string(),
+            name: "identity".to_string(),
+            is_async: false,
+            inputs: vec![
+                FnParamMetadata {
+                    name: "s".to_string(),
+                    ty: Type::String,
+                    by_ref: false,
+                    optional: false,
+                    default: None,
+                },
+                FnParamMetadata {
+                    name: "i".to_string(),
+                    ty: Type::Int32,
+                    by_ref: false,
+                    optional: false,
+                    default: None,
+                },
+                FnParamMetadata {
+                    name: "b".to_string(),
+                    ty: Type::Boolean,
+                    by_ref: false,
+                    optional: false,
+                    default: None,
+                },
+            ],
+            return_type: Some(Type::String),
+            throws: None,
+            checksum: None,
+            docstring: None,
+        }));
+        let ci = ComponentInterface::from_metadata(group).unwrap();
+        let bindings = generate_bindings(&nullness_config(), &ci).unwrap();
+        assert!(
+            !bindings.contains("@org.jspecify.annotations.Nullable"),
+            "non-optional types should never have @Nullable"
+        );
+    }
+
+    #[test]
+    fn nullness_nested_optional_in_map_value() {
+        let mut group = test_group();
+        group.add_item(Metadata::Func(FnMetadata {
+            module_path: "test".to_string(),
+            name: "process_map".to_string(),
+            is_async: false,
+            inputs: vec![FnParamMetadata {
+                name: "data".to_string(),
+                ty: Type::Map {
+                    key_type: Box::new(Type::String),
+                    value_type: Box::new(Type::Optional {
+                        inner_type: Box::new(Type::Int32),
+                    }),
+                },
+                by_ref: false,
+                optional: false,
+                default: None,
+            }],
+            return_type: None,
+            throws: None,
+            checksum: None,
+            docstring: None,
+        }));
+        let ci = ComponentInterface::from_metadata(group).unwrap();
+        let bindings = generate_bindings(&nullness_config(), &ci).unwrap();
+        assert!(
+            bindings.contains("java.util.Map<java.lang.String, java.lang.@org.jspecify.annotations.Nullable Integer>"),
+            "map with optional value should have @Nullable on value type:\n{}",
+            bindings.lines().filter(|l| l.contains("processMap")).collect::<Vec<_>>().join("\n")
+        );
+    }
+
+    #[test]
+    fn nullness_nested_optional_in_list() {
+        let mut group = test_group();
+        group.add_item(Metadata::Func(FnMetadata {
+            module_path: "test".to_string(),
+            name: "process_list".to_string(),
+            is_async: false,
+            inputs: vec![FnParamMetadata {
+                name: "data".to_string(),
+                ty: Type::Sequence {
+                    inner_type: Box::new(Type::Optional {
+                        inner_type: Box::new(Type::String),
+                    }),
+                },
+                by_ref: false,
+                optional: false,
+                default: None,
+            }],
+            return_type: None,
+            throws: None,
+            checksum: None,
+            docstring: None,
+        }));
+        let ci = ComponentInterface::from_metadata(group).unwrap();
+        let bindings = generate_bindings(&nullness_config(), &ci).unwrap();
+        assert!(
+            bindings
+                .contains("java.util.List<java.lang.@org.jspecify.annotations.Nullable String>"),
+            "list with optional element should have @Nullable on element type:\n{}",
+            bindings
+                .lines()
+                .filter(|l| l.contains("processList"))
                 .collect::<Vec<_>>()
                 .join("\n")
         );
