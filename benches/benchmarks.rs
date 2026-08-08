@@ -19,7 +19,7 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
-use uniffi_bindgen::{BindgenLoader, BindgenPaths};
+use uniffi_bindgen::{BindgenLoader, BindgenPaths, GlobalConfig};
 use uniffi_bindgen_java::{GenerateOptions, generate};
 use uniffi_testing::UniFFITestHelper;
 
@@ -45,7 +45,7 @@ fn main() -> Result<()> {
 
     let mut paths = BindgenPaths::default();
     paths.add_cargo_metadata_layer(false)?;
-    let loader = BindgenLoader::new(paths);
+    let loader = BindgenLoader::new(paths, GlobalConfig::default());
 
     generate(
         &loader,

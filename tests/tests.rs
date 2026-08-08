@@ -9,9 +9,21 @@ use std::io::{Read, Write};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, fs};
-use uniffi_bindgen::{BindgenLoader, BindgenPaths};
+use uniffi_bindgen::{BindgenLoader, BindgenPaths, BindgenPathsLayer, GlobalConfig};
 use uniffi_bindgen_java::{GenerateOptions, generate};
 use uniffi_testing::UniFFITestHelper;
+
+/// Points every crate at one merged `uniffi.toml`, so a fixture's config plus its test's
+/// `uniffi-extras.toml` apply across all the namespaces the fixture pulls in.
+struct ConfigOverrideLayer {
+    path: Utf8PathBuf,
+}
+
+impl BindgenPathsLayer for ConfigOverrideLayer {
+    fn get_config_path(&self, _crate_name: &str) -> Option<Utf8PathBuf> {
+        Some(self.path.clone())
+    }
+}
 
 /// Run the test fixtures from UniFFI
 fn run_test(fixture_name: &str, test_file: &str) -> Result<()> {
@@ -59,10 +71,12 @@ fn run_test(fixture_name: &str, test_file: &str) -> Result<()> {
     // Create BindgenPaths with cargo metadata layer and optional config override
     let mut paths = BindgenPaths::default();
     if let Some(config_path) = &maybe_new_uniffi_toml_filename {
-        paths.add_config_override_layer(config_path.clone());
+        paths.add_layer(ConfigOverrideLayer {
+            path: config_path.clone(),
+        });
     }
     paths.add_cargo_metadata_layer(false)?;
-    let loader = BindgenLoader::new(paths);
+    let loader = BindgenLoader::new(paths, GlobalConfig::default());
 
     // generate the fixture bindings
     generate(
@@ -163,7 +177,7 @@ fn run_test_with_library_override(
 
     let mut paths = BindgenPaths::default();
     paths.add_cargo_metadata_layer(false)?;
-    let loader = BindgenLoader::new(paths);
+    let loader = BindgenLoader::new(paths, GlobalConfig::default());
 
     generate(
         &loader,

@@ -1,3 +1,15 @@
+## Unreleased
+
+- updated to UniFFI 0.32.0 (and Askama 0.16).
+- added support for `HashSet`, which UniFFI 0.32 exposes to proc-macros. Rust sets map to
+  `java.util.Set`, preserving insertion order on the way back from Rust.
+
+### Breaking
+
+- `--config` now expects a UniFFI [global config file](https://mozilla.github.io/uniffi-rs/next/bindings.html#global-configuration)
+  with `[defaults]`, `[crates.<name>]` and/or `[crate-roots]` sections, rather than a flat
+  `uniffi.toml`-style override. Old-style files are ignored with a warning.
+
 ## 0.4.2
 
 - Added `nullness_annotations` config option to emit JSpecify `@NullMarked` and

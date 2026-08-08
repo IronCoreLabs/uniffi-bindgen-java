@@ -170,6 +170,9 @@ public class UniffiWithHandle {
 {% include "SequenceTemplate.java" %}
 {%- endmatch %}
 
+{%- when Type::Set { inner_type } %}
+{% include "SetTemplate.java" %}
+
 {%- when Type::String %}
 {%- include "StringHelper.java" %}
 

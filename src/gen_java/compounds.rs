@@ -73,6 +73,38 @@ impl CodeType for SequenceCodeType {
 }
 
 #[derive(Debug)]
+pub struct SetCodeType {
+    inner: Type,
+}
+
+impl SetCodeType {
+    pub fn new(inner: Type) -> Self {
+        Self { inner }
+    }
+    fn inner(&self) -> &Type {
+        &self.inner
+    }
+}
+
+impl CodeType for SetCodeType {
+    fn type_label(&self, ci: &ComponentInterface, config: &Config) -> String {
+        format!(
+            "java.util.Set<{}>",
+            super::JavaCodeOracle
+                .find(self.inner())
+                .type_label(ci, config)
+        )
+    }
+
+    fn canonical_name(&self) -> String {
+        format!(
+            "Set{}",
+            super::JavaCodeOracle.find(self.inner()).canonical_name()
+        )
+    }
+}
+
+#[derive(Debug)]
 pub struct MapCodeType {
     key: Type,
     value: Type,

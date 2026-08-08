@@ -2,12 +2,12 @@
 {%- let uniffi_trait_methods = rec.uniffi_trait_methods() %}
 package {{ config.package_name() }};
 
-{%- call java::docstring(rec, 0) %}
+{%- call java::docstring(rec, 0) %}{% endcall %}
 {%- if rec.has_fields() %}
 {%- if config.generate_immutable_records() %}
 public record {{ type_name }}(
     {%- for field in rec.fields() %}
-    {%- call java::docstring(field, 4) %}
+    {%- call java::docstring(field, 4) %}{% endcall %}
     {{ field|type_name_for_field(ci, config) }} {{ field.name()|var_name -}}
     {% if !loop.last %}, {% endif %}
     {%- endfor %}
@@ -15,19 +15,19 @@ public record {{ type_name }}(
     {% if contains_object_references %}
     @Override
     public void close() {
-        {% call java::destroy_fields(rec) %}
+        {% call java::destroy_fields(rec) %}{% endcall %}
     }
     {% endif %}
     {% for meth in rec.methods() -%}
-    {%- call java::func_decl("public", "", meth, 4) %}
+    {%- call java::func_decl("public", "", meth, 4) %}{% endcall %}
     {% endfor %}
     {# Add trait implementations for immutable records - these override record's auto-generated methods #}
-    {% call java::uniffi_trait_impls(uniffi_trait_methods) %}
+    {% call java::uniffi_trait_impls(uniffi_trait_methods) %}{% endcall %}
 }
 {% else %}
 public class {{ type_name }} {% if contains_object_references %}implements AutoCloseable{% if uniffi_trait_methods.ord_cmp.is_some() %}, Comparable<{{ type_name }}>{% endif %}{% else %}{% if uniffi_trait_methods.ord_cmp.is_some() %}implements Comparable<{{ type_name }}> {% endif %}{% endif %}{
     {%- for field in rec.fields() %}
-    {%- call java::docstring(field, 4) %}
+    {%- call java::docstring(field, 4) %}{% endcall %}
     private {{ field|type_name_for_field(ci, config) }} {{ field.name()|var_name -}};
     {%- endfor %}
 
@@ -60,7 +60,7 @@ public class {{ type_name }} {% if contains_object_references %}implements AutoC
     {% if contains_object_references %}
     @Override
     public void close() {
-        {% call java::destroy_fields(rec) %}
+        {% call java::destroy_fields(rec) %}{% endcall %}
     }
     {% endif %}
 
@@ -91,10 +91,10 @@ public class {{ type_name }} {% if contains_object_references %}implements AutoC
     {%- endif %}
 
     {% for meth in rec.methods() -%}
-    {%- call java::func_decl("public", "", meth, 4) %}
+    {%- call java::func_decl("public", "", meth, 4) %}{% endcall %}
     {% endfor %}
     {# Add trait implementations #}
-    {% call java::uniffi_trait_impls(uniffi_trait_methods) %}
+    {% call java::uniffi_trait_impls(uniffi_trait_methods) %}{% endcall %}
 }
 {% endif %}
 {%- else %}
@@ -114,10 +114,10 @@ public class {{ type_name }}{% if uniffi_trait_methods.ord_cmp.is_some() %} impl
     {%- endif %}
 
     {% for meth in rec.methods() -%}
-    {%- call java::func_decl("public", "", meth, 4) %}
+    {%- call java::func_decl("public", "", meth, 4) %}{% endcall %}
     {% endfor %}
     {# Add trait implementations #}
-    {% call java::uniffi_trait_impls(uniffi_trait_methods) %}
+    {% call java::uniffi_trait_impls(uniffi_trait_methods) %}{% endcall %}
 }
 {%- endif %}
 

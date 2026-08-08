@@ -246,7 +246,7 @@ scope).
 
 ## Testing
 
-We pull down the pinned examples directly from Uniffi (currently v0.31.0) and run Java tests using the generated bindings. Run `cargo t` to run all of them.
+We pull down the pinned examples directly from Uniffi (currently v0.32.0) and run Java tests using the generated bindings. Run `cargo t` to run all of them.
 
 Note that if you need additional toml entries for your test, you can put a `uniffi-extras.toml` as a sibling of the test and it will be read in addition to the base `uniffi.toml` for the example. See [CustomTypes](./tests/scripts/TestCustomTypes/) for an example. Settings in `uniffi-extras.toml` apply across all namespaces.
 
