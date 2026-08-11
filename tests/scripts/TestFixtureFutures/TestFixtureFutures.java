@@ -675,8 +675,13 @@ public class TestFixtureFutures {
   }
 
   private static long getProcessRssKb() throws Exception {
-    long pid = ProcessHandle.current().pid();
-    Process p = new ProcessBuilder("/bin/ps", "-o", "rss=", "-p", String.valueOf(pid)).start();
-    return Long.parseLong(new String(p.getInputStream().readAllBytes()).trim());
+    // TEMPORARY DIAGNOSTIC - REVERT
+    try {
+      long pid = ProcessHandle.current().pid();
+      Process p = new ProcessBuilder("/bin/ps", "-o", "rss=", "-p", String.valueOf(pid)).start();
+      return Long.parseLong(new String(p.getInputStream().readAllBytes()).trim());
+    } catch (java.io.IOException e) {
+      return 0L;
+    }
   }
 }

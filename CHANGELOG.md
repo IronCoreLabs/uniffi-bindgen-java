@@ -1,3 +1,25 @@
+## 0.5.0
+
+- update to uniffi 0.32.0
+- support `HashSet<T>`, which maps to `java.util.Set<T>`
+- `Box<T>` is transparent in the generated bindings, so it can be used in enum variants and
+  function parameters without a newtype wrapper
+
+### Breaking
+
+- `--config` now expects a [global config file](https://mozilla.github.io/uniffi-rs/latest/bindings.html#global-configuration)
+  with `[defaults]`, `[crates.<name>]` and `[crate-roots]` sections rather than a flat
+  `uniffi.toml`-style override. Old-style files warn and are ignored. This is an upstream change,
+  see [#2866](https://github.com/mozilla/uniffi-rs/issues/2866).
+- `&[u8]` / `[ByRef] bytes` arguments are now borrowed rather than copied through a `RustBuffer`,
+  and so are declared as `java.nio.ByteBuffer` instead of `byte[]`. The buffer must be direct
+  (`ByteBuffer.allocateDirect`) and must stay reachable across the call; a heap buffer throws
+  `IllegalArgumentException`. Only argument position is supported, matching upstream — such a type
+  nested in a record or option, or used in a callback interface, throws
+  `UnsupportedOperationException`.
+- The generated bindings assert the uniffi contract version, so they must be paired with a Rust
+  library built against uniffi 0.32.
+
 ## 0.4.2
 
 - Added `nullness_annotations` config option to emit JSpecify `@NullMarked` and

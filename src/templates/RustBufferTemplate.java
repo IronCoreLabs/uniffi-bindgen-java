@@ -84,11 +84,9 @@ public final class RustBuffer {
 
 package {{ config.package_name() }};
 
-// This is a helper for safely passing byte references into the rust code.
-// It's not actually used at the moment, because there aren't many things that you
-// can take a direct pointer to in the JVM, and if we're going to copy something
-// then we might as well copy it into a `RustBuffer`. But it's here for API
-// completeness.
+// Carries a borrowed `&[u8]` across the FFI as a (pointer, length) pair. Unlike `RustBuffer`
+// the memory is owned by the caller and is only valid for the duration of the call.
+// See `FfiConverterByRefBytes`.
 public final class ForeignBytes {
     public static final java.lang.foreign.StructLayout LAYOUT = java.lang.foreign.MemoryLayout.structLayout(
         java.lang.foreign.ValueLayout.JAVA_INT.withName("len"),
@@ -115,5 +113,65 @@ public final class ForeignBytes {
 
     public static void setData(java.lang.foreign.MemorySegment seg, java.lang.foreign.MemorySegment value) {
         seg.set(java.lang.foreign.ValueLayout.ADDRESS_UNALIGNED, OFFSET_DATA, value);
+    }
+}
+
+package {{ config.package_name() }};
+
+// Converter for `&[u8]` / `[ByRef] bytes` arguments.
+//
+// Only `lower` is valid. Zero-copy byte buffers only flow foreign -> Rust, and only in argument
+// position, so `lift`, `read`, `write` and `allocationSize` have no sound implementation and throw.
+// `FfiConverter` is implemented anyway so the compiler enforces the full method set.
+//
+// The `ByteBuffer` MUST be direct: only direct buffers have a native address Rust can borrow. The
+// returned segment is valid only for the duration of the call, and the caller must keep `value`
+// reachable across it — Rust treats the bytes as a borrow, and a heap-collected direct buffer frees
+// the memory out from under it.
+public enum FfiConverterByRefBytes implements FfiConverter<java.nio.ByteBuffer, java.lang.foreign.MemorySegment> {
+    INSTANCE;
+
+    // See UniffiSlabAllocator for the design rationale.
+    private static final UniffiSlabAllocator ALLOCATOR = new UniffiSlabAllocator(ForeignBytes.LAYOUT, 1024);
+
+    @Override
+    public java.lang.foreign.MemorySegment lower(java.nio.ByteBuffer value) {
+        if (!value.isDirect()) {
+            throw new java.lang.IllegalArgumentException(
+                "UniFFI zero-copy &[u8] requires a direct ByteBuffer. Use ByteBuffer.allocateDirect().");
+        }
+        int remaining = value.remaining();
+        java.lang.foreign.MemorySegment fb = ALLOCATOR.allocate(ForeignBytes.LAYOUT);
+        ForeignBytes.setLen(fb, remaining);
+        // Rust treats (null, 0) as `&[]`. Taking the address of a zero-length buffer is not
+        // guaranteed to produce anything usable, so don't.
+        ForeignBytes.setData(fb, remaining == 0
+            ? java.lang.foreign.MemorySegment.NULL
+            : java.lang.foreign.MemorySegment.ofBuffer(value));
+        return fb;
+    }
+
+    @Override
+    public java.nio.ByteBuffer lift(java.lang.foreign.MemorySegment value) {
+        throw new java.lang.UnsupportedOperationException(
+            "ByRef bytes cannot be lifted: zero-copy &[u8] only flows foreign->Rust");
+    }
+
+    @Override
+    public java.nio.ByteBuffer read(java.nio.ByteBuffer buf) {
+        throw new java.lang.UnsupportedOperationException(
+            "ByRef bytes cannot be read from a buffer: zero-copy &[u8] is only supported in argument position, not nested in records/options/etc.");
+    }
+
+    @Override
+    public void write(java.nio.ByteBuffer value, java.nio.ByteBuffer buf) {
+        throw new java.lang.UnsupportedOperationException(
+            "ByRef bytes cannot be written to a buffer: zero-copy &[u8] is only supported in argument position, not nested in records/options/etc.");
+    }
+
+    @Override
+    public long allocationSize(java.nio.ByteBuffer value) {
+        throw new java.lang.UnsupportedOperationException(
+            "ByRef bytes have no RustBuffer allocation size: zero-copy &[u8] is only supported in argument position, not nested in records/options/etc.");
     }
 }

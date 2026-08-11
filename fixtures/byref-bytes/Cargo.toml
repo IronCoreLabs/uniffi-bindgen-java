@@ -1,11 +1,11 @@
 [package]
-name = "uniffi-fixture-primitive-arrays"
+name = "uniffi-fixture-byref-bytes"
 version = "0.1.0"
 edition = "2024"
 
 [lib]
 crate-type = ["cdylib", "lib"]
-name = "uniffi_fixture_primitive_arrays"
+name = "uniffi_fixture_byref_bytes"
 
 [dependencies]
 uniffi = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.32.0" }

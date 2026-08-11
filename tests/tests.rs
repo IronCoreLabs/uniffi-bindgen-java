@@ -9,8 +9,7 @@ use std::io::{Read, Write};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, fs};
-use uniffi_bindgen::{BindgenLoader, BindgenPaths};
-use uniffi_bindgen_java::{GenerateOptions, generate};
+use uniffi_bindgen_java::{GenerateOptions, create_loader, generate};
 use uniffi_testing::UniFFITestHelper;
 
 /// Run the test fixtures from UniFFI
@@ -22,6 +21,8 @@ fn run_test(fixture_name: &str, test_file: &str) -> Result<()> {
 
     // This whole block in designed to create a new TOML file if there is one in the fixture or a uniffi-extras.toml as a sibling of the test. The extras
     // will be concatenated to the end of the base with extra if available.
+    // The result is nested under `[defaults]` because `--config` takes a global config file,
+    // not a bare `uniffi.toml`.
     let maybe_new_uniffi_toml_filename = {
         let maybe_base_uniffi_toml_string =
             find_uniffi_toml(fixture_name)?.and_then(read_file_contents);
@@ -51,18 +52,15 @@ fn run_test(fixture_name: &str, test_file: &str) -> Result<()> {
                 .as_nanos();
             let new_filename =
                 out_dir.with_file_name(format!("{}-{}.toml", fixture_name, current_time));
-            write_file_contents(&new_filename, &final_string)?;
+            let defaults: toml::Table = final_string.parse()?;
+            let global_config =
+                toml::Table::from_iter([("defaults".to_string(), toml::Value::Table(defaults))]);
+            write_file_contents(&new_filename, &toml::to_string(&global_config)?)?;
             Some(new_filename)
         }
     };
 
-    // Create BindgenPaths with cargo metadata layer and optional config override
-    let mut paths = BindgenPaths::default();
-    if let Some(config_path) = &maybe_new_uniffi_toml_filename {
-        paths.add_config_override_layer(config_path.clone());
-    }
-    paths.add_cargo_metadata_layer(false)?;
-    let loader = BindgenLoader::new(paths);
+    let loader = create_loader(maybe_new_uniffi_toml_filename.as_deref(), false)?;
 
     // generate the fixture bindings
     generate(
@@ -161,9 +159,7 @@ fn run_test_with_library_override(
     let out_dir = test_helper.create_out_dir(env!("CARGO_TARGET_TMPDIR"), &out_dir_key)?;
     let cdylib_path = test_helper.cdylib_path()?;
 
-    let mut paths = BindgenPaths::default();
-    paths.add_cargo_metadata_layer(false)?;
-    let loader = BindgenLoader::new(paths);
+    let loader = create_loader(None, false)?;
 
     generate(
         &loader,
@@ -376,6 +372,7 @@ fixture_tests! {
     (test_proc_macro, "uniffi-fixture-proc-macro", "scripts/TestProcMacro.java"),
     (test_rename, "uniffi-fixture-rename", "scripts/TestRename/TestRename.java"),
     (test_primitive_arrays, "uniffi-fixture-primitive-arrays", "scripts/TestPrimitiveArrays.java"),
+    (test_byref_bytes, "uniffi-fixture-byref-bytes", "scripts/TestByRefBytes.java"),
 }
 
 #[test]

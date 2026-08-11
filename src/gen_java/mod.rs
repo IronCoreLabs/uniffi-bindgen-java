@@ -745,7 +745,12 @@ impl AsCodeType for Type {
                 (*key_type).clone(),
                 (*value_type).clone(),
             )),
+            Type::Set { inner_type } => {
+                Box::new(compounds::SetCodeType::new((*inner_type).clone()))
+            }
             Type::Custom { name, .. } => Box::new(custom::CustomCodeType::new(name.clone())),
+            // `Box<T>` is transparent across the FFI.
+            Type::Box { inner_type } => inner_type.as_codetype(),
         }
     }
 }
@@ -800,8 +805,9 @@ mod filters {
     use super::*;
     use uniffi_meta::AsType;
 
-    // Askama 0.14 passes a Values parameter to all filters. We use `_v` to accept but ignore it.
+    // Askama passes a Values parameter to all filters. We use `_v` to accept but ignore it.
 
+    #[askama::filter_fn]
     pub(super) fn ffi_type(
         type_: &impl AsType,
         _v: &dyn askama::Values,
@@ -809,6 +815,7 @@ mod filters {
         Ok(type_.as_type().into())
     }
 
+    #[askama::filter_fn]
     pub(super) fn type_name(
         as_ct: &impl AsCodeType,
         _v: &dyn askama::Values,
@@ -821,6 +828,7 @@ mod filters {
     /// Generate a fully qualified type name including the package.
     /// This is needed for enum variant fields to avoid naming collisions
     /// when a variant field type has the same name as the enum itself.
+    #[askama::filter_fn]
     pub(super) fn qualified_type_name<T>(
         as_type: &T,
         _v: &dyn askama::Values,
@@ -918,6 +926,7 @@ mod filters {
         }
     }
 
+    #[askama::filter_fn]
     pub(super) fn canonical_name(
         as_ct: &impl AsCodeType,
         _v: &dyn askama::Values,
@@ -926,6 +935,7 @@ mod filters {
     }
 
     /// Check if a type is external (from another crate)
+    #[askama::filter_fn]
     pub(super) fn is_external(
         as_type: &impl AsType,
         _v: &dyn askama::Values,
@@ -934,6 +944,7 @@ mod filters {
         Ok(ci.is_external(&as_type.as_type()))
     }
 
+    #[askama::filter_fn]
     pub(super) fn ffi_converter_instance(
         as_ct: &impl AsCodeType,
         _v: &dyn askama::Values,
@@ -943,6 +954,7 @@ mod filters {
         Ok(as_ct.as_codetype().ffi_converter_instance(config, ci))
     }
 
+    #[askama::filter_fn]
     pub(super) fn ffi_converter_name(
         as_ct: &impl AsCodeType,
         _v: &dyn askama::Values,
@@ -950,18 +962,24 @@ mod filters {
         Ok(as_ct.as_codetype().ffi_converter_name())
     }
 
+    #[askama::filter_fn]
     pub(super) fn lower_fn(
         as_ct: &impl AsCodeType,
         _v: &dyn askama::Values,
         config: &Config,
         ci: &ComponentInterface,
     ) -> Result<String, askama::Error> {
-        Ok(format!(
-            "{}.lower",
-            as_ct.as_codetype().ffi_converter_instance(config, ci)
-        ))
+        Ok(lower_fn_label(as_ct, config, ci))
     }
 
+    fn lower_fn_label(as_ct: &impl AsCodeType, config: &Config, ci: &ComponentInterface) -> String {
+        format!(
+            "{}.lower",
+            as_ct.as_codetype().ffi_converter_instance(config, ci)
+        )
+    }
+
+    #[askama::filter_fn]
     pub(super) fn allocation_size_fn(
         as_ct: &impl AsCodeType,
         _v: &dyn askama::Values,
@@ -974,6 +992,7 @@ mod filters {
         ))
     }
 
+    #[askama::filter_fn]
     pub(super) fn write_fn(
         as_ct: &impl AsCodeType,
         _v: &dyn askama::Values,
@@ -986,6 +1005,7 @@ mod filters {
         ))
     }
 
+    #[askama::filter_fn]
     pub(super) fn lift_fn(
         as_ct: &impl AsCodeType,
         _v: &dyn askama::Values,
@@ -998,6 +1018,7 @@ mod filters {
         ))
     }
 
+    #[askama::filter_fn]
     pub(super) fn read_fn(
         as_ct: &impl AsCodeType,
         _v: &dyn askama::Values,
@@ -1027,6 +1048,7 @@ mod filters {
     }
 
     // Get the idiomatic Java rendering of an individual enum variant's discriminant
+    #[askama::filter_fn]
     pub fn variant_discr_literal(
         e: &Enum,
         _v: &dyn askama::Values,
@@ -1043,6 +1065,7 @@ mod filters {
     }
 
     /// FFI type name (primitive for scalars, MemorySegment for everything else)
+    #[askama::filter_fn]
     pub fn ffi_type_name(
         type_: &FfiType,
         _v: &dyn askama::Values,
@@ -1055,6 +1078,7 @@ mod filters {
     /// Returns the primitive call suffix (e.g. "Long", "Int") for primitive-specialized
     /// uniffiRustCall variants. Returns empty string for types where the high-level Java
     /// primitive doesn't match the FFI primitive (e.g. Boolean→byte) or non-primitive types.
+    #[askama::filter_fn]
     pub fn primitive_call_suffix(
         as_ct: &impl AsCodeType,
         _v: &dyn askama::Values,
@@ -1078,6 +1102,7 @@ mod filters {
     /// Returns true if the argument's FFI type is a primitive where the Java type matches
     /// the FFI type directly (no conversion needed). Used to skip lower_fn for primitive args.
     /// Excludes boolean (Java `boolean` vs FFI `byte`).
+    #[askama::filter_fn]
     pub fn has_primitive_ffi_type(
         as_ct: &impl AsCodeType,
         _v: &dyn askama::Values,
@@ -1089,6 +1114,7 @@ mod filters {
     }
 
     /// Maps FfiType to ValueLayout constant for FunctionDescriptor
+    #[askama::filter_fn]
     pub fn ffi_value_layout(
         type_: &FfiType,
         _v: &dyn askama::Values,
@@ -1097,6 +1123,7 @@ mod filters {
     }
 
     /// Generate the full structLayout body for an FfiStruct, with computed padding
+    #[askama::filter_fn]
     pub fn ffi_struct_layout_body(
         ffi_struct: &uniffi_bindgen::interface::FfiStruct,
         _v: &dyn askama::Values,
@@ -1136,6 +1163,7 @@ mod filters {
     }
 
     /// Maps FfiType to UNALIGNED ValueLayout for struct field access
+    #[askama::filter_fn]
     pub fn ffi_value_layout_unaligned(
         type_: &FfiType,
         _v: &dyn askama::Values,
@@ -1144,6 +1172,7 @@ mod filters {
     }
 
     /// Cast prefix for invokeExact() return values
+    #[askama::filter_fn]
     pub fn ffi_invoke_exact_cast(
         type_: &FfiType,
         _v: &dyn askama::Values,
@@ -1152,6 +1181,7 @@ mod filters {
     }
 
     /// Returns true if the FFI return type is a struct needing SegmentAllocator
+    #[askama::filter_fn]
     pub fn ffi_type_is_struct(
         type_: &FfiType,
         _v: &dyn askama::Values,
@@ -1160,6 +1190,7 @@ mod filters {
     }
 
     /// Returns true if this is an embedded struct (slice-based access in struct fields)
+    #[askama::filter_fn]
     pub fn ffi_type_is_embedded_struct(
         type_: &FfiType,
         _v: &dyn askama::Values,
@@ -1168,6 +1199,7 @@ mod filters {
     }
 
     /// Get the struct class name for an FFI struct type
+    #[askama::filter_fn]
     pub fn ffi_struct_type_name(
         type_: &FfiType,
         _v: &dyn askama::Values,
@@ -1176,6 +1208,7 @@ mod filters {
     }
 
     /// FFI type name using boxed types for generic contexts (accepts high-level Type)
+    #[askama::filter_fn]
     pub fn ffi_type_name_boxed(
         type_: &impl AsType,
         _v: &dyn askama::Values,
@@ -1184,10 +1217,18 @@ mod filters {
         Ok(JavaCodeOracle.ffi_type_label_boxed(&ffi_type))
     }
 
-    /// Get the interface name for a trait implementation (for external trait interfaces).
+    #[askama::filter_fn]
     pub fn trait_interface_name(
         trait_ty: &Type,
         _v: &dyn askama::Values,
+        ci: &ComponentInterface,
+    ) -> Result<String, askama::Error> {
+        resolve_trait_interface_name(trait_ty, ci)
+    }
+
+    /// Get the interface name for a trait implementation (for external trait interfaces).
+    pub(super) fn resolve_trait_interface_name(
+        trait_ty: &Type,
         ci: &ComponentInterface,
     ) -> Result<String, askama::Error> {
         let Some(module_path) = trait_ty.module_path() else {
@@ -1229,6 +1270,7 @@ mod filters {
     }
 
     /// Get the idiomatic Java rendering of a class name from a string.
+    #[askama::filter_fn]
     pub fn class_name<S: AsRef<str>>(
         nm: S,
         _v: &dyn askama::Values,
@@ -1238,6 +1280,7 @@ mod filters {
     }
 
     /// Get the idiomatic Java rendering of a class name from a Type.
+    #[askama::filter_fn]
     pub fn class_name_from_type(
         as_type: &impl AsType,
         _v: &dyn askama::Values,
@@ -1261,11 +1304,13 @@ mod filters {
     }
 
     /// Get the idiomatic Java rendering of a function name.
+    #[askama::filter_fn]
     pub fn fn_name<S: AsRef<str>>(nm: S, _v: &dyn askama::Values) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.fn_name(nm.as_ref()))
     }
 
     /// Get the idiomatic Java rendering of a variable name.
+    #[askama::filter_fn]
     pub fn var_name<S: AsRef<str>>(
         nm: S,
         _v: &dyn askama::Values,
@@ -1274,6 +1319,7 @@ mod filters {
     }
 
     /// Get the idiomatic Java rendering of a variable name, without altering reserved words.
+    #[askama::filter_fn]
     pub fn var_name_raw<S: AsRef<str>>(
         nm: S,
         _v: &dyn askama::Values,
@@ -1282,11 +1328,13 @@ mod filters {
     }
 
     /// Get the idiomatic Java setter method name.
+    #[askama::filter_fn]
     pub fn setter<S: AsRef<str>>(nm: S, _v: &dyn askama::Values) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.setter(nm.as_ref()))
     }
 
     /// Get a String representing the name used for an individual enum variant.
+    #[askama::filter_fn]
     pub fn variant_name(
         variant: &Variant,
         _v: &dyn askama::Values,
@@ -1294,6 +1342,7 @@ mod filters {
         Ok(JavaCodeOracle.enum_variant_name(variant.name()))
     }
 
+    #[askama::filter_fn]
     pub fn error_variant_name(
         variant: &Variant,
         _v: &dyn askama::Values,
@@ -1303,6 +1352,7 @@ mod filters {
     }
 
     /// Get the idiomatic Java rendering of an FFI callback function name
+    #[askama::filter_fn]
     pub fn ffi_callback_name<S: AsRef<str>>(
         nm: S,
         _v: &dyn askama::Values,
@@ -1311,6 +1361,7 @@ mod filters {
     }
 
     /// Get the idiomatic Java rendering of an FFI struct name
+    #[askama::filter_fn]
     pub fn ffi_struct_name<S: AsRef<str>>(
         nm: S,
         _v: &dyn askama::Values,
@@ -1318,6 +1369,7 @@ mod filters {
         Ok(JavaCodeOracle.ffi_struct_name(nm.as_ref()))
     }
 
+    #[askama::filter_fn]
     pub fn object_names(
         obj: &Object,
         _v: &dyn askama::Values,
@@ -1326,19 +1378,30 @@ mod filters {
         Ok(JavaCodeOracle.object_names(ci, obj))
     }
 
+    /// Boxed return type of a callable, with `void` rendered as `java.lang.Void` so it can be a
+    /// `CompletableFuture` type argument.
+    fn async_inner_return_type_label(
+        callable: &impl Callable,
+        ci: &ComponentInterface,
+        config: &Config,
+    ) -> String {
+        callable.return_type().map_or_else(
+            || "java.lang.Void".to_string(),
+            |t| t.as_codetype().type_label(ci, config),
+        )
+    }
+
+    #[askama::filter_fn]
     pub fn async_inner_return_type(
         callable: impl Callable,
         _v: &dyn askama::Values,
         ci: &ComponentInterface,
         config: &Config,
     ) -> Result<String, askama::Error> {
-        callable
-            .return_type()
-            .map_or(Ok("java.lang.Void".to_string()), |t| {
-                type_name(t, _v, ci, config)
-            })
+        Ok(async_inner_return_type_label(&callable, ci, config))
     }
 
+    #[askama::filter_fn]
     pub fn async_return_type(
         callable: impl Callable,
         _v: &dyn askama::Values,
@@ -1346,7 +1409,7 @@ mod filters {
         config: &Config,
     ) -> Result<String, askama::Error> {
         let is_async = callable.is_async();
-        let inner_type = async_inner_return_type(callable, _v, ci, config)?;
+        let inner_type = async_inner_return_type_label(&callable, ci, config);
         if is_async {
             Ok(format!(
                 "java.util.concurrent.CompletableFuture<{inner_type}>"
@@ -1356,6 +1419,7 @@ mod filters {
         }
     }
 
+    #[askama::filter_fn]
     pub fn async_poll(
         callable: impl Callable,
         _v: &dyn askama::Values,
@@ -1367,11 +1431,12 @@ mod filters {
         ))
     }
 
+    #[askama::filter_fn]
     pub fn async_complete(
         callable: impl Callable,
         _v: &dyn askama::Values,
         ci: &ComponentInterface,
-        _config: &Config,
+        config: &Config,
     ) -> Result<String, askama::Error> {
         let ffi_func = callable.ffi_rust_future_complete(ci);
         // The complete function returns a RustBuffer for types that use RustBuffer FFI,
@@ -1385,6 +1450,7 @@ mod filters {
         Ok(format!("(_allocator, future, continuation) -> {call}"))
     }
 
+    #[askama::filter_fn]
     pub fn async_free(
         callable: impl Callable,
         _v: &dyn askama::Values,
@@ -1399,11 +1465,13 @@ mod filters {
     /// These are used to avoid name clashes with java identifiers, but sometimes you want to
     /// render the name unquoted.  One example is the message property for errors where we want to
     /// display the name for the user.
+    #[askama::filter_fn]
     pub fn unquote<S: AsRef<str>>(nm: S, _v: &dyn askama::Values) -> Result<String, askama::Error> {
         Ok(nm.as_ref().trim_matches('`').to_string())
     }
 
     /// Get the idiomatic Java rendering of docstring
+    #[askama::filter_fn]
     pub fn docstring<S: AsRef<str>>(
         docstring: S,
         _v: &dyn askama::Values,
@@ -1419,23 +1487,67 @@ mod filters {
     /// Returns the type name suitable for use in field declarations, method parameters, and return types.
     /// For non-optional primitives, returns the primitive type (int, long, boolean, etc.).
     /// For optional types and all other types, returns the boxed/object type.
+    #[askama::filter_fn]
     pub fn type_name_for_field(
         as_ct: &impl AsCodeType,
         _v: &dyn askama::Values,
         ci: &ComponentInterface,
         config: &Config,
     ) -> Result<String, askama::Error> {
-        // Check if the codetype has a primitive label available
+        Ok(type_label_for_field(as_ct, ci, config))
+    }
+
+    /// Unboxed type label where one exists, otherwise the standard boxed label.
+    fn type_label_for_field(
+        as_ct: &impl AsCodeType,
+        ci: &ComponentInterface,
+        config: &Config,
+    ) -> String {
         let codetype = as_ct.as_codetype();
-        if let Some(primitive) = codetype.type_label_primitive() {
-            return Ok(primitive);
+        codetype
+            .type_label_primitive()
+            .unwrap_or_else(|| codetype.type_label(ci, config))
+    }
+
+    /// Per-argument override of `type_name_for_field`. A borrowed `Bytes` argument crosses the FFI
+    /// as `ForeignBytes` (pointer + length) rather than an owned `RustBuffer`, and the only Java
+    /// type we can hand out a stable native address for is a direct `ByteBuffer`.
+    ///
+    /// This is the foreign -> Rust (lower) direction only; the reverse has no sound representation,
+    /// which is why `FfiConverterByRefBytes` implements nothing but `lower`.
+    #[askama::filter_fn]
+    pub fn lower_type_name_for_arg(
+        arg: &Argument,
+        _v: &dyn askama::Values,
+        ci: &ComponentInterface,
+        config: &Config,
+    ) -> Result<String, askama::Error> {
+        if arg.is_borrowed_bytes() {
+            Ok("java.nio.ByteBuffer".to_string())
+        } else {
+            Ok(type_label_for_field(&arg, ci, config))
         }
-        // Otherwise use the standard boxed type label
-        Ok(codetype.type_label(ci, config))
+    }
+
+    /// Per-argument override of `lower_fn`, routing borrowed `Bytes` through the zero-copy
+    /// converter. See [`lower_type_name_for_arg`].
+    #[askama::filter_fn]
+    pub fn lower_fn_for_arg(
+        arg: &Argument,
+        _v: &dyn askama::Values,
+        config: &Config,
+        ci: &ComponentInterface,
+    ) -> Result<String, askama::Error> {
+        if arg.is_borrowed_bytes() {
+            Ok("FfiConverterByRefBytes.INSTANCE.lower".to_string())
+        } else {
+            Ok(lower_fn_label(&arg, config, ci))
+        }
     }
 
     /// Always returns the boxed type name, for use in generic contexts like CompletableFuture<T>.
     /// This is the same as type_name but with a clearer name for template readability.
+    #[askama::filter_fn]
     pub fn boxed_type_name(
         as_ct: &impl AsCodeType,
         _v: &dyn askama::Values,
@@ -1448,6 +1560,7 @@ mod filters {
     /// Generates an equality expression for comparing two values of a field's type.
     /// For primitives: returns "left == right"
     /// For objects: returns "java.util.Objects.equals(left, right)"
+    #[askama::filter_fn]
     pub fn equals_expr<T: AsCodeType, L: std::fmt::Display, R: std::fmt::Display>(
         field: &T,
         _v: &dyn askama::Values,
@@ -1465,6 +1578,7 @@ mod filters {
     /// Generates a hash code expression for a field value.
     /// For primitives: returns "Type.hashCode(value)" (e.g., "java.lang.Integer.hashCode(value)")
     /// For objects: returns "java.util.Objects.hashCode(value)"
+    #[askama::filter_fn]
     pub fn hash_code_expr<T: AsCodeType + AsType, V: std::fmt::Display>(
         field: &T,
         _v: &dyn askama::Values,
@@ -1490,8 +1604,8 @@ mod tests {
     use uniffi_meta::{
         CallbackInterfaceMetadata, EnumMetadata, EnumShape, FieldMetadata, FnMetadata,
         FnParamMetadata, Metadata, MetadataGroup, MethodMetadata, NamespaceMetadata, ObjectImpl,
-        ObjectMetadata, ObjectTraitImplMetadata, RecordMetadata, TraitMethodMetadata, Type,
-        VariantMetadata,
+        ObjectMetadata, ObjectTraitImplMetadata, RecordMetadata, TraitKind, TraitMethodMetadata,
+        Type, VariantMetadata,
     };
 
     #[test]
@@ -1509,10 +1623,12 @@ mod tests {
         group.add_item(Metadata::Enum(EnumMetadata {
             module_path: "test".to_string(),
             name: "Error".to_string(),
+            orig_name: None,
             shape: EnumShape::Error { flat: true },
             remote: false,
             variants: vec![VariantMetadata {
                 name: "Oops".to_string(),
+                orig_name: None,
                 discr: None,
                 fields: vec![],
                 docstring: None,
@@ -1524,6 +1640,7 @@ mod tests {
         group.add_item(Metadata::Func(FnMetadata {
             module_path: "test".to_string(),
             name: "always_fails".to_string(),
+            orig_name: None,
             is_async: false,
             inputs: vec![],
             return_type: None,
@@ -1593,6 +1710,7 @@ mod tests {
             group.add_item(Metadata::Func(FnMetadata {
                 module_path: "test".to_string(),
                 name: name.to_string(),
+                orig_name: None,
                 is_async: false,
                 inputs: vec![FnParamMetadata {
                     name: "data".to_string(),
@@ -1613,6 +1731,73 @@ mod tests {
         }
 
         group
+    }
+
+    /// A namespace with one function, `f(data: param_ty) -> return_ty`.
+    fn create_single_function_group(param_ty: Type, return_ty: Type) -> MetadataGroup {
+        let mut group = MetadataGroup {
+            namespace: NamespaceMetadata {
+                crate_name: "test".to_string(),
+                name: "test".to_string(),
+            },
+            namespace_docstring: None,
+            items: Default::default(),
+        };
+        group.add_item(Metadata::Func(FnMetadata {
+            module_path: "test".to_string(),
+            name: "f".to_string(),
+            orig_name: None,
+            is_async: false,
+            inputs: vec![FnParamMetadata {
+                name: "data".to_string(),
+                ty: param_ty,
+                by_ref: false,
+                optional: false,
+                default: None,
+            }],
+            return_type: Some(return_ty),
+            throws: None,
+            checksum: None,
+            docstring: None,
+        }));
+        group
+    }
+
+    #[test]
+    fn generates_set() {
+        let set = Type::Set {
+            inner_type: Box::new(Type::String),
+        };
+        let group = create_single_function_group(set.clone(), set);
+        let ci = ComponentInterface::from_metadata(group).unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+
+        assert!(
+            bindings.contains("public static java.util.Set<java.lang.String> f(java.util.Set<java.lang.String> data)"),
+            "expected java.util.Set signature in generated bindings"
+        );
+        assert!(
+            bindings.contains("enum FfiConverterSetString implements FfiConverterRustBuffer<java.util.Set<java.lang.String>>"),
+            "expected a Set FfiConverter in generated bindings"
+        );
+    }
+
+    /// `Box<T>` is transparent across the FFI, so it renders exactly as `T` would.
+    #[test]
+    fn box_renders_as_inner_type() {
+        let group = create_single_function_group(
+            Type::Box {
+                inner_type: Box::new(Type::String),
+            },
+            Type::String,
+        );
+        let ci = ComponentInterface::from_metadata(group).unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+
+        assert!(
+            bindings.contains("public static java.lang.String f(java.lang.String data)"),
+            "expected Box<String> to render as java.lang.String"
+        );
     }
 
     #[test]
@@ -1781,6 +1966,7 @@ mod tests {
         group.add_item(Metadata::Func(FnMetadata {
             module_path: "test".to_string(),
             name: "noop".to_string(),
+            orig_name: None,
             is_async: false,
             inputs: vec![],
             return_type: None,
@@ -1836,8 +2022,9 @@ mod tests {
         group.add_item(Metadata::Object(ObjectMetadata {
             module_path: submodule_path.to_string(),
             name: "MyTrait".to_string(),
+            orig_name: None,
             remote: false,
-            imp: ObjectImpl::CallbackTrait,
+            imp: ObjectImpl::Trait(TraitKind::Both),
             docstring: None,
         }));
 
@@ -1845,6 +2032,7 @@ mod tests {
         group.add_item(Metadata::Object(ObjectMetadata {
             module_path: submodule_path.to_string(),
             name: "MyObj".to_string(),
+            orig_name: None,
             remote: false,
             imp: ObjectImpl::Struct,
             docstring: None,
@@ -1859,7 +2047,7 @@ mod tests {
             trait_ty: Type::Object {
                 module_path: submodule_path.to_string(),
                 name: "MyTrait".to_string(),
-                imp: ObjectImpl::CallbackTrait,
+                imp: ObjectImpl::Trait(TraitKind::Both),
             },
         }));
 
@@ -1892,6 +2080,7 @@ mod tests {
         group.add_item(Metadata::Object(ObjectMetadata {
             module_path: "test".to_string(),
             name: "DefaultMetricsRecorder".to_string(),
+            orig_name: None,
             remote: false,
             imp: ObjectImpl::Struct,
             docstring: None,
@@ -1916,12 +2105,11 @@ mod tests {
         let mut ci = ComponentInterface::from_metadata(group).unwrap();
         ci.derive_ffi_funcs().unwrap();
 
-        let interface_name = super::filters::trait_interface_name(
+        let interface_name = super::filters::resolve_trait_interface_name(
             &Type::CallbackInterface {
                 module_path: "test::metrics".to_string(),
                 name: "MetricsRecorder".to_string(),
             },
-            &(),
             &ci,
         )
         .unwrap();
@@ -2012,6 +2200,7 @@ mod tests {
         group.add_item(Metadata::Func(FnMetadata {
             module_path: "test".to_string(),
             name: "maybe_string".to_string(),
+            orig_name: None,
             is_async: false,
             inputs: vec![FnParamMetadata {
                 name: "input".to_string(),
@@ -2045,6 +2234,7 @@ mod tests {
         group.add_item(Metadata::Func(FnMetadata {
             module_path: "test".to_string(),
             name: "foo".to_string(),
+            orig_name: None,
             is_async: false,
             inputs: vec![
                 FnParamMetadata {
@@ -2096,16 +2286,19 @@ mod tests {
         group.add_item(Metadata::Record(RecordMetadata {
             module_path: "test".to_string(),
             name: "Person".to_string(),
+            orig_name: None,
             remote: false,
             fields: vec![
                 FieldMetadata {
                     name: "name".to_string(),
+                    orig_name: None,
                     ty: Type::String,
                     default: None,
                     docstring: None,
                 },
                 FieldMetadata {
                     name: "nickname".to_string(),
+                    orig_name: None,
                     ty: Type::Optional {
                         inner_type: Box::new(Type::String),
                     },
@@ -2119,6 +2312,7 @@ mod tests {
         group.add_item(Metadata::Func(FnMetadata {
             module_path: "test".to_string(),
             name: "get_person".to_string(),
+            orig_name: None,
             is_async: false,
             inputs: vec![],
             return_type: Some(Type::Record {
@@ -2154,16 +2348,19 @@ mod tests {
         group.add_item(Metadata::Record(RecordMetadata {
             module_path: "test".to_string(),
             name: "Person".to_string(),
+            orig_name: None,
             remote: false,
             fields: vec![
                 FieldMetadata {
                     name: "name".to_string(),
+                    orig_name: None,
                     ty: Type::String,
                     default: None,
                     docstring: None,
                 },
                 FieldMetadata {
                     name: "nickname".to_string(),
+                    orig_name: None,
                     ty: Type::Optional {
                         inner_type: Box::new(Type::String),
                     },
@@ -2176,6 +2373,7 @@ mod tests {
         group.add_item(Metadata::Func(FnMetadata {
             module_path: "test".to_string(),
             name: "get_person".to_string(),
+            orig_name: None,
             is_async: false,
             inputs: vec![],
             return_type: Some(Type::Record {
@@ -2212,6 +2410,7 @@ mod tests {
         group.add_item(Metadata::Object(ObjectMetadata {
             module_path: "test".to_string(),
             name: "MyObj".to_string(),
+            orig_name: None,
             remote: false,
             imp: ObjectImpl::Struct,
             docstring: None,
@@ -2220,6 +2419,7 @@ mod tests {
             module_path: "test".to_string(),
             self_name: "MyObj".to_string(),
             name: "do_thing".to_string(),
+            orig_name: None,
             is_async: false,
             inputs: vec![FnParamMetadata {
                 name: "input".to_string(),
@@ -2256,6 +2456,7 @@ mod tests {
         group.add_item(Metadata::Object(ObjectMetadata {
             module_path: "test".to_string(),
             name: "MyObj".to_string(),
+            orig_name: None,
             remote: false,
             imp: ObjectImpl::Struct,
             docstring: None,
@@ -2281,6 +2482,7 @@ mod tests {
         group.add_item(Metadata::Object(ObjectMetadata {
             module_path: "test".to_string(),
             name: "MyObj".to_string(),
+            orig_name: None,
             remote: false,
             imp: ObjectImpl::Struct,
             docstring: None,
@@ -2304,13 +2506,16 @@ mod tests {
         group.add_item(Metadata::Enum(EnumMetadata {
             module_path: "test".to_string(),
             name: "MyEnum".to_string(),
+            orig_name: None,
             shape: EnumShape::Enum,
             remote: false,
             variants: vec![VariantMetadata {
                 name: "WithOptional".to_string(),
+                orig_name: None,
                 discr: None,
                 fields: vec![FieldMetadata {
                     name: "value".to_string(),
+                    orig_name: None,
                     ty: Type::Optional {
                         inner_type: Box::new(Type::String),
                     },
@@ -2326,6 +2531,7 @@ mod tests {
         group.add_item(Metadata::Func(FnMetadata {
             module_path: "test".to_string(),
             name: "get_enum".to_string(),
+            orig_name: None,
             is_async: false,
             inputs: vec![],
             return_type: Some(Type::Enum {
@@ -2355,13 +2561,16 @@ mod tests {
         group.add_item(Metadata::Enum(EnumMetadata {
             module_path: "test".to_string(),
             name: "MyError".to_string(),
+            orig_name: None,
             shape: EnumShape::Error { flat: false },
             remote: false,
             variants: vec![VariantMetadata {
                 name: "BadInput".to_string(),
+                orig_name: None,
                 discr: None,
                 fields: vec![FieldMetadata {
                     name: "detail".to_string(),
+                    orig_name: None,
                     ty: Type::Optional {
                         inner_type: Box::new(Type::String),
                     },
@@ -2377,6 +2586,7 @@ mod tests {
         group.add_item(Metadata::Func(FnMetadata {
             module_path: "test".to_string(),
             name: "do_stuff".to_string(),
+            orig_name: None,
             is_async: false,
             inputs: vec![],
             return_type: None,
@@ -2406,6 +2616,7 @@ mod tests {
         group.add_item(Metadata::Func(FnMetadata {
             module_path: "test".to_string(),
             name: "fetch".to_string(),
+            orig_name: None,
             is_async: true,
             inputs: vec![],
             return_type: Some(Type::Optional {
@@ -2435,6 +2646,7 @@ mod tests {
         group.add_item(Metadata::Func(FnMetadata {
             module_path: "test".to_string(),
             name: "identity".to_string(),
+            orig_name: None,
             is_async: false,
             inputs: vec![
                 FnParamMetadata {
@@ -2478,6 +2690,7 @@ mod tests {
         group.add_item(Metadata::Func(FnMetadata {
             module_path: "test".to_string(),
             name: "process_map".to_string(),
+            orig_name: None,
             is_async: false,
             inputs: vec![FnParamMetadata {
                 name: "data".to_string(),
@@ -2511,6 +2724,7 @@ mod tests {
         group.add_item(Metadata::Func(FnMetadata {
             module_path: "test".to_string(),
             name: "process_list".to_string(),
+            orig_name: None,
             is_async: false,
             inputs: vec![FnParamMetadata {
                 name: "data".to_string(),
@@ -2562,6 +2776,7 @@ mod tests {
             trait_name: "Histogram".to_string(),
             index: 0,
             name: "record".to_string(),
+            orig_name: None,
             is_async: false,
             inputs: vec![FnParamMetadata {
                 name: "value".to_string(),

@@ -143,6 +143,9 @@ public class UniffiWithHandle {
 {%- when Type::Map { key_type, value_type } %}
 {% include "MapTemplate.java" %}
 
+{%- when Type::Set { inner_type } %}
+{% include "SetTemplate.java" %}
+
 {%- when Type::Optional { inner_type } %}
 {% include "OptionalTemplate.java" %}
 

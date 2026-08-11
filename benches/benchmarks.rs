@@ -19,8 +19,7 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
-use uniffi_bindgen::{BindgenLoader, BindgenPaths};
-use uniffi_bindgen_java::{GenerateOptions, generate};
+use uniffi_bindgen_java::{GenerateOptions, create_loader, generate};
 use uniffi_testing::UniFFITestHelper;
 
 fn main() -> Result<()> {
@@ -43,9 +42,7 @@ fn main() -> Result<()> {
     println!("Generating Java bindings...");
     let out_dir = Utf8PathBuf::from(tmp_dir.to_string_lossy().to_string());
 
-    let mut paths = BindgenPaths::default();
-    paths.add_cargo_metadata_layer(false)?;
-    let loader = BindgenLoader::new(paths);
+    let loader = create_loader(None, false)?;
 
     generate(
         &loader,

@@ -11,19 +11,24 @@ public class TestRename {
         // These apply to ALL languages
         //
 
-        // Test renamed record
+        // Test renamed record with renamed field
         RenamedRecord record = new RenamedRecord(42);
-        assert record.item() == 42 : "RenamedRecord.item should be 42";
+        assert record.renamedField() == 42 : "RenamedRecord.renamedField should be 42";
 
         // Test renamed enum with renamed variant (sealed interface)
         RenamedEnum enum1 = new RenamedEnum.RenamedVariant();
         RenamedEnum enum2 = new RenamedEnum.Record(record);
         assert enum2 instanceof RenamedEnum.Record : "enum2 should be RenamedEnum.Record";
 
+        // Test renamed variant field
+        RenamedEnumWithFields enum3 = new RenamedEnumWithFields.RenamedVariantWithFields(42);
+        assert ((RenamedEnumWithFields.RenamedVariantWithFields) enum3).renamedVariantField() == 42
+            : "renamedVariantField should be 42";
+
         // Test renamed function (in namespace class)
         RenamedEnum result = UniffiFixtureRename.renamedFunction(record);
         assert result instanceof RenamedEnum.Record : "renamedFunction should return RenamedEnum.Record";
-        assert ((RenamedEnum.Record) result).v1().item() == 42 : "Record item should be 42";
+        assert ((RenamedEnum.Record) result).v1().renamedField() == 42 : "Record renamedField should be 42";
 
         // Test renamed object with renamed constructor and method
         RenamedObject obj = RenamedObject.renamedConstructor(123);

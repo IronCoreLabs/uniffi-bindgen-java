@@ -1,0 +1,5 @@
+[env]
+# Rendering `wrapper.java` is a single askama-generated function whose debug-build stack frame
+# exceeds libtest's 2 MiB thread stack. The CLI is unaffected (main thread gets 8 MiB), but
+# `cargo test` needs this.
+RUST_MIN_STACK = "8388608"
