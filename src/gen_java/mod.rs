@@ -284,8 +284,46 @@ impl CustomTypeConfig {
 /// an explicitly sized thread keeps that independent of whatever stack the caller happens to have.
 const RENDER_STACK_SIZE: usize = 32 * 1024 * 1024;
 
+/// `ForeignBytes` is a borrow that only survives one inbound call, so it works for arguments
+/// travelling foreign -> Rust and nowhere else. UniFFI nevertheless puts it in the vtable for a
+/// foreign-implemented method taking `&[u8]`, where it would arrive as a pointer the JVM never
+/// owned; fail the build rather than emit bindings that read it.
+fn reject_borrowed_bytes_in_callbacks(ci: &ComponentInterface) -> Result<()> {
+    let offenders = ci
+        .callback_interface_definitions()
+        .iter()
+        .flat_map(|cbi| cbi.methods().into_iter().map(|m| (cbi.name(), m)))
+        .chain(
+            ci.object_definitions()
+                .iter()
+                .filter(|obj| obj.has_callback_interface())
+                .flat_map(|obj| obj.methods().into_iter().map(|m| (obj.name(), m))),
+        )
+        .filter_map(|(owner, method)| {
+            let args = method
+                .arguments()
+                .iter()
+                .filter(|arg| arg.is_borrowed_bytes())
+                .map(|arg| arg.name().to_string())
+                .collect::<Vec<_>>();
+            (!args.is_empty()).then(|| format!("{}.{}: {}", owner, method.name(), args.join(", ")))
+        })
+        .collect::<Vec<_>>();
+
+    if offenders.is_empty() {
+        Ok(())
+    } else {
+        anyhow::bail!(
+            "zero-copy `&[u8]` is only supported for arguments passed into Rust, but it appears on \
+             foreign-implemented method(s): {}. Use `Vec<u8>` for these arguments.",
+            offenders.join("; ")
+        )
+    }
+}
+
 // Generate Java bindings for the given ComponentInterface, as a string.
 pub fn generate_bindings(config: &Config, ci: &ComponentInterface) -> Result<String> {
+    reject_borrowed_bytes_in_callbacks(ci)?;
     std::thread::scope(|scope| {
         std::thread::Builder::new()
             .stack_size(RENDER_STACK_SIZE)
@@ -821,7 +859,7 @@ mod filters {
     use super::*;
     use uniffi_meta::AsType;
 
-    // Askama requires a Values parameter on every filter. We use `_v` to accept but ignore it.
+    // Askama passes a Values parameter to every filter, hence the unused `_v` throughout.
 
     #[askama::filter_fn]
     pub(super) fn ffi_type(
@@ -1390,8 +1428,7 @@ mod filters {
         Ok(JavaCodeOracle.object_names(ci, obj))
     }
 
-    // `#[askama::filter_fn]` turns each filter into a struct, so filters can't call each other
-    // directly; shared logic lives in a plain fn.
+    // `#[askama::filter_fn]` turns each filter into a struct, so filters can't call each other.
     fn inner_return_type(
         callable: &impl Callable,
         ci: &ComponentInterface,
@@ -1505,13 +1542,51 @@ mod filters {
         ci: &ComponentInterface,
         config: &Config,
     ) -> Result<String, askama::Error> {
-        // Check if the codetype has a primitive label available
+        Ok(field_type_label(as_ct, ci, config))
+    }
+
+    fn field_type_label(
+        as_ct: &impl AsCodeType,
+        ci: &ComponentInterface,
+        config: &Config,
+    ) -> String {
         let codetype = as_ct.as_codetype();
-        if let Some(primitive) = codetype.type_label_primitive() {
-            return Ok(primitive);
+        codetype
+            .type_label_primitive()
+            .unwrap_or_else(|| codetype.type_label(ci, config))
+    }
+
+    /// Java type for an argument being passed *to* Rust. A zero-copy `&[u8]` takes a direct
+    /// `java.nio.ByteBuffer`, the only Java type with a stable native address.
+    #[askama::filter_fn]
+    pub fn lower_type_name_for_arg(
+        arg: &Argument,
+        _v: &dyn askama::Values,
+        ci: &ComponentInterface,
+        config: &Config,
+    ) -> Result<String, askama::Error> {
+        if arg.is_borrowed_bytes() {
+            Ok("java.nio.ByteBuffer".to_string())
+        } else {
+            Ok(field_type_label(&arg, ci, config))
         }
-        // Otherwise use the standard boxed type label
-        Ok(codetype.type_label(ci, config))
+    }
+
+    #[askama::filter_fn]
+    pub fn lower_fn_for_arg(
+        arg: &Argument,
+        _v: &dyn askama::Values,
+        config: &Config,
+        ci: &ComponentInterface,
+    ) -> Result<String, askama::Error> {
+        if arg.is_borrowed_bytes() {
+            Ok("FfiConverterByRefBytes.lower".to_string())
+        } else {
+            Ok(format!(
+                "{}.lower",
+                arg.as_codetype().ffi_converter_instance(config, ci)
+            ))
+        }
     }
 
     /// Always returns the boxed type name, for use in generic contexts like CompletableFuture<T>.
@@ -2656,6 +2731,54 @@ mod tests {
                 .collect::<Vec<_>>()
                 .join("\n")
         );
+    }
+
+    #[test]
+    fn borrowed_bytes_on_a_callback_method_is_rejected() {
+        // Without this the vtable carries a ForeignBytes that Java has no way to lift, and the
+        // generated bindings read a pointer they never owned.
+        let mut group = MetadataGroup {
+            namespace: NamespaceMetadata {
+                crate_name: "test".to_string(),
+                name: "test".to_string(),
+            },
+            namespace_docstring: None,
+            items: Default::default(),
+        };
+        group.add_item(Metadata::CallbackInterface(CallbackInterfaceMetadata {
+            module_path: "test".to_string(),
+            name: "Sink".to_string(),
+            docstring: None,
+        }));
+        group.add_item(Metadata::TraitMethod(TraitMethodMetadata {
+            orig_name: None,
+            module_path: "test".to_string(),
+            trait_name: "Sink".to_string(),
+            index: 0,
+            name: "write".to_string(),
+            is_async: false,
+            inputs: vec![FnParamMetadata {
+                name: "data".to_string(),
+                ty: Type::Bytes,
+                by_ref: true,
+                optional: false,
+                default: None,
+            }],
+            return_type: None,
+            throws: None,
+            takes_self_by_arc: false,
+            checksum: None,
+            docstring: None,
+        }));
+
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+
+        let err = generate_bindings(&Config::default(), &ci)
+            .expect_err("borrowed bytes on a callback method should not generate");
+        let msg = err.to_string();
+        assert!(msg.contains("Sink.write"), "should name the method: {msg}");
+        assert!(msg.contains("data"), "should name the argument: {msg}");
     }
 
     #[test]

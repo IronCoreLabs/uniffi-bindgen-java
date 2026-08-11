@@ -390,6 +390,7 @@ fixture_tests! {
     (test_proc_macro, "uniffi-fixture-proc-macro", "scripts/TestProcMacro.java"),
     (test_rename, "uniffi-fixture-rename", "scripts/TestRename/TestRename.java"),
     (test_primitive_arrays, "uniffi-fixture-primitive-arrays", "scripts/TestPrimitiveArrays.java"),
+    (test_zero_copy, "uniffi-fixture-zero-copy", "scripts/TestZeroCopy.java"),
 }
 
 #[test]

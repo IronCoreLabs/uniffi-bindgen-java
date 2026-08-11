@@ -1680,6 +1680,7 @@ dependencies = [
  "uniffi-fixture-rename",
  "uniffi-fixture-time",
  "uniffi-fixture-trait-methods",
+ "uniffi-fixture-zero-copy",
  "uniffi_bindgen 0.32.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "uniffi_meta 0.32.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "uniffi_testing",
@@ -1885,6 +1886,13 @@ source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.32.0#5c7b73906358e
 dependencies = [
  "once_cell",
  "thiserror",
+ "uniffi",
+]
+
+[[package]]
+name = "uniffi-fixture-zero-copy"
+version = "0.1.0"
+dependencies = [
  "uniffi",
 ]
 

@@ -84,11 +84,8 @@ public final class RustBuffer {
 
 package {{ config.package_name() }};
 
-// This is a helper for safely passing byte references into the rust code.
-// It's not actually used at the moment, because there aren't many things that you
-// can take a direct pointer to in the JVM, and if we're going to copy something
-// then we might as well copy it into a `RustBuffer`. But it's here for API
-// completeness.
+// Pointer + length for bytes owned by the JVM and borrowed by Rust for the duration of one call.
+// Used for `&[u8]` / `[ByRef] bytes` arguments; see FfiConverterByRefBytes.
 public final class ForeignBytes {
     public static final java.lang.foreign.StructLayout LAYOUT = java.lang.foreign.MemoryLayout.structLayout(
         java.lang.foreign.ValueLayout.JAVA_INT.withName("len"),
@@ -115,5 +112,38 @@ public final class ForeignBytes {
 
     public static void setData(java.lang.foreign.MemorySegment seg, java.lang.foreign.MemorySegment value) {
         seg.set(java.lang.foreign.ValueLayout.ADDRESS_UNALIGNED, OFFSET_DATA, value);
+    }
+}
+
+package {{ config.package_name() }};
+
+// Lowers `&[u8]` / `[ByRef] bytes` arguments, which Rust borrows for the duration of the call
+// rather than taking ownership of a RustBuffer.
+//
+// Only lowering exists: zero-copy bytes flow foreign -> Rust, in argument position only. There is
+// no lift/read/write because a borrow can't outlive the call that created it, which is also why
+// the buffer must not be mutated by another thread while a call is in flight.
+final class FfiConverterByRefBytes {
+    // The struct is read by Rust during the call, so each one needs its own slice; see
+    // UniffiSlabAllocator.
+    private static final UniffiSlabAllocator ALLOCATOR = new UniffiSlabAllocator(ForeignBytes.LAYOUT, 1024);
+
+    private FfiConverterByRefBytes() {}
+
+    static java.lang.foreign.MemorySegment lower(java.nio.ByteBuffer value) {
+        if (!value.isDirect()) {
+            throw new java.lang.IllegalArgumentException(
+                "UniFFI zero-copy &[u8] requires a direct ByteBuffer, so Rust can borrow it without "
+                + "a copy. Convert with: ByteBuffer.allocateDirect(arr.length).put(arr).flip()");
+        }
+        java.lang.foreign.MemorySegment fb = ALLOCATOR.allocate(ForeignBytes.LAYOUT);
+        int remaining = value.remaining();
+        ForeignBytes.setLen(fb, remaining);
+        // A zero-length direct buffer has no meaningful address; Rust reads (null, 0) as `&[]`.
+        // Otherwise ofBuffer honours position/limit, so Rust sees exactly the remaining slice.
+        ForeignBytes.setData(fb, remaining == 0
+            ? java.lang.foreign.MemorySegment.NULL
+            : java.lang.foreign.MemorySegment.ofBuffer(value));
+        return fb;
     }
 }

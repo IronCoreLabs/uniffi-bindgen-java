@@ -266,8 +266,8 @@ class TestCallbackObj implements TestCallbackInterface {
                     }
                 }
             }
-            // Without this an unhandled case reports ~0ns rather than failing, which is how this
-            // runner silently drifted behind the fixture across a uniffi upgrade.
+            // An arrow switch statement isn't exhaustiveness-checked, so without this a TestCase
+            // added upstream would silently benchmark nothing and report ~0ns.
             default -> throw new IllegalStateException("unhandled TestCase: " + testCase);
         }
         return System.nanoTime() - start;

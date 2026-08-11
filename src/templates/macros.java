@@ -160,7 +160,7 @@
         {%- if arg|has_primitive_ffi_type -%}
         {{- arg.name()|var_name }}
         {%- else -%}
-        {{- arg|lower_fn(config, ci) }}({{ arg.name()|var_name }})
+        {{- arg|lower_fn_for_arg(config, ci) }}({{ arg.name()|var_name }})
         {%- endif -%}
     {%- if !loop.last %}, {% endif -%}
     {%- endfor %}
@@ -182,9 +182,10 @@
 // Note the var_name and type_name filters.
 -#}
 
+{#- Declaration side of a call into Rust, so zero-copy `&[u8]` shows as a ByteBuffer. -#}
 {% macro arg_list(func, is_decl) %}
 {%- for arg in func.arguments() -%}
-        {{ arg|type_name_for_field(ci, config) }} {{ arg.name()|var_name }}
+        {{ arg|lower_type_name_for_arg(ci, config) }} {{ arg.name()|var_name }}
 {%-     if !loop.last %}, {% endif -%}
 {%- endfor %}
 {%- endmacro %}
