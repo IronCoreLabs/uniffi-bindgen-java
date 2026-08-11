@@ -1204,7 +1204,7 @@ mod filters {
             if size > 0 {
                 offset += size;
             } else {
-                // Unknown size (e.g., user-defined FfiStruct) — can't compute further padding
+                // Unknown size (e.g., user-defined FfiStruct) - can't compute further padding
                 // but alignment was already handled
                 offset = 0; // reset; further padding may be wrong but this is rare
             }
@@ -1573,6 +1573,37 @@ mod filters {
     }
 
     #[askama::filter_fn]
+    pub fn has_borrowed_bytes_args(
+        callable: impl Callable,
+        _v: &dyn askama::Values,
+    ) -> Result<bool, askama::Error> {
+        Ok(callable.arguments().iter().any(|a| a.is_borrowed_bytes()))
+    }
+
+    /// Rust reads the buffer during the call while nothing in the generated Java touches it again,
+    /// so without a fence the JIT is free to treat it as dead and let the buffer be collected -
+    /// freeing the memory Rust is reading. The lambda that lowers the argument happens to keep it
+    /// reachable today; the fence stops that being load-bearing.
+    #[askama::filter_fn]
+    pub fn reachability_fences(
+        callable: impl Callable,
+        _v: &dyn askama::Values,
+    ) -> Result<String, askama::Error> {
+        Ok(callable
+            .arguments()
+            .iter()
+            .filter(|a| a.is_borrowed_bytes())
+            .map(|a| {
+                format!(
+                    "java.lang.ref.Reference.reachabilityFence({});",
+                    JavaCodeOracle.var_name(a.name())
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n            "))
+    }
+
+    #[askama::filter_fn]
     pub fn lower_fn_for_arg(
         arg: &Argument,
         _v: &dyn askama::Values,
@@ -1580,7 +1611,7 @@ mod filters {
         ci: &ComponentInterface,
     ) -> Result<String, askama::Error> {
         if arg.is_borrowed_bytes() {
-            Ok("FfiConverterByRefBytes.lower".to_string())
+            Ok("FfiConverterByRefBytes.INSTANCE.lower".to_string())
         } else {
             Ok(format!(
                 "{}.lower",
@@ -1814,6 +1845,53 @@ mod tests {
         assert!(
             bindings.contains("public static double[] processDoubles(double[] data)"),
             "expected processDoubles method with double[] signature"
+        );
+    }
+
+    #[test]
+    fn box_renders_as_its_inner_type() {
+        // `Box<T>` exists only in scaffolding, so leaking it into a signature would name a Java
+        // type that was never generated.
+        let mut group = MetadataGroup {
+            namespace: NamespaceMetadata {
+                crate_name: "test".to_string(),
+                name: "test".to_string(),
+            },
+            namespace_docstring: None,
+            items: Default::default(),
+        };
+        group.add_item(Metadata::Func(FnMetadata {
+            orig_name: None,
+            module_path: "test".to_string(),
+            name: "unwrap_box".to_string(),
+            is_async: false,
+            inputs: vec![FnParamMetadata {
+                name: "data".to_string(),
+                ty: Type::Box {
+                    inner_type: Box::new(Type::String),
+                },
+                by_ref: false,
+                optional: false,
+                default: None,
+            }],
+            return_type: Some(Type::String),
+            throws: None,
+            checksum: None,
+            docstring: None,
+        }));
+
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+
+        assert!(
+            bindings.contains("public static java.lang.String unwrapBox(java.lang.String data)"),
+            "expected Box<String> to render as java.lang.String:\n{}",
+            bindings
+                .lines()
+                .filter(|line| line.contains("unwrapBox"))
+                .collect::<Vec<_>>()
+                .join("\n")
         );
     }
 

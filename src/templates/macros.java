@@ -40,6 +40,11 @@
     {%- else %}
     UniffiHelpers.uniffiRustCall{% match func.return_type() %}{%- when Some(return_type) %}{{ return_type|primitive_call_suffix }}{% when None %}{% endmatch %}(
     {%- endmatch %} (_allocator, _status) -> {
+    {#- Only the wrapper is conditional: askama inlines a `call` at each site and emits both `if`
+        branches, so duplicating the invocation here doubles it in every generated call site. -#}
+    {%- if func|has_borrowed_bytes_args %}
+        try {
+    {%- endif %}
         {% if func.return_type().is_some() %}return {% endif %}UniffiLib.{{ func.ffi_func().name() }}(
             {%- match func.return_type() %}
             {%- when Some(return_type) %}
@@ -54,6 +59,11 @@
             {%- endmatch %}
             {% if func.arguments().len() != 0 %}{% call arg_list_lowered(func) %}{% endcall -%}, {% endif -%}
             _status);
+    {%- if func|has_borrowed_bytes_args %}
+        } finally {
+            {{ func|reachability_fences }}
+        }
+    {%- endif %}
     })
 {%- endmacro -%}
 
@@ -64,14 +74,14 @@
     {% endif %}
     {%- if callable.is_async() %}
     {#- Async methods use CompletableFuture<T> which requires boxed types -#}
-    {#- No-executor overload — defaults to ForkJoinPool.commonPool(), delegates to Executor version -#}
+    {#- No-executor overload - defaults to ForkJoinPool.commonPool(), delegates to Executor version -#}
     {{ func_decl }} java.util.concurrent.CompletableFuture<{% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|boxed_type_name(ci, config) }}{%- when None %}java.lang.Void{%- endmatch %}> {{ callable.name()|fn_name }}(
         {%- call arg_list(callable, !callable.self_type().is_some()) %}{% endcall -%}
     ){
         return {{ callable.name()|fn_name }}({% call arg_name_list(callable) %}{% endcall %}{% if !callable.arguments().is_empty() %}, {% endif %}java.util.concurrent.ForkJoinPool.commonPool());
     }
 
-    {#- With-executor overload — does the actual async work -#}
+    {#- With-executor overload - does the actual async work -#}
     {{ func_decl }} java.util.concurrent.CompletableFuture<{% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|boxed_type_name(ci, config) }}{%- when None %}java.lang.Void{%- endmatch %}> {{ callable.name()|fn_name }}(
         {%- call arg_list(callable, !callable.self_type().is_some()) %}{% endcall -%}{% if !callable.arguments().is_empty() %}, {% endif %}java.util.concurrent.Executor uniffiExecutor
     ){

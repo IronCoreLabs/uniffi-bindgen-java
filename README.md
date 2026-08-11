@@ -51,7 +51,7 @@ Arguments:
 Options:
   -o, --out-dir <OUT_DIR>   Directory in which to write generated files. Default is same folder as .udl file
   -n, --no-format           Do not try to format the generated bindings
-  -c, --config <CONFIG>     Path to optional uniffi config file. This config is merged with the `uniffi.toml` config present in each crate, with its values taking precedence
+  -c, --config <CONFIG>     Path to an optional uniffi global config file, with `[defaults]`, `[crates.<name>]` and/or `[crate-roots]` sections. Merged with each crate's `uniffi.toml`
       --crate <CRATE_NAME>  When a library is passed as SOURCE, only generate bindings for this crate. When a UDL file is passed, use this as the crate name instead of attempting to locate and parse Cargo.toml
       --metadata-no-deps    Whether we should exclude dependencies when running "cargo metadata". This will mean external types may not be resolved if they are implemented in crates outside of this workspace. This can be used in environments when all types are in the namespace and fetching all sub-dependencies causes obscure platform specific problems
   -h, --help                Print help
@@ -217,7 +217,7 @@ dependencies {
 </dependency>
 ```
 
-There is no runtime dependency — the JVM ignores annotation classes that are not present at
+There is no runtime dependency - the JVM ignores annotation classes that are not present at
 runtime.
 
 ### Kotlin Interop

@@ -97,14 +97,14 @@ package {{ config.package_name() }};
 //     adds up fast (e.g. 100k calls × 24-32 bytes = 2.4-3.2 MB never reclaimed).
 //   - Arena.ofAuto() per call: correct but creates a new Arena + PhantomReference
 //     per call, adding ~50-100ns of GC pressure to every call.
-//   - Thread-local reusable segment: zero overhead but causes SIGABRT — the FFM
+//   - Thread-local reusable segment: zero overhead but causes SIGABRT - the FFM
 //     runtime retains internal references to allocator-provided segments, so reusing
 //     the same segment across calls corrupts FFM's internal state.
 //
 // This slab approach: allocate a batch of slots from one Arena.ofAuto(), then hand
 // out slices. Each call gets a unique slice (avoiding the FFM reuse crash). When the
 // slab is exhausted, a new one is allocated and the old one becomes GC-eligible once
-// all its slices are consumed (which is immediate — callers read struct fields before
+// all its slices are consumed (which is immediate - callers read struct fields before
 // the next call). Amortized cost: one Arena + one native malloc per `slots` calls.
 class UniffiSlabAllocator implements java.lang.foreign.SegmentAllocator {
     private final long slabBytes;

@@ -30,7 +30,7 @@ package {{ config.package_name() }};
 //    calling thread. queue.poll() is ~nanoseconds when empty, so the overhead is
 //    negligible, but under sustained allocation pressure it provides continuous
 //    backpressure that prevents the cleanup backlog from growing unboundedly.
-// 4. Explicit close()/clean() is idempotent — manual clean and GC-triggered clean
+// 4. Explicit close()/clean() is idempotent - manual clean and GC-triggered clean
 //    race via a volatile CAS, so the action runs at most once.
 // 5. clean() is idempotent via VarHandle CAS. It synchronizes on the list sentinel
 //    to unlink itself, preventing dead entries from accumulating.
@@ -101,7 +101,7 @@ class UniffiBackpressureCleaner implements UniffiCleaner {
             this.next = this;
         }
 
-        // Normal constructor — inserts itself into the list.
+        // Normal constructor - inserts itself into the list.
         CleanableRef(CleanableRef list, java.lang.Object referent, java.lang.ref.ReferenceQueue<java.lang.Object> q, java.lang.Runnable action) {
             super(referent, q);
             this.action = action;

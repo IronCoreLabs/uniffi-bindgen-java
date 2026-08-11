@@ -10,7 +10,7 @@ public class {{ trait_impl }} {
     java.lang.foreign.MemorySegment vtable;
 
     {{ trait_impl }}() {
-        // Use Arena.global() for vtable and upcall stubs — they live for the program lifetime.
+        // Use Arena.global() for vtable and upcall stubs - they live for the program lifetime.
         // Arena.ofAuto() stubs can be GC'd since storing an address in a struct doesn't
         // prevent the Arena from being collected.
         vtable = java.lang.foreign.Arena.global().allocate({{ vtable|ffi_struct_type_name }}.LAYOUT);

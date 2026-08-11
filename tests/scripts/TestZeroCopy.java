@@ -36,7 +36,12 @@ public class TestZeroCopy {
         sliced.position(2);
         assert ZeroCopy.firstByteBorrowed(sliced) == 3 : "slice should start at index 2";
 
-        // Empty is (null, 0) on the Rust side, not a crash.
+        byte[] tail = new byte[]{6, 7};
+        assert java.util.Arrays.equals(
+            ZeroCopy.concatBorrowedAndOwned(direct(bytes), tail),
+            new byte[]{1, 2, 3, 4, 5, 6, 7}) : "borrowed and owned args should keep their order";
+
+        // Empty lowers to (null, 0), which Rust reads as an empty slice rather than crashing.
         assert ZeroCopy.lenBorrowed(ByteBuffer.allocateDirect(0)) == 0 : "empty buffer has len 0";
         assert ZeroCopy.checksumBorrowed(ByteBuffer.allocateDirect(0)) == 0 : "empty buffer sums to 0";
 
