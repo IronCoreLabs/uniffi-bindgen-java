@@ -6,7 +6,6 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::Borrow,
-    cell::RefCell,
     collections::{HashMap, HashSet},
 };
 use uniffi_bindgen::{interface::*, to_askama_error};
@@ -402,38 +401,19 @@ impl<'a> JavaWrapper<'a> {
 }
 
 /// Renders Java helper code for all types
-///
-/// This template is a bit different than others in that it stores internal state from the render
-/// process.  Make sure to only call `render()` once.
 #[derive(Template)]
 #[template(syntax = "java", escape = "none", path = "Types.java")]
 pub struct TypeRenderer<'a> {
     config: &'a Config,
     ci: &'a ComponentInterface,
-    // Track included modules for the `include_once()` macro
-    include_once_names: RefCell<HashSet<String>>,
 }
 
 impl<'a> TypeRenderer<'a> {
     fn new(config: &'a Config, ci: &'a ComponentInterface) -> Self {
-        Self {
-            config,
-            ci,
-            include_once_names: RefCell::new(HashSet::new()),
-        }
+        Self { config, ci }
     }
 
     // The following methods are used by the `Types.java` macros.
-
-    // Helper for the including a template, but only once.
-    //
-    // The first time this is called with a name it will return true, indicating that we should
-    // include the template.  Subsequent calls will return false.
-    fn include_once_check(&self, name: &str) -> bool {
-        self.include_once_names
-            .borrow_mut()
-            .insert(name.to_string())
-    }
 
     // Get the package name for an external type (used by ExternalTypeTemplate.java)
     fn external_type_package_name(&self, module_path: &str, namespace: &str) -> String {

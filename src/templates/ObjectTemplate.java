@@ -95,10 +95,6 @@
 // [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
 //
 
-{%- if self.include_once_check("interface-support") %}
-  {%- include "ObjectCleanerHelper.java" %}
-{%- endif %}
-
 {%- let obj = ci.get_object_definition(name).unwrap() %}
 {%- let (interface_name, impl_class_name) = obj|object_names(ci) %}
 {%- let methods = obj.methods() %}

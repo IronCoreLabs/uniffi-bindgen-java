@@ -79,6 +79,16 @@ public class UniffiWithHandle {
     public static final UniffiWithHandle INSTANCE = new UniffiWithHandle();
 }
 
+{#- Runtime support shared by every callback interface / object, so it is emitted once here
+    rather than from inside the per-type templates. -#}
+{%- if ci.has_callback_definitions() %}
+{% include "CallbackInterfaceRuntime.java" %}
+{%- endif %}
+
+{%- if ci.has_object_definitions() %}
+{% include "ObjectCleanerHelper.java" %}
+{%- endif %}
+
 {%- for type_ in ci.iter_local_types() %}
 {%- let type_name = type_|type_name(ci, config) %}
 {%- let ffi_converter_name = type_|ffi_converter_name %}
