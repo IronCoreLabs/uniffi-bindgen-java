@@ -1896,6 +1896,111 @@ mod tests {
     }
 
     #[test]
+    fn set_field_on_an_enum_variant_is_package_qualified() {
+        // A variant record shadows a top-level type of the same name, so variant field types are
+        // package-qualified. `Vec<T>` is the control: it already recurses, `HashSet<T>` does not.
+        let mut group = test_group();
+        group.add_item(Metadata::Record(RecordMetadata {
+            orig_name: None,
+            module_path: "test".to_string(),
+            name: "Point".to_string(),
+            remote: false,
+            fields: vec![FieldMetadata {
+                orig_name: None,
+                name: "x".to_string(),
+                ty: Type::Int32,
+                default: None,
+                docstring: None,
+            }],
+            docstring: None,
+        }));
+        group.add_item(Metadata::Enum(EnumMetadata {
+            orig_name: None,
+            module_path: "test".to_string(),
+            name: "Shape".to_string(),
+            shape: EnumShape::Enum,
+            remote: false,
+            variants: vec![
+                VariantMetadata {
+                    orig_name: None,
+                    name: "Point".to_string(),
+                    discr: None,
+                    fields: vec![],
+                    docstring: None,
+                },
+                VariantMetadata {
+                    orig_name: None,
+                    name: "Group".to_string(),
+                    discr: None,
+                    fields: vec![
+                        FieldMetadata {
+                            orig_name: None,
+                            name: "members".to_string(),
+                            ty: Type::Set {
+                                inner_type: Box::new(Type::Record {
+                                    module_path: "test".to_string(),
+                                    name: "Point".to_string(),
+                                }),
+                            },
+                            default: None,
+                            docstring: None,
+                        },
+                        FieldMetadata {
+                            orig_name: None,
+                            name: "ordered".to_string(),
+                            ty: Type::Sequence {
+                                inner_type: Box::new(Type::Record {
+                                    module_path: "test".to_string(),
+                                    name: "Point".to_string(),
+                                }),
+                            },
+                            default: None,
+                            docstring: None,
+                        },
+                    ],
+                    docstring: None,
+                },
+            ],
+            discr_type: None,
+            non_exhaustive: false,
+            docstring: None,
+        }));
+        group.add_item(Metadata::Func(FnMetadata {
+            orig_name: None,
+            module_path: "test".to_string(),
+            name: "get_shape".to_string(),
+            is_async: false,
+            inputs: vec![],
+            return_type: Some(Type::Enum {
+                module_path: "test".to_string(),
+                name: "Shape".to_string(),
+            }),
+            throws: None,
+            checksum: None,
+            docstring: None,
+        }));
+
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+
+        let variant_decl = bindings
+            .lines()
+            .find(|line| line.contains("record Group("))
+            .unwrap_or_else(|| panic!("no Group variant in:\n{bindings}"));
+
+        assert!(
+            variant_decl.contains("java.util.List<uniffi.Point>"),
+            "Vec<Point> should be qualified, got: {variant_decl}"
+        );
+        assert!(
+            variant_decl.contains("java.util.Set<uniffi.Point>"),
+            "HashSet<Point> should be qualified too, but the nested `record Point` shadows the \
+             top-level one, got: {variant_decl}"
+        );
+    }
+
+    #[test]
     fn generates_int32_primitive_array() {
         let group = create_primitive_array_test_group();
         let ci = ComponentInterface::from_metadata(group).unwrap();
