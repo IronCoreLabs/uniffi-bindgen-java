@@ -361,8 +361,7 @@ pub struct JavaWrapper<'a> {
 
 impl<'a> JavaWrapper<'a> {
     pub fn new(config: Config, ci: &'a ComponentInterface) -> Self {
-        let type_renderer = TypeRenderer::new(&config, ci);
-        let type_helper_code = type_renderer.render().unwrap();
+        let type_helper_code = render_type_helpers(&config, ci).unwrap();
         Self {
             config,
             ci,
@@ -400,7 +399,7 @@ impl<'a> JavaWrapper<'a> {
     }
 }
 
-/// Renders Java helper code for all types
+/// Renders the fixed helper classes and the runtime support shared by all types.
 #[derive(Template)]
 #[template(syntax = "java", escape = "none", path = "Types.java")]
 pub struct TypeRenderer<'a> {
@@ -408,14 +407,333 @@ pub struct TypeRenderer<'a> {
     ci: &'a ComponentInterface,
 }
 
-impl<'a> TypeRenderer<'a> {
-    fn new(config: &'a Config, ci: &'a ComponentInterface) -> Self {
-        Self { config, ci }
+/// Askama inlines an `include` into the including template's `render_into`, so a single template
+/// covering every type compiles into one function large enough to dominate this crate's build:
+/// roughly 10 GB of rustc memory and 110s, against 380 MB and 1s for everything else combined.
+/// Giving each type its own template keeps those functions small.
+///
+/// There is a companion match in [`JavaCodeOracle::create_code_type`]; both need an arm when a
+/// type is added.
+fn render_type_helpers(config: &Config, ci: &ComponentInterface) -> Result<String> {
+    let mut out = TypeRenderer { config, ci }
+        .render()
+        .context("failed to render shared type helpers")?;
+    for type_ in ci.iter_local_types() {
+        out.push_str(&render_one_type(type_, config, ci)?);
     }
+    for type_ in ci.iter_external_types() {
+        let name = type_
+            .name()
+            .ok_or_else(|| anyhow::anyhow!("external type {type_:?} has no name"))?;
+        let module_path = type_
+            .module_path()
+            .ok_or_else(|| anyhow::anyhow!("external type {type_:?} has no module path"))?;
+        out.push_str(
+            &ExternalTypeRenderer {
+                config,
+                ci,
+                name,
+                module_path,
+            }
+            .render()
+            .with_context(|| format!("failed to render external type {name}"))?,
+        );
+    }
+    Ok(out)
+}
 
-    // The following methods are used by the `Types.java` macros.
+fn render_one_type(type_: &Type, config: &Config, ci: &ComponentInterface) -> Result<String> {
+    let type_name = JavaCodeOracle.find(type_).type_label(ci, config);
+    let ffi_converter_name = JavaCodeOracle.find(type_).ffi_converter_name();
+    let contains_object_references = ci.item_contains_object_references(type_);
 
-    // Get the package name for an external type (used by ExternalTypeTemplate.java)
+    let rendered = match type_ {
+        Type::Boolean => BooleanHelperRenderer { config }.render(),
+        Type::Bytes => ByteArrayHelperRenderer { config }.render(),
+        Type::Duration => DurationHelperRenderer { config }.render(),
+        Type::String => StringHelperRenderer { config }.render(),
+        Type::Timestamp => TimestampHelperRenderer { config }.render(),
+        Type::Int8 | Type::UInt8 => Int8HelperRenderer { config }.render(),
+        Type::Int16 | Type::UInt16 => Int16HelperRenderer { config }.render(),
+        Type::Int32 | Type::UInt32 => Int32HelperRenderer { config }.render(),
+        Type::Int64 | Type::UInt64 => Int64HelperRenderer { config }.render(),
+        Type::Float32 => Float32HelperRenderer { config }.render(),
+        Type::Float64 => Float64HelperRenderer { config }.render(),
+
+        Type::CallbackInterface { name, .. } => CallbackInterfaceTypeRenderer {
+            config,
+            ci,
+            ffi_converter_name,
+            name: name.clone(),
+            cbi: ci
+                .get_callback_interface_definition(name)
+                .ok_or_else(|| anyhow::anyhow!("callback interface not found: {name}"))?,
+        }
+        .render(),
+
+        Type::Custom { name, builtin, .. } => {
+            if ci.is_external(type_) {
+                Ok(String::new())
+            } else {
+                CustomTypeRenderer {
+                    config,
+                    ci,
+                    type_name,
+                    ffi_converter_name,
+                    name: name.clone(),
+                    builtin,
+                }
+                .render()
+            }
+        }
+
+        Type::Enum { name, .. } => {
+            let e = ci
+                .get_enum_definition(name)
+                .ok_or_else(|| anyhow::anyhow!("enum not found: {name}"))?;
+            if ci.is_name_used_as_error(name) {
+                ErrorTypeRenderer {
+                    config,
+                    ci,
+                    type_,
+                    contains_object_references,
+                    e,
+                }
+                .render()
+            } else {
+                EnumTypeRenderer {
+                    config,
+                    ci,
+                    type_name,
+                    contains_object_references,
+                    e,
+                }
+                .render()
+            }
+        }
+
+        Type::Map {
+            key_type,
+            value_type,
+        } => MapTypeRenderer {
+            config,
+            ci,
+            ffi_converter_name,
+            key_type,
+            value_type,
+        }
+        .render(),
+
+        Type::Optional { inner_type } => OptionalTypeRenderer {
+            config,
+            ci,
+            ffi_converter_name,
+            inner_type,
+        }
+        .render(),
+
+        Type::Object { name, .. } => ObjectTypeRenderer {
+            config,
+            ci,
+            type_name,
+            ffi_converter_instance: JavaCodeOracle
+                .find(type_)
+                .ffi_converter_instance(config, ci),
+            name: name.clone(),
+            obj: ci
+                .get_object_definition(name)
+                .ok_or_else(|| anyhow::anyhow!("object not found: {name}"))?,
+            is_error: ci.is_name_used_as_error(name),
+        }
+        .render(),
+
+        Type::Record { name, .. } => RecordTypeRenderer {
+            config,
+            ci,
+            type_name,
+            contains_object_references,
+            name,
+        }
+        .render(),
+
+        Type::Sequence { inner_type } => match inner_type.as_ref() {
+            Type::Int16 | Type::UInt16 => Int16ArrayHelperRenderer { config }.render(),
+            Type::Int32 | Type::UInt32 => Int32ArrayHelperRenderer { config }.render(),
+            Type::Int64 | Type::UInt64 => Int64ArrayHelperRenderer { config }.render(),
+            Type::Float32 => Float32ArrayHelperRenderer { config }.render(),
+            Type::Float64 => Float64ArrayHelperRenderer { config }.render(),
+            Type::Boolean => BooleanArrayHelperRenderer { config }.render(),
+            _ => SequenceTypeRenderer {
+                config,
+                ci,
+                ffi_converter_name,
+                inner_type,
+            }
+            .render(),
+        },
+
+        Type::Set { inner_type } => SetTypeRenderer {
+            config,
+            ci,
+            ffi_converter_name,
+            inner_type,
+        }
+        .render(),
+
+        Type::Box { .. } => Ok(String::new()),
+    };
+
+    rendered.with_context(|| format!("failed to render type {type_:?}"))
+}
+
+/// Templates whose only input is the package name.
+macro_rules! simple_type_renderer {
+    ($($name:ident => $path:literal),* $(,)?) => {$(
+        #[derive(Template)]
+        #[template(syntax = "java", escape = "none", path = $path)]
+        struct $name<'a> {
+            config: &'a Config,
+        }
+    )*};
+}
+
+simple_type_renderer! {
+    BooleanHelperRenderer => "BooleanHelper.java",
+    ByteArrayHelperRenderer => "ByteArrayHelper.java",
+    DurationHelperRenderer => "DurationHelper.java",
+    StringHelperRenderer => "StringHelper.java",
+    TimestampHelperRenderer => "TimestampHelper.java",
+    Int8HelperRenderer => "Int8Helper.java",
+    Int16HelperRenderer => "Int16Helper.java",
+    Int32HelperRenderer => "Int32Helper.java",
+    Int64HelperRenderer => "Int64Helper.java",
+    Float32HelperRenderer => "Float32Helper.java",
+    Float64HelperRenderer => "Float64Helper.java",
+    Int16ArrayHelperRenderer => "Int16ArrayHelper.java",
+    Int32ArrayHelperRenderer => "Int32ArrayHelper.java",
+    Int64ArrayHelperRenderer => "Int64ArrayHelper.java",
+    Float32ArrayHelperRenderer => "Float32ArrayHelper.java",
+    Float64ArrayHelperRenderer => "Float64ArrayHelper.java",
+    BooleanArrayHelperRenderer => "BooleanArrayHelper.java",
+}
+
+#[derive(Template)]
+#[template(
+    syntax = "java",
+    escape = "none",
+    path = "CallbackInterfaceTemplate.java"
+)]
+struct CallbackInterfaceTypeRenderer<'a> {
+    config: &'a Config,
+    ci: &'a ComponentInterface,
+    ffi_converter_name: String,
+    // Used by the nested CallbackInterfaceImpl.java
+    name: String,
+    cbi: &'a CallbackInterface,
+}
+
+#[derive(Template)]
+#[template(syntax = "java", escape = "none", path = "CustomTypeTemplate.java")]
+struct CustomTypeRenderer<'a> {
+    config: &'a Config,
+    ci: &'a ComponentInterface,
+    type_name: String,
+    ffi_converter_name: String,
+    name: String,
+    builtin: &'a Type,
+}
+
+#[derive(Template)]
+#[template(syntax = "java", escape = "none", path = "EnumTemplate.java")]
+struct EnumTypeRenderer<'a> {
+    config: &'a Config,
+    ci: &'a ComponentInterface,
+    type_name: String,
+    contains_object_references: bool,
+    e: &'a uniffi_bindgen::interface::Enum,
+}
+
+#[derive(Template)]
+#[template(syntax = "java", escape = "none", path = "ErrorTemplate.java")]
+struct ErrorTypeRenderer<'a> {
+    config: &'a Config,
+    ci: &'a ComponentInterface,
+    type_: &'a Type,
+    contains_object_references: bool,
+    e: &'a uniffi_bindgen::interface::Enum,
+}
+
+#[derive(Template)]
+#[template(syntax = "java", escape = "none", path = "MapTemplate.java")]
+struct MapTypeRenderer<'a> {
+    config: &'a Config,
+    ci: &'a ComponentInterface,
+    ffi_converter_name: String,
+    key_type: &'a Type,
+    value_type: &'a Type,
+}
+
+#[derive(Template)]
+#[template(syntax = "java", escape = "none", path = "OptionalTemplate.java")]
+struct OptionalTypeRenderer<'a> {
+    config: &'a Config,
+    ci: &'a ComponentInterface,
+    ffi_converter_name: String,
+    inner_type: &'a Type,
+}
+
+#[derive(Template)]
+#[template(syntax = "java", escape = "none", path = "ObjectTemplate.java")]
+struct ObjectTypeRenderer<'a> {
+    config: &'a Config,
+    ci: &'a ComponentInterface,
+    type_name: String,
+    ffi_converter_instance: String,
+    // Used by the nested CallbackInterfaceImpl.java
+    name: String,
+    obj: &'a Object,
+    is_error: bool,
+}
+
+#[derive(Template)]
+#[template(syntax = "java", escape = "none", path = "RecordTemplate.java")]
+struct RecordTypeRenderer<'a> {
+    config: &'a Config,
+    ci: &'a ComponentInterface,
+    type_name: String,
+    contains_object_references: bool,
+    name: &'a str,
+}
+
+#[derive(Template)]
+#[template(syntax = "java", escape = "none", path = "SequenceTemplate.java")]
+struct SequenceTypeRenderer<'a> {
+    config: &'a Config,
+    ci: &'a ComponentInterface,
+    ffi_converter_name: String,
+    inner_type: &'a Type,
+}
+
+#[derive(Template)]
+#[template(syntax = "java", escape = "none", path = "SetTemplate.java")]
+struct SetTypeRenderer<'a> {
+    config: &'a Config,
+    ci: &'a ComponentInterface,
+    ffi_converter_name: String,
+    inner_type: &'a Type,
+}
+
+#[derive(Template)]
+#[template(syntax = "java", escape = "none", path = "ExternalTypeTemplate.java")]
+struct ExternalTypeRenderer<'a> {
+    config: &'a Config,
+    ci: &'a ComponentInterface,
+    name: &'a str,
+    module_path: &'a str,
+}
+
+impl ExternalTypeRenderer<'_> {
+    // Used by ExternalTypeTemplate.java
     fn external_type_package_name(&self, module_path: &str, namespace: &str) -> String {
         self.config
             .external_type_package_name(module_path, namespace)
@@ -902,6 +1220,10 @@ mod filters {
                     fully_qualified_type_label(inner_type, ci, config)?
                 )),
             },
+            Type::Set { inner_type } => Ok(format!(
+                "java.util.Set<{}>",
+                fully_qualified_type_label(inner_type, ci, config)?
+            )),
             Type::Map {
                 key_type,
                 value_type,
@@ -1964,10 +2286,20 @@ mod tests {
         ci.derive_ffi_funcs().unwrap();
         let bindings = generate_bindings(&Config::default(), &ci).unwrap();
 
-        let variant_decl = bindings
-            .lines()
-            .find(|line| line.contains("record Group("))
+        // The record header and its fields land on separate lines, so match the whole decl.
+        let lines: Vec<&str> = bindings.lines().collect();
+        let start = lines
+            .iter()
+            .position(|line| line.contains("record Group("))
             .unwrap_or_else(|| panic!("no Group variant in:\n{bindings}"));
+        let variant_decl = lines[start..]
+            .iter()
+            .take_while(|line| !line.contains("implements"))
+            .chain(lines[start..].iter().find(|l| l.contains("implements")))
+            .copied()
+            .collect::<Vec<_>>()
+            .join(" ");
+        let variant_decl = variant_decl.as_str();
 
         assert!(
             variant_decl.contains("java.util.List<uniffi.Point>"),

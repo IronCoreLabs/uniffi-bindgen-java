@@ -1,6 +1,6 @@
 package {{ config.package_name() }};
 
-{%- let trait_impl=format!("UniffiCallbackInterface{}", name) %}
+{%- let trait_impl=format!("UniffiCallbackInterface{}", self.name) %}
 
 // Put the implementation in an object so we don't pollute the top-level namespace
 public class {{ trait_impl }} {

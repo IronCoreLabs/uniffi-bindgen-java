@@ -1,3 +1,4 @@
+{%- import "macros.java" as java %}
 package {{ config.package_name() }};
 
 {%- let type_name = type_|type_name(ci, config) %}

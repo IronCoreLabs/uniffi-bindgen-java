@@ -1,3 +1,4 @@
+{%- import "macros.java" as java %}
 // This template implements a class for working with a Rust struct via a handle
 // to the live Rust struct on the other side of the FFI.
 //
@@ -95,12 +96,10 @@
 // [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
 //
 
-{%- let obj = ci.get_object_definition(name).unwrap() %}
 {%- let (interface_name, impl_class_name) = obj|object_names(ci) %}
 {%- let methods = obj.methods() %}
 {%- let uniffi_trait_methods = obj.uniffi_trait_methods() %}
 {%- let interface_docstring = obj.docstring() %}
-{%- let is_error = ci.is_name_used_as_error(name) %}
 {%- let ffi_converter_name = obj|ffi_converter_name %}
 
 {%- include "Interface.java" %}

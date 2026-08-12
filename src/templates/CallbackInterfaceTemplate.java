@@ -1,4 +1,4 @@
-{%- let cbi = ci.get_callback_interface_definition(name).unwrap() %}
+{%- import "macros.java" as java %}
 {%- let ffi_init_callback = cbi.ffi_init_callback() %}
 {%- let interface_name = cbi|type_name(ci, config) %}
 {%- let interface_docstring = cbi.docstring() %}
@@ -17,4 +17,3 @@ public final class {{ ffi_converter_name }} extends FfiConverterCallbackInterfac
 
   private {{ ffi_converter_name }}() {}
 }
-

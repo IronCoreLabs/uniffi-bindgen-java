@@ -1,3 +1,4 @@
+{%- import "macros.java" as java %}
 {%- let uniffi_trait_methods = e.uniffi_trait_methods() %}
 package {{ config.package_name() }};
 

@@ -1,3 +1,4 @@
+{%- import "macros.java" as java %}
 {%- let package_name = config.package_name() %}
 {%- let ffi_type_name=builtin|ffi_type|ref|ffi_type_name(config, ci) %}
 {%- let ffi_type_name_boxed=builtin|ffi_type_name_boxed %}

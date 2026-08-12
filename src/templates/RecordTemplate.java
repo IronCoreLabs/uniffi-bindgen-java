@@ -1,3 +1,4 @@
+{%- import "macros.java" as java %}
 {%- let rec = ci.get_record_definition(name).unwrap() %}
 {%- let uniffi_trait_methods = rec.uniffi_trait_methods() %}
 package {{ config.package_name() }};
