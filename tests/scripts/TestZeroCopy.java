@@ -44,6 +44,20 @@ public class TestZeroCopy {
         // Empty lowers to (null, 0), which Rust reads as an empty slice rather than crashing.
         assert ZeroCopy.lenBorrowed(ByteBuffer.allocateDirect(0)) == 0 : "empty buffer has len 0";
         assert ZeroCopy.checksumBorrowed(ByteBuffer.allocateDirect(0)) == 0 : "empty buffer sums to 0";
+        assert ZeroCopy.firstByteBorrowed(ByteBuffer.allocateDirect(0)) == 0 : "empty buffer has no first byte";
+
+        // Lowering keys off `remaining`, not `capacity`, so a drained buffer takes the same
+        // (null, 0) path while its backing store is still very much alive.
+        ByteBuffer drained = direct(bytes);
+        drained.position(drained.limit());
+        assert ZeroCopy.lenBorrowed(drained) == 0 : "drained buffer has len 0";
+        drained.position(drained.limit());
+        assert ZeroCopy.checksumBorrowed(drained) == 0 : "drained buffer sums to 0";
+
+        // A null pointer in argument position must not disturb the argument that follows it.
+        assert java.util.Arrays.equals(
+            ZeroCopy.concatBorrowedAndOwned(ByteBuffer.allocateDirect(0), tail),
+            tail) : "empty borrowed arg should leave the owned arg intact";
 
         // A heap buffer has no stable native address, so it must be rejected rather than
         // silently lowered as a null pointer.
