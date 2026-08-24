@@ -10,7 +10,7 @@ on:
 
 jobs:
   rust-release:
-    uses: IronCoreLabs/workflows/.github/workflows/rust-release.yaml@rust-release-v2
+    uses: IronCoreLabs/workflows/.github/workflows/rust-release.yaml@rust-release-v2.0.0
     with:
       dry_run: ${{ inputs.dry_run }}
     secrets: inherit
