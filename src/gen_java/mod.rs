@@ -442,6 +442,74 @@ fn render_type_helpers(config: &Config, ci: &ComponentInterface) -> Result<Strin
     Ok(out)
 }
 
+/// Whether `type_` appears anywhere in `ci` in a hashed position: as a `Set` element or `Map`
+/// key, or nested under one along the `Sequence`/`Optional` spine. See [`compounds::Hashed`].
+fn used_in_hashed_position(ci: &ComponentInterface, type_: &Type) -> bool {
+    fn on_spine(root: &Type, target: &Type) -> bool {
+        root == target
+            || match root {
+                Type::Sequence { inner_type } | Type::Optional { inner_type } => {
+                    on_spine(inner_type, target)
+                }
+                _ => false,
+            }
+    }
+    ci.iter_local_types()
+        .chain(ci.iter_external_types())
+        .any(|t| match t {
+            Type::Set { inner_type } => on_spine(inner_type, type_),
+            Type::Map { key_type, .. } => on_spine(key_type, type_),
+            _ => false,
+        })
+}
+
+/// Whether some type in `ci` already renders a converter with this canonical name. The
+/// [`compounds::Hashed`] `bytes` aliasing can make a hashed variant coincide with a plain
+/// converter; emitting both would duplicate the class.
+fn universe_has_canonical(ci: &ComponentInterface, canonical: &str) -> bool {
+    ci.iter_local_types()
+        .chain(ci.iter_external_types())
+        .any(|t| JavaCodeOracle.find(t).canonical_name() == canonical)
+}
+
+/// The hashed converter variant for `type_`, rendered if a hashed position anywhere in `ci`
+/// needs it and no plain converter already has its name. Empty otherwise.
+fn render_hashed_variant(type_: &Type, config: &Config, ci: &ComponentInterface) -> Result<String> {
+    if !compounds::needs_hashed_rendering(type_) || !used_in_hashed_position(ci, type_) {
+        return Ok(String::new());
+    }
+    let hashed = compounds::Hashed(type_).as_codetype();
+    if universe_has_canonical(ci, &hashed.canonical_name()) {
+        return Ok(String::new());
+    }
+    let ffi_converter_name = hashed.ffi_converter_name();
+    match type_ {
+        Type::Sequence { inner_type } => SequenceTypeRenderer {
+            config,
+            ci,
+            ffi_converter_name,
+            inner_type: compounds::Hashed(inner_type),
+        }
+        .render(),
+        Type::Optional { inner_type } => OptionalTypeRenderer {
+            config,
+            ci,
+            ffi_converter_name,
+            inner_type: compounds::Hashed(inner_type),
+        }
+        .render(),
+        Type::Bytes => SequenceTypeRenderer {
+            config,
+            ci,
+            ffi_converter_name,
+            inner_type: Type::Int8,
+        }
+        .render(),
+        _ => unreachable!("needs_hashed_rendering matches only Sequence, Optional, and Bytes"),
+    }
+    .map_err(Into::into)
+}
+
 fn render_one_type(type_: &Type, config: &Config, ci: &ComponentInterface) -> Result<String> {
     let type_name = JavaCodeOracle.find(type_).type_label(ci, config);
     let ffi_converter_name = JavaCodeOracle.find(type_).ffi_converter_name();
@@ -519,7 +587,7 @@ fn render_one_type(type_: &Type, config: &Config, ci: &ComponentInterface) -> Re
             config,
             ci,
             ffi_converter_name,
-            key_type,
+            key_type: compounds::Hashed(key_type),
             value_type,
         }
         .render(),
@@ -576,14 +644,15 @@ fn render_one_type(type_: &Type, config: &Config, ci: &ComponentInterface) -> Re
             config,
             ci,
             ffi_converter_name,
-            inner_type,
+            inner_type: compounds::Hashed(inner_type),
         }
         .render(),
 
         Type::Box { .. } => Ok(String::new()),
     };
 
-    rendered.with_context(|| format!("failed to render type {type_:?}"))
+    let rendered = rendered.with_context(|| format!("failed to render type {type_:?}"))?;
+    Ok(rendered + &render_hashed_variant(type_, config, ci)?)
 }
 
 /// Templates whose only input is the package name.
@@ -669,17 +738,17 @@ struct MapTypeRenderer<'a> {
     config: &'a Config,
     ci: &'a ComponentInterface,
     ffi_converter_name: String,
-    key_type: &'a Type,
+    key_type: compounds::Hashed<'a>,
     value_type: &'a Type,
 }
 
 #[derive(Template)]
 #[template(syntax = "java", escape = "none", path = "OptionalTemplate.java")]
-struct OptionalTypeRenderer<'a> {
+struct OptionalTypeRenderer<'a, T: AsCodeType> {
     config: &'a Config,
     ci: &'a ComponentInterface,
     ffi_converter_name: String,
-    inner_type: &'a Type,
+    inner_type: T,
 }
 
 #[derive(Template)]
@@ -707,11 +776,11 @@ struct RecordTypeRenderer<'a> {
 
 #[derive(Template)]
 #[template(syntax = "java", escape = "none", path = "SequenceTemplate.java")]
-struct SequenceTypeRenderer<'a> {
+struct SequenceTypeRenderer<'a, T: AsCodeType> {
     config: &'a Config,
     ci: &'a ComponentInterface,
     ffi_converter_name: String,
-    inner_type: &'a Type,
+    inner_type: T,
 }
 
 #[derive(Template)]
@@ -720,7 +789,7 @@ struct SetTypeRenderer<'a> {
     config: &'a Config,
     ci: &'a ComponentInterface,
     ffi_converter_name: String,
-    inner_type: &'a Type,
+    inner_type: compounds::Hashed<'a>,
 }
 
 #[derive(Template)]
@@ -1222,16 +1291,18 @@ mod filters {
             },
             Type::Set { inner_type } => Ok(format!(
                 "java.util.Set<{}>",
-                fully_qualified_type_label(inner_type, ci, config)?
+                hashed_fully_qualified_type_label(inner_type, ci, config)?
             )),
             Type::Map {
                 key_type,
                 value_type,
             } => Ok(format!(
                 "java.util.Map<{}, {}>",
-                fully_qualified_type_label(key_type, ci, config)?,
+                hashed_fully_qualified_type_label(key_type, ci, config)?,
                 fully_qualified_type_label(value_type, ci, config)?
             )),
+            // `Box<T>` exists only in scaffolding; the bindings name `T`.
+            Type::Box { inner_type } => fully_qualified_type_label(inner_type, ci, config),
             Type::Enum { .. }
             | Type::Record { .. }
             | Type::Object { .. }
@@ -1245,6 +1316,34 @@ mod filters {
                 Ok(format!("{}.{}", package_name, class_name))
             }
             _ => Ok(JavaCodeOracle.find(ty).type_label(ci, config)),
+        }
+    }
+
+    /// As [`fully_qualified_type_label`], for a `Set` element or `Map` key. See
+    /// [`compounds::Hashed`].
+    fn hashed_fully_qualified_type_label(
+        ty: &Type,
+        ci: &ComponentInterface,
+        config: &Config,
+    ) -> anyhow::Result<String> {
+        if !compounds::needs_hashed_rendering(ty) {
+            return fully_qualified_type_label(ty, ci, config);
+        }
+        match ty {
+            Type::Sequence { inner_type } => Ok(format!(
+                "java.util.List<{}>",
+                hashed_fully_qualified_type_label(inner_type, ci, config)?
+            )),
+            Type::Optional { inner_type } => {
+                let inner = hashed_fully_qualified_type_label(inner_type, ci, config)?;
+                Ok(if config.nullness_annotations() {
+                    nullable_type_label(&inner)
+                } else {
+                    inner
+                })
+            }
+            Type::Bytes => Ok("java.util.List<java.lang.Byte>".to_string()),
+            _ => unreachable!("needs_hashed_rendering matches only Sequence, Optional, and Bytes"),
         }
     }
 
@@ -1391,7 +1490,9 @@ mod filters {
                 Type::Int8 | Type::UInt8 => Ok(format!("(byte){}", base10)),
                 Type::Int16 | Type::UInt16 => Ok(format!("(short){}", base10)),
                 Type::Int32 | Type::UInt32 => Ok(base10),
-                Type::Int64 | Type::UInt64 => Ok(base10),
+                // Without the suffix an `int` literal is parsed first, and anything past
+                // `i32::MAX` fails to compile.
+                Type::Int64 | Type::UInt64 => Ok(format!("{}L", base10)),
                 _ => Err(to_askama_error("Only ints are supported.")),
             }
         } else {
@@ -1936,40 +2037,89 @@ mod filters {
 
     /// Generates an equality expression for comparing two values of a field's type.
     /// For primitives: returns "left == right"
+    /// For array-holding types (see [`compounds::contains_array_rendering`]): "UniffiDeepValue.equals(left, right)"
     /// For objects: returns "java.util.Objects.equals(left, right)"
     #[askama::filter_fn]
-    pub fn equals_expr<T: AsCodeType, L: std::fmt::Display, R: std::fmt::Display>(
+    pub fn equals_expr<T: AsCodeType + AsType, L: std::fmt::Display, R: std::fmt::Display>(
         field: &T,
         _v: &dyn askama::Values,
         left: L,
         right: R,
     ) -> Result<String, askama::Error> {
-        // Check if this type has a primitive label (meaning it's a primitive)
         if field.as_codetype().type_label_primitive().is_some() {
             Ok(format!("{} == {}", left, right))
+        } else if compounds::contains_array_rendering(&field.as_type()) {
+            Ok(format!("UniffiDeepValue.equals({}, {})", left, right))
         } else {
             Ok(format!("java.util.Objects.equals({}, {})", left, right))
         }
     }
 
-    /// Generates a hash code expression for a field value.
-    /// For primitives: returns "Type.hashCode(value)" (e.g., "java.lang.Integer.hashCode(value)")
-    /// For objects: returns "java.util.Objects.hashCode(value)"
+    /// A field's element expression for a `java.util.Objects.hash(...)` call: the value itself,
+    /// or its `UniffiDeepValue` hash when arrays are reachable (an `Integer` hashes to itself,
+    /// so pre-hashing composes).
     #[askama::filter_fn]
-    pub fn hash_code_expr<T: AsCodeType + AsType, V: std::fmt::Display>(
+    pub fn hash_element_expr<T: AsType, V: std::fmt::Display>(
         field: &T,
         _v: &dyn askama::Values,
         value: V,
     ) -> Result<String, askama::Error> {
-        match field.as_type() {
-            Type::Boolean => Ok(format!("java.lang.Boolean.hashCode({})", value)),
-            Type::Int8 | Type::UInt8 => Ok(format!("java.lang.Byte.hashCode({})", value)),
-            Type::Int16 | Type::UInt16 => Ok(format!("java.lang.Short.hashCode({})", value)),
-            Type::Int32 | Type::UInt32 => Ok(format!("java.lang.Integer.hashCode({})", value)),
-            Type::Int64 | Type::UInt64 => Ok(format!("java.lang.Long.hashCode({})", value)),
-            Type::Float32 => Ok(format!("java.lang.Float.hashCode({})", value)),
-            Type::Float64 => Ok(format!("java.lang.Double.hashCode({})", value)),
-            _ => Ok(format!("java.util.Objects.hashCode({})", value)),
+        if compounds::contains_array_rendering(&field.as_type()) {
+            Ok(format!("UniffiDeepValue.hashCode({})", value))
+        } else {
+            Ok(value.to_string())
+        }
+    }
+
+    /// As [`equals_expr`], for positions whose components are reference types (enum variant
+    /// records box their primitives, so `==` would compare boxed identities).
+    #[askama::filter_fn]
+    pub fn boxed_equals_expr<T: AsType, L: std::fmt::Display, R: std::fmt::Display>(
+        field: &T,
+        _v: &dyn askama::Values,
+        left: L,
+        right: R,
+    ) -> Result<String, askama::Error> {
+        if compounds::contains_array_rendering(&field.as_type()) {
+            Ok(format!("UniffiDeepValue.equals({}, {})", left, right))
+        } else {
+            Ok(format!("java.util.Objects.equals({}, {})", left, right))
+        }
+    }
+
+    /// See [`compounds::contains_array_rendering`].
+    #[askama::filter_fn]
+    pub fn contains_array_rendering(
+        as_type: &impl AsType,
+        _v: &dyn askama::Values,
+    ) -> Result<bool, askama::Error> {
+        Ok(compounds::contains_array_rendering(&as_type.as_type()))
+    }
+
+    /// Whether any field's rendering needs `UniffiDeepValue` equality. See
+    /// [`compounds::contains_array_rendering`].
+    #[askama::filter_fn]
+    pub fn has_array_rendered_field(
+        fields: &[Field],
+        _v: &dyn askama::Values,
+    ) -> Result<bool, askama::Error> {
+        Ok(fields
+            .iter()
+            .any(|f| compounds::contains_array_rendering(&f.as_type())))
+    }
+
+    /// The Java name of a field: `v{index}` for a tuple variant's positional fields. Mirrors the
+    /// `field_name` template macro for use in expression positions.
+    #[askama::filter_fn]
+    pub fn field_java_name(
+        field: &Field,
+        _v: &dyn askama::Values,
+        index: &usize,
+    ) -> Result<String, askama::Error> {
+        if field.name().is_empty() {
+            Ok(format!("v{index}"))
+        } else {
+            Ok(JavaCodeOracle.var_name(field.name()))
         }
     }
 }
@@ -1979,11 +2129,83 @@ mod tests {
     use super::*;
     use uniffi_bindgen::interface::ComponentInterface;
     use uniffi_meta::{
-        CallbackInterfaceMetadata, EnumMetadata, EnumShape, FieldMetadata, FnMetadata,
-        FnParamMetadata, Metadata, MetadataGroup, MethodMetadata, NamespaceMetadata, ObjectImpl,
-        ObjectMetadata, ObjectTraitImplMetadata, RecordMetadata, TraitKind, TraitMethodMetadata,
-        Type, VariantMetadata,
+        CallbackInterfaceMetadata, CustomTypeMetadata, EnumMetadata, EnumShape, FieldMetadata,
+        FnMetadata, FnParamMetadata, Metadata, MetadataGroup, MethodMetadata, NamespaceMetadata,
+        ObjectImpl, ObjectMetadata, ObjectTraitImplMetadata, RecordMetadata, TraitKind,
+        TraitMethodMetadata, Type, VariantMetadata,
     };
+
+    #[test]
+    fn error_variant_holding_an_object_is_closeable() {
+        let mut group = test_group();
+        group.add_item(Metadata::Object(ObjectMetadata {
+            module_path: "test".to_string(),
+            name: "Thing".to_string(),
+            orig_name: None,
+            remote: false,
+            imp: ObjectImpl::Struct,
+            docstring: None,
+        }));
+        group.add_item(Metadata::Enum(EnumMetadata {
+            orig_name: None,
+            module_path: "test".to_string(),
+            name: "BoomError".to_string(),
+            shape: EnumShape::Error { flat: false },
+            remote: false,
+            variants: vec![VariantMetadata {
+                orig_name: None,
+                name: "Boom".to_string(),
+                discr: None,
+                fields: vec![field(
+                    "thing",
+                    Type::Object {
+                        module_path: "test".to_string(),
+                        name: "Thing".to_string(),
+                        imp: ObjectImpl::Struct,
+                    },
+                )],
+                docstring: None,
+            }],
+            discr_type: None,
+            non_exhaustive: false,
+            docstring: None,
+        }));
+        group.add_item(Metadata::Func(FnMetadata {
+            orig_name: None,
+            module_path: "test".to_string(),
+            name: "boom".to_string(),
+            is_async: false,
+            inputs: vec![],
+            return_type: None,
+            throws: Some(Type::Enum {
+                module_path: "test".to_string(),
+                name: "BoomError".to_string(),
+            }),
+            checksum: None,
+            docstring: None,
+        }));
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+        assert!(
+            bindings.contains("class Boom extends BoomException implements AutoCloseable"),
+            "a class cannot `extends A, B`:\n{}",
+            error_variant_lines(&bindings)
+        );
+        assert!(
+            bindings.contains("public void close()"),
+            "close() cannot narrow AutoCloseable's access:\n{}",
+            error_variant_lines(&bindings)
+        );
+    }
+
+    fn error_variant_lines(bindings: &str) -> String {
+        bindings
+            .lines()
+            .filter(|l| l.contains("class Boom") || l.contains("close()"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
 
     #[test]
     fn preserves_error_type_named_error() {
@@ -2197,23 +2419,37 @@ mod tests {
         );
     }
 
-    #[test]
-    fn set_field_on_an_enum_variant_is_package_qualified() {
-        // A variant record shadows a top-level type of the same name, so variant field types are
-        // package-qualified. `Vec<T>` is the control: it already recurses, `HashSet<T>` does not.
+    fn point_type() -> Type {
+        Type::Record {
+            module_path: "test".to_string(),
+            name: "Point".to_string(),
+        }
+    }
+
+    fn field(name: &str, ty: Type) -> FieldMetadata {
+        FieldMetadata {
+            orig_name: None,
+            name: name.to_string(),
+            ty,
+            default: None,
+            docstring: None,
+        }
+    }
+
+    /// Renders `enum Shape { Point, Group { ..fields } }` alongside a `Point` record, and returns
+    /// the `Group` variant's declaration on one line.
+    ///
+    /// The variant named `Point` shadows the top-level `Point` from inside the sealed interface,
+    /// so any field type that is not package-qualified resolves to the wrong `Point` and fails to
+    /// compile.
+    fn group_variant_decl(fields: Vec<FieldMetadata>) -> String {
         let mut group = test_group();
         group.add_item(Metadata::Record(RecordMetadata {
             orig_name: None,
             module_path: "test".to_string(),
             name: "Point".to_string(),
             remote: false,
-            fields: vec![FieldMetadata {
-                orig_name: None,
-                name: "x".to_string(),
-                ty: Type::Int32,
-                default: None,
-                docstring: None,
-            }],
+            fields: vec![field("x", Type::Int32)],
             docstring: None,
         }));
         group.add_item(Metadata::Enum(EnumMetadata {
@@ -2234,32 +2470,7 @@ mod tests {
                     orig_name: None,
                     name: "Group".to_string(),
                     discr: None,
-                    fields: vec![
-                        FieldMetadata {
-                            orig_name: None,
-                            name: "members".to_string(),
-                            ty: Type::Set {
-                                inner_type: Box::new(Type::Record {
-                                    module_path: "test".to_string(),
-                                    name: "Point".to_string(),
-                                }),
-                            },
-                            default: None,
-                            docstring: None,
-                        },
-                        FieldMetadata {
-                            orig_name: None,
-                            name: "ordered".to_string(),
-                            ty: Type::Sequence {
-                                inner_type: Box::new(Type::Record {
-                                    module_path: "test".to_string(),
-                                    name: "Point".to_string(),
-                                }),
-                            },
-                            default: None,
-                            docstring: None,
-                        },
-                    ],
+                    fields,
                     docstring: None,
                 },
             ],
@@ -2292,23 +2503,418 @@ mod tests {
             .iter()
             .position(|line| line.contains("record Group("))
             .unwrap_or_else(|| panic!("no Group variant in:\n{bindings}"));
-        let variant_decl = lines[start..]
+        lines[start..]
             .iter()
             .take_while(|line| !line.contains("implements"))
             .chain(lines[start..].iter().find(|l| l.contains("implements")))
             .copied()
             .collect::<Vec<_>>()
-            .join(" ");
-        let variant_decl = variant_decl.as_str();
+            .join(" ")
+    }
+
+    #[test]
+    fn set_field_on_an_enum_variant_is_package_qualified() {
+        let decl = group_variant_decl(vec![
+            field(
+                "members",
+                Type::Set {
+                    inner_type: Box::new(point_type()),
+                },
+            ),
+            field(
+                "ordered",
+                Type::Sequence {
+                    inner_type: Box::new(point_type()),
+                },
+            ),
+        ]);
 
         assert!(
-            variant_decl.contains("java.util.List<uniffi.Point>"),
-            "Vec<Point> should be qualified, got: {variant_decl}"
+            decl.contains("java.util.List<uniffi.Point>"),
+            "Vec<Point> should be qualified, got: {decl}"
         );
         assert!(
-            variant_decl.contains("java.util.Set<uniffi.Point>"),
-            "HashSet<Point> should be qualified too, but the nested `record Point` shadows the \
-             top-level one, got: {variant_decl}"
+            decl.contains("java.util.Set<uniffi.Point>"),
+            "HashSet<Point> should be qualified too, got: {decl}"
+        );
+    }
+
+    #[test]
+    fn box_field_on_an_enum_variant_is_package_qualified() {
+        let decl = group_variant_decl(vec![field(
+            "boxed",
+            Type::Box {
+                inner_type: Box::new(point_type()),
+            },
+        )]);
+
+        assert!(
+            decl.contains("uniffi.Point boxed"),
+            "Box<Point> should be qualified, got: {decl}"
+        );
+    }
+
+    #[test]
+    fn hashed_field_on_an_enum_variant_keeps_the_boxed_list() {
+        let decl = group_variant_decl(vec![
+            field(
+                "members",
+                Type::Set {
+                    inner_type: Box::new(Type::Sequence {
+                        inner_type: Box::new(Type::Int32),
+                    }),
+                },
+            ),
+            field(
+                "keyed",
+                Type::Map {
+                    key_type: Box::new(Type::Sequence {
+                        inner_type: Box::new(Type::Int32),
+                    }),
+                    value_type: Box::new(Type::Sequence {
+                        inner_type: Box::new(Type::Int32),
+                    }),
+                },
+            ),
+        ]);
+
+        assert!(
+            decl.contains("java.util.Set<java.util.List<java.lang.Integer>>"),
+            "Set element should stay boxed, got: {decl}"
+        );
+        assert!(
+            decl.contains("java.util.Map<java.util.List<java.lang.Integer>, int[]>"),
+            "only the Map key is hashed, got: {decl}"
+        );
+    }
+
+    #[test]
+    fn hashed_primitive_array_stays_boxed_in_a_signature() {
+        let mut group = test_group();
+        group.add_item(Metadata::Func(FnMetadata {
+            orig_name: None,
+            module_path: "test".to_string(),
+            name: "hashed".to_string(),
+            is_async: false,
+            inputs: vec![
+                FnParamMetadata {
+                    name: "set".to_string(),
+                    ty: Type::Set {
+                        inner_type: Box::new(Type::Sequence {
+                            inner_type: Box::new(Type::Int32),
+                        }),
+                    },
+                    by_ref: false,
+                    optional: false,
+                    default: None,
+                },
+                FnParamMetadata {
+                    name: "map".to_string(),
+                    ty: Type::Map {
+                        key_type: Box::new(Type::Sequence {
+                            inner_type: Box::new(Type::Int32),
+                        }),
+                        value_type: Box::new(Type::Sequence {
+                            inner_type: Box::new(Type::Float64),
+                        }),
+                    },
+                    by_ref: false,
+                    optional: false,
+                    default: None,
+                },
+            ],
+            return_type: None,
+            throws: None,
+            checksum: None,
+            docstring: None,
+        }));
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+
+        assert!(
+            bindings.contains(
+                "hashed(java.util.Set<java.util.List<java.lang.Integer>> set, \
+                 java.util.Map<java.util.List<java.lang.Integer>, double[]> map)"
+            ),
+            "hashed positions should stay boxed, values should not:\n{}",
+            bindings
+                .lines()
+                .filter(|l| l.contains("hashed("))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+        // The boxed rendering needs a converter the array helper does not provide.
+        assert!(
+            bindings.contains("enum FfiConverterSequenceInteger"),
+            "expected the generic sequence converter alongside FfiConverterInt32Array"
+        );
+        assert!(
+            bindings.contains("enum FfiConverterInt32Array"),
+            "expected the array helper to still be emitted"
+        );
+    }
+
+    fn seq(inner: Type) -> Type {
+        Type::Sequence {
+            inner_type: Box::new(inner),
+        }
+    }
+
+    fn param(name: &str, ty: Type) -> FnParamMetadata {
+        FnParamMetadata {
+            name: name.to_string(),
+            ty,
+            by_ref: false,
+            optional: false,
+            default: None,
+        }
+    }
+
+    /// Bindings for an interface holding a single function of these parameters.
+    fn bindings_for_fn(inputs: Vec<FnParamMetadata>, config: &Config) -> String {
+        let mut group = test_group();
+        group.add_item(Metadata::Func(FnMetadata {
+            orig_name: None,
+            module_path: "test".to_string(),
+            name: "subject".to_string(),
+            is_async: false,
+            inputs,
+            return_type: None,
+            throws: None,
+            checksum: None,
+            docstring: None,
+        }));
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+        generate_bindings(config, &ci).unwrap()
+    }
+
+    #[test]
+    fn nested_hashed_sequences_stay_boxed_at_every_depth() {
+        let bindings = bindings_for_fn(
+            vec![param(
+                "nested",
+                Type::Set {
+                    inner_type: Box::new(seq(seq(Type::Int32))),
+                },
+            )],
+            &Config::default(),
+        );
+
+        assert!(
+            bindings.contains(
+                "java.util.Set<java.util.List<java.util.List<java.lang.Integer>>> nested"
+            ),
+            "the inner array must stay boxed too, or contains() breaks one level down:\n{}",
+            signature_lines(&bindings)
+        );
+        assert!(
+            bindings.contains("enum FfiConverterSequenceSequenceInteger"),
+            "expected the hashed converter for the outer sequence"
+        );
+        assert!(
+            bindings.contains("enum FfiConverterSequenceInteger"),
+            "expected the hashed converter for the inner sequence"
+        );
+    }
+
+    #[test]
+    fn optional_wrapped_hashed_element_stays_boxed() {
+        let bindings = bindings_for_fn(
+            vec![param(
+                "opt",
+                Type::Set {
+                    inner_type: Box::new(Type::Optional {
+                        inner_type: Box::new(seq(Type::Int32)),
+                    }),
+                },
+            )],
+            &Config::default(),
+        );
+
+        assert!(
+            bindings.contains("java.util.Set<java.util.List<java.lang.Integer>> opt"),
+            "an optional element is invisibly nullable but must stay boxed:\n{}",
+            signature_lines(&bindings)
+        );
+        assert!(
+            bindings.contains("enum FfiConverterOptionalSequenceInteger"),
+            "expected the hashed optional converter"
+        );
+        assert!(
+            bindings.contains("enum FfiConverterSequenceInteger"),
+            "expected the hashed converter for the wrapped sequence"
+        );
+    }
+
+    #[test]
+    fn bytes_map_key_stays_boxed() {
+        let bindings = bindings_for_fn(
+            vec![param(
+                "keyed",
+                Type::Map {
+                    key_type: Box::new(Type::Bytes),
+                    value_type: Box::new(Type::String),
+                },
+            )],
+            &Config::default(),
+        );
+
+        assert!(
+            bindings
+                .contains("java.util.Map<java.util.List<java.lang.Byte>, java.lang.String> keyed"),
+            "byte[] keys never match on lookup:\n{}",
+            signature_lines(&bindings)
+        );
+        assert!(
+            bindings.contains("enum FfiConverterSequenceByte"),
+            "expected the byte sequence converter for the hashed key"
+        );
+    }
+
+    #[test]
+    fn hashed_bytes_reuses_an_existing_byte_sequence_converter() {
+        let bindings = bindings_for_fn(
+            vec![
+                param(
+                    "hashed",
+                    Type::Set {
+                        inner_type: Box::new(Type::Bytes),
+                    },
+                ),
+                param("plain", seq(Type::Int8)),
+            ],
+            &Config::default(),
+        );
+
+        assert_eq!(
+            bindings.matches("enum FfiConverterSequenceByte ").count(),
+            1,
+            "hashed bytes and Vec<i8> share a converter; two copies would not compile"
+        );
+    }
+
+    fn signature_lines(bindings: &str) -> String {
+        bindings
+            .lines()
+            .filter(|l| l.contains("subject("))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn holder_group() -> MetadataGroup {
+        let mut group = test_group();
+        group.add_item(Metadata::Record(RecordMetadata {
+            orig_name: None,
+            module_path: "test".to_string(),
+            name: "Holder".to_string(),
+            remote: false,
+            fields: vec![
+                field("label", Type::String),
+                field("data", seq(Type::Int32)),
+                field("nested", seq(seq(Type::Int32))),
+            ],
+            docstring: None,
+        }));
+        group
+    }
+
+    #[test]
+    fn record_with_array_fields_gets_value_equality() {
+        let mut ci = ComponentInterface::from_metadata(holder_group()).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+
+        assert!(
+            bindings.contains("UniffiDeepValue.equals(data, t.data)"),
+            "array fields must compare by value:\n{bindings}"
+        );
+        assert!(
+            bindings.contains(
+                "java.util.Objects.hash(label, UniffiDeepValue.hashCode(data), \
+                 UniffiDeepValue.hashCode(nested))"
+            ),
+            "array fields must hash by value:\n{bindings}"
+        );
+    }
+
+    #[test]
+    fn immutable_record_with_array_fields_overrides_equality() {
+        let mut ci = ComponentInterface::from_metadata(holder_group()).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+        let config = Config {
+            generate_immutable_records: Some(true),
+            ..Config::default()
+        };
+        let bindings = generate_bindings(&config, &ci).unwrap();
+
+        assert!(
+            bindings.contains("public record Holder("),
+            "expected an immutable record:\n{bindings}"
+        );
+        assert!(
+            bindings.contains("UniffiDeepValue.equals(data, t.data)"),
+            "the record-generated equals sees array components by identity:\n{bindings}"
+        );
+    }
+
+    #[test]
+    fn custom_type_wrapper_over_arrays_gets_value_equality() {
+        let mut group = test_group();
+        group.add_item(Metadata::CustomType(CustomTypeMetadata {
+            module_path: "test".to_string(),
+            name: "IntsKey".to_string(),
+            orig_name: None,
+            builtin: seq(Type::Int32),
+            docstring: None,
+        }));
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+
+        assert!(
+            bindings.contains("UniffiDeepValue.equals(value, t.value)"),
+            "the wrapper record's array component must compare by value:\n{bindings}"
+        );
+        assert!(
+            bindings.contains("UniffiDeepValue.hashCode(value)"),
+            "the wrapper record's hashCode must match its equals:\n{bindings}"
+        );
+    }
+
+    #[test]
+    fn enum_variant_with_array_field_overrides_equality() {
+        let mut group = test_group();
+        group.add_item(Metadata::Enum(EnumMetadata {
+            orig_name: None,
+            module_path: "test".to_string(),
+            name: "Payload".to_string(),
+            shape: EnumShape::Enum,
+            remote: false,
+            variants: vec![VariantMetadata {
+                orig_name: None,
+                name: "Ints".to_string(),
+                discr: None,
+                // A tuple variant, so the positional v1 name has to thread through.
+                fields: vec![field("", seq(Type::Int32))],
+                docstring: None,
+            }],
+            discr_type: None,
+            non_exhaustive: false,
+            docstring: None,
+        }));
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+
+        assert!(
+            bindings.contains("UniffiDeepValue.equals(v1, t.v1)"),
+            "the variant record's equals sees array components by identity:\n{bindings}"
+        );
+        assert!(
+            bindings.contains("java.util.Objects.hash(UniffiDeepValue.hashCode(v1))"),
+            "the variant record's hashCode must match its equals:\n{bindings}"
         );
     }
 

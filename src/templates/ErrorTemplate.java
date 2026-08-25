@@ -14,7 +14,8 @@ public class {{ type_name }} extends java.lang.Exception {
 
     {% for variant in e.variants() -%}
     {%- call java::docstring(variant, 4) %}{% endcall %}
-    public static class {{ variant|error_variant_name }} extends {{ type_name }}{% if contains_object_references %}, AutoCloseable{% endif %} {
+    {#- A flat variant carries only a message, so it never owns an object to close. -#}
+    public static class {{ variant|error_variant_name }} extends {{ type_name }} {
       public {{ variant|error_variant_name }}(java.lang.String message) {
         super(message);
       }
@@ -33,7 +34,7 @@ public class {{ type_name }} extends java.lang.Exception {
     {% for variant in e.variants() -%}
     {%- call java::docstring(variant, 4) %}{% endcall %}
     {%- let variant_name = variant|error_variant_name %}
-    public static class {{ variant_name }} extends {{ type_name }}{% if contains_object_references %}, AutoCloseable{% endif %} {
+    public static class {{ variant_name }} extends {{ type_name }}{% if contains_object_references %} implements AutoCloseable{% endif %} {
       {% for field in variant.fields() -%}
       {%- call java::docstring(field, 8) %}{% endcall %}
       {{ field|type_name(ci, config) }} {% call java::field_name(field, loop.index) %}{% endcall %};
@@ -66,7 +67,7 @@ public class {{ type_name }} extends java.lang.Exception {
       
       {% if contains_object_references %}
       @Override
-      void close() {
+      public void close() {
         {%- if variant.has_fields() %}
         {% call java::destroy_fields(variant) %}{% endcall %}
         {% else -%}

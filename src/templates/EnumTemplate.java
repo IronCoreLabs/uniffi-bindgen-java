@@ -67,6 +67,12 @@ public enum {{ e|ffi_converter_name}} implements FfiConverterRustBuffer<{{ type_
 
 {%- call java::docstring(e, 0) %}{% endcall %}
 public sealed interface {{ type_name }}{% if uniffi_trait_methods.ord_cmp.is_some() %}{% if contains_object_references %} extends AutoCloseable, Comparable<{{ type_name }}>{% else %} extends Comparable<{{ type_name }}>{% endif %}{% else %}{% if contains_object_references %} extends AutoCloseable{% endif %}{% endif %} {
+  {%- if contains_object_references %}
+  {#- Redeclared to drop `throws Exception`, so try-with-resources on the interface type does not
+      force callers to handle a checked exception no variant can throw. -#}
+  @Override
+  void close();
+  {% endif %}
   {% for variant in e.variants() -%}
   {%- call java::docstring(variant, 4) %}{% endcall %}
   {% if !variant.has_fields() -%}
@@ -96,6 +102,26 @@ public sealed interface {{ type_name }}{% if uniffi_trait_methods.ord_cmp.is_som
     {% endif %}
     {# Re-get trait methods for each variant to avoid move issues #}
     {%- let variant_trait_methods = e.uniffi_trait_methods() %}
+    {#- The record-generated equals/hashCode compare array components by identity. -#}
+    {%- if variant_trait_methods.eq_eq.is_none() && variant.fields()|has_array_rendered_field %}
+    @Override
+    public boolean equals(java.lang.Object other) {
+      if (other instanceof {{ variant|type_name(ci, config) }}) {
+        {{ variant|type_name(ci, config) }} t = ({{ variant|type_name(ci, config) }}) other;
+        return ({% for field in variant.fields() %}{% let fname = field|field_java_name(loop.index) %}
+          {{ field|boxed_equals_expr(fname, "t." ~ fname) }}{% if !loop.last %} && {% endif %}
+          {% endfor %}
+        );
+      };
+      return false;
+    }
+    {%- endif %}
+    {%- if variant_trait_methods.hash_hash.is_none() && variant.fields()|has_array_rendered_field %}
+    @Override
+    public int hashCode() {
+      return java.util.Objects.hash({% for field in variant.fields() %}{% let fname = field|field_java_name(loop.index) %}{{ field|hash_element_expr(fname) }}{% if !loop.last %}, {% endif %}{% endfor %});
+    }
+    {%- endif %}
     {% call java::uniffi_trait_impls(variant_trait_methods) %}{% endcall %}
   }
   {%- endif %}

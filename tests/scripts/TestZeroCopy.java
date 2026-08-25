@@ -70,6 +70,20 @@ public class TestZeroCopy {
         }
         assert threw : "heap ByteBuffer should be rejected";
 
+        // A method routes through callWithHandle, whose wrap must not relabel the same misuse.
+        try (Checksummer checksummer = new Checksummer()) {
+            assert checksummer.checksumBorrowed(direct(bytes)) == 15 : "method checksum should be 15";
+
+            boolean methodThrew = false;
+            try {
+                checksummer.checksumBorrowed(ByteBuffer.wrap(bytes));
+            } catch (IllegalArgumentException e) {
+                methodThrew = true;
+                assert e.getMessage().contains("direct ByteBuffer") : "message should say what to do";
+            }
+            assert methodThrew : "heap ByteBuffer should be rejected from a method too";
+        }
+
         // Larger payload, exercising the slab across many lowerings.
         byte[] big = new byte[64 * 1024];
         for (int i = 0; i < big.length; i++) big[i] = (byte) (i & 0x7F);

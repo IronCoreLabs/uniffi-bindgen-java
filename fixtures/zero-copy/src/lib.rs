@@ -9,6 +9,8 @@
 //! `ForeignBytes` holds a `*const u8` so the generated future isn't `Send` and fails
 //! `rust_future_new`'s bound.
 
+use std::sync::Arc;
+
 uniffi::setup_scaffolding!("zero_copy");
 
 #[uniffi::export]
@@ -37,4 +39,21 @@ fn len_borrowed(data: &[u8]) -> u32 {
 #[uniffi::export]
 fn concat_borrowed_and_owned(borrowed: &[u8], owned: Vec<u8>) -> Vec<u8> {
     [borrowed, &owned].concat()
+}
+
+/// Lets the same borrowed-bytes call be made as a method, which reaches the FFI through Java's
+/// `callWithHandle` instead of calling it directly.
+#[derive(uniffi::Object)]
+pub struct Checksummer;
+
+#[uniffi::export]
+impl Checksummer {
+    #[uniffi::constructor]
+    fn new() -> Arc<Self> {
+        Arc::new(Self)
+    }
+
+    fn checksum_borrowed(&self, data: &[u8]) -> u64 {
+        data.iter().map(|b| *b as u64).sum()
+    }
 }

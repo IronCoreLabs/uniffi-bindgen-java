@@ -1673,6 +1673,7 @@ dependencies = [
  "uniffi-example-todolist",
  "uniffi-fixture-benchmarks",
  "uniffi-fixture-coverall",
+ "uniffi-fixture-enum-types",
  "uniffi-fixture-ext-types",
  "uniffi-fixture-futures",
  "uniffi-fixture-primitive-arrays",
@@ -1772,6 +1773,15 @@ version = "0.22.0"
 source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.32.0#5c7b73906358e1a7acdc1bdc7bf5cd86fb27e44c"
 dependencies = [
  "once_cell",
+ "thiserror",
+ "uniffi",
+]
+
+[[package]]
+name = "uniffi-fixture-enum-types"
+version = "0.22.0"
+source = "git+https://github.com/mozilla/uniffi-rs.git?tag=v0.32.0#5c7b73906358e1a7acdc1bdc7bf5cd86fb27e44c"
+dependencies = [
  "thiserror",
  "uniffi",
 ]

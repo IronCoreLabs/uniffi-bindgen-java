@@ -19,6 +19,26 @@ public record {{ type_name }}(
         {% call java::destroy_fields(rec) %}{% endcall %}
     }
     {% endif %}
+    {#- The record-generated equals/hashCode compare array components by identity. -#}
+    {%- if uniffi_trait_methods.eq_eq.is_none() && rec.fields()|has_array_rendered_field %}
+    @Override
+    public boolean equals(java.lang.Object other) {
+        if (other instanceof {{ type_name }}) {
+            {{ type_name }} t = ({{ type_name }}) other;
+            return ({% for field in rec.fields() %}{% let field_var_name = field.name()|var_name %}
+              {{ field|equals_expr(field_var_name, "t." ~ field_var_name) }}{% if !loop.last%} && {% endif %}
+              {% endfor %}
+            );
+        };
+        return false;
+    }
+    {%- endif %}
+    {%- if uniffi_trait_methods.hash_hash.is_none() && rec.fields()|has_array_rendered_field %}
+    @Override
+    public int hashCode() {
+        return java.util.Objects.hash({% for field in rec.fields() %}{{ field|hash_element_expr(field.name()|var_name) }}{% if !loop.last %}, {% endif %}{% endfor %});
+    }
+    {%- endif %}
     {% for meth in rec.methods() -%}
     {%- call java::func_decl("public", "", meth, 4) %}{% endcall %}
     {% endfor %}
@@ -83,11 +103,7 @@ public class {{ type_name }} {% if contains_object_references %}implements AutoC
     {%- if uniffi_trait_methods.hash_hash.is_none() %}
     @Override
     public int hashCode() {
-        int result = 17;
-        {%- for field in rec.fields() %}
-        result = 31 * result + {{ field|hash_code_expr(field.name()|var_name) }};
-        {%- endfor %}
-        return result;
+        return java.util.Objects.hash({% for field in rec.fields() %}{{ field|hash_element_expr(field.name()|var_name) }}{% if !loop.last %}, {% endif %}{% endfor %});
     }
     {%- endif %}
 

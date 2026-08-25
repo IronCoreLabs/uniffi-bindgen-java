@@ -380,6 +380,7 @@ fixture_tests! {
     // (test_todolist, "uniffi-example-todolist", "scripts/TestTodolist.java"),
     (test_sprites, "uniffi-example-sprites", "scripts/TestSprites.java"),
     (test_coverall, "uniffi-fixture-coverall", "scripts/TestFixtureCoverall.java"),
+    (test_enum_types, "uniffi-fixture-enum-types", "scripts/TestEnumTypes.java"),
     (test_chronological, "uniffi-fixture-time", "scripts/TestChronological.java"),
     (test_custom_types, "uniffi-example-custom-types", "scripts/TestCustomTypes/TestCustomTypes.java"),
     (test_external_types, "uniffi-fixture-ext-types", "scripts/TestImportedTypes/TestImportedTypes.java"),

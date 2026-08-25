@@ -14,6 +14,11 @@
     {% else %}
             {%- call to_raw_ffi_call(func) %}{% endcall %};
     {% endif %}
+    {#- The wrap below exists only to launder a declared error, which is checked, across
+        `Function.apply`. Rethrowing unchecked first keeps a method's exceptions identical to the
+        same call made as a free function, which has no wrap at all. -#}
+        } catch (java.lang.RuntimeException _uniffi_ex) {
+            throw _uniffi_ex;
         } catch (java.lang.Exception _uniffi_ex) {
             throw new java.lang.RuntimeException(_uniffi_ex);
         }
@@ -231,7 +236,7 @@ v{{- field_num -}}
 {%- macro destroy_fields(member) %}
     AutoCloseableHelper.close(
     {%- for field in member.fields() %}
-        this.{{ field.name()|var_name }}{%- if !loop.last %}, {% endif -%}
+        this.{% call field_name(field, loop.index) %}{% endcall %}{%- if !loop.last %}, {% endif -%}
     {% endfor -%});
 {%- endmacro -%}
 

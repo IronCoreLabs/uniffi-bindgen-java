@@ -11,6 +11,18 @@ package {{ package_name }};
 public record {{ type_name }}(
   {{ builtin|type_name(ci, config) }} value
 ) {
+  {%- if builtin|contains_array_rendering %}
+  {#- The record-generated equals/hashCode compare array components by identity. -#}
+  @Override
+  public boolean equals(java.lang.Object other) {
+    return other instanceof {{ type_name }} t && UniffiDeepValue.equals(value, t.value);
+  }
+
+  @Override
+  public int hashCode() {
+    return UniffiDeepValue.hashCode(value);
+  }
+  {%- endif %}
 }
 
 package {{ package_name }};
