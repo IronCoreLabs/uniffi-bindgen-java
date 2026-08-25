@@ -329,7 +329,17 @@ final class UniffiDeepValue {
         return java.util.Objects.deepEquals(a, b);
     }
 
+    // Per-type arms rather than an Arrays.deepHashCode wrapper: equals has an allocation-free
+    // JDK entry point in Objects.deepEquals, hashCode does not.
     static int hashCode(java.lang.Object o) {
+        if (o == null) return 0;
+        if (o instanceof byte[] x) return java.util.Arrays.hashCode(x);
+        if (o instanceof short[] x) return java.util.Arrays.hashCode(x);
+        if (o instanceof int[] x) return java.util.Arrays.hashCode(x);
+        if (o instanceof long[] x) return java.util.Arrays.hashCode(x);
+        if (o instanceof float[] x) return java.util.Arrays.hashCode(x);
+        if (o instanceof double[] x) return java.util.Arrays.hashCode(x);
+        if (o instanceof boolean[] x) return java.util.Arrays.hashCode(x);
         if (o instanceof java.util.List<?> x) {
             // The List.hashCode contract, with array-aware element hashes.
             int result = 1;
@@ -346,7 +356,6 @@ final class UniffiDeepValue {
             }
             return result;
         }
-        // The single-element wrapper covers null and every primitive array type.
-        return java.util.Arrays.deepHashCode(new java.lang.Object[] { o });
+        return o.hashCode();
     }
 }

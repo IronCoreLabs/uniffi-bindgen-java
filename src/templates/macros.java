@@ -217,11 +217,7 @@
 {%- endmacro -%}
 
 {% macro field_name(field, field_num) %}
-{%- if field.name().is_empty() -%}
-v{{- field_num -}}
-{%- else -%}
-{{ field.name()|var_name }}
-{%- endif -%}
+{{- field|field_java_name(field_num) -}}
 {%- endmacro %}
 
 {% macro field_name_unquoted(field, field_num) %}

@@ -36,7 +36,11 @@ public record {{ type_name }}(
     {%- if uniffi_trait_methods.hash_hash.is_none() && rec.fields()|has_array_rendered_field %}
     @Override
     public int hashCode() {
-        return java.util.Objects.hash({% for field in rec.fields() %}{{ field|hash_element_expr(field.name()|var_name) }}{% if !loop.last %}, {% endif %}{% endfor %});
+        int result = 17;
+        {%- for field in rec.fields() %}
+        result = 31 * result + {{ field|hash_code_expr(field.name()|var_name) }};
+        {%- endfor %}
+        return result;
     }
     {%- endif %}
     {% for meth in rec.methods() -%}
@@ -103,7 +107,11 @@ public class {{ type_name }} {% if contains_object_references %}implements AutoC
     {%- if uniffi_trait_methods.hash_hash.is_none() %}
     @Override
     public int hashCode() {
-        return java.util.Objects.hash({% for field in rec.fields() %}{{ field|hash_element_expr(field.name()|var_name) }}{% if !loop.last %}, {% endif %}{% endfor %});
+        int result = 17;
+        {%- for field in rec.fields() %}
+        result = 31 * result + {{ field|hash_code_expr(field.name()|var_name) }};
+        {%- endfor %}
+        return result;
     }
     {%- endif %}
 

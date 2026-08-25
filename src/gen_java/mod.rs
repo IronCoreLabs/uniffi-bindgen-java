@@ -1149,16 +1149,12 @@ impl AsCodeType for Type {
             Type::Optional { inner_type } => {
                 Box::new(compounds::OptionalCodeType::new((*inner_type).clone()))
             }
-            Type::Sequence { inner_type } => match inner_type.as_ref() {
-                Type::Int16 | Type::UInt16 => Box::new(compounds::Int16ArrayCodeType),
-                Type::Int32 | Type::UInt32 => Box::new(compounds::Int32ArrayCodeType),
-                Type::Int64 | Type::UInt64 => Box::new(compounds::Int64ArrayCodeType),
-                Type::Float32 => Box::new(compounds::Float32ArrayCodeType),
-                Type::Float64 => Box::new(compounds::Float64ArrayCodeType),
-                Type::Boolean => Box::new(compounds::BooleanArrayCodeType),
-                // Int8/UInt8 sequences still use SequenceCodeType; the separate Bytes type handles byte[]
-                _ => Box::new(compounds::SequenceCodeType::new((*inner_type).clone())),
-            },
+            Type::Sequence { inner_type } => {
+                match compounds::primitive_array_code_type(&inner_type) {
+                    Some(array_type) => array_type,
+                    None => Box::new(compounds::SequenceCodeType::new((*inner_type).clone())),
+                }
+            }
             Type::Set { inner_type } => {
                 Box::new(compounds::SetCodeType::new((*inner_type).clone()))
             }
@@ -1277,18 +1273,16 @@ mod filters {
                     Ok(inner)
                 }
             }
-            Type::Sequence { inner_type } => match inner_type.as_ref() {
-                Type::Int16 | Type::UInt16 => Ok("short[]".to_string()),
-                Type::Int32 | Type::UInt32 => Ok("int[]".to_string()),
-                Type::Int64 | Type::UInt64 => Ok("long[]".to_string()),
-                Type::Float32 => Ok("float[]".to_string()),
-                Type::Float64 => Ok("double[]".to_string()),
-                Type::Boolean => Ok("boolean[]".to_string()),
-                _ => Ok(format!(
-                    "java.util.List<{}>",
-                    fully_qualified_type_label(inner_type, ci, config)?
-                )),
-            },
+            Type::Sequence { inner_type } => {
+                // Primitive array labels are already unqualified.
+                match compounds::primitive_array_code_type(inner_type) {
+                    Some(array_type) => Ok(array_type.type_label(ci, config)),
+                    None => Ok(format!(
+                        "java.util.List<{}>",
+                        fully_qualified_type_label(inner_type, ci, config)?
+                    )),
+                }
+            }
             Type::Set { inner_type } => Ok(format!(
                 "java.util.Set<{}>",
                 hashed_fully_qualified_type_label(inner_type, ci, config)?
@@ -1489,10 +1483,21 @@ mod filters {
                 // Byte and Short need explicit casts in Java
                 Type::Int8 | Type::UInt8 => Ok(format!("(byte){}", base10)),
                 Type::Int16 | Type::UInt16 => Ok(format!("(short){}", base10)),
-                Type::Int32 | Type::UInt32 => Ok(base10),
-                // Without the suffix an `int` literal is parsed first, and anything past
-                // `i32::MAX` fails to compile.
-                Type::Int64 | Type::UInt64 => Ok(format!("{}L", base10)),
+                Type::Int32 => Ok(base10),
+                // Java literals are signed and unsuffixed ones parse as `int`, so longs need the
+                // `L` suffix, and the upper half of an unsigned repr only fits as hex, which
+                // carries the bit pattern into the signed type.
+                Type::UInt32 => match base10.parse::<u32>() {
+                    Ok(v) if v > i32::MAX as u32 => Ok(format!("0x{:X}", v)),
+                    Ok(_) => Ok(base10),
+                    Err(_) => Err(to_askama_error(&format!("invalid u32 literal: {base10}"))),
+                },
+                Type::Int64 => Ok(format!("{}L", base10)),
+                Type::UInt64 => match base10.parse::<u64>() {
+                    Ok(v) if v > i64::MAX as u64 => Ok(format!("0x{:X}L", v)),
+                    Ok(_) => Ok(format!("{}L", base10)),
+                    Err(_) => Err(to_askama_error(&format!("invalid u64 literal: {base10}"))),
+                },
                 _ => Err(to_askama_error("Only ints are supported.")),
             }
         } else {
@@ -2037,6 +2042,9 @@ mod filters {
 
     /// Generates an equality expression for comparing two values of a field's type.
     /// For primitives: returns "left == right"
+    /// For floats: "Type.compare(left, right) == 0", which agrees with `Type.hashCode` on NaN
+    /// and signed zero where `==` does not
+    /// For other primitives: "left == right"
     /// For array-holding types (see [`compounds::contains_array_rendering`]): "UniffiDeepValue.equals(left, right)"
     /// For objects: returns "java.util.Objects.equals(left, right)"
     #[askama::filter_fn]
@@ -2046,20 +2054,49 @@ mod filters {
         left: L,
         right: R,
     ) -> Result<String, askama::Error> {
-        if field.as_codetype().type_label_primitive().is_some() {
-            Ok(format!("{} == {}", left, right))
-        } else if compounds::contains_array_rendering(&field.as_type()) {
-            Ok(format!("UniffiDeepValue.equals({}, {})", left, right))
-        } else {
-            Ok(format!("java.util.Objects.equals({}, {})", left, right))
+        match field.as_type() {
+            Type::Float32 => Ok(format!("java.lang.Float.compare({}, {}) == 0", left, right)),
+            Type::Float64 => Ok(format!(
+                "java.lang.Double.compare({}, {}) == 0",
+                left, right
+            )),
+            _ if field.as_codetype().type_label_primitive().is_some() => {
+                Ok(format!("{} == {}", left, right))
+            }
+            ty if compounds::contains_array_rendering(&ty) => {
+                Ok(format!("UniffiDeepValue.equals({}, {})", left, right))
+            }
+            _ => Ok(format!("java.util.Objects.equals({}, {})", left, right)),
         }
     }
 
-    /// A field's element expression for a `java.util.Objects.hash(...)` call: the value itself,
-    /// or its `UniffiDeepValue` hash when arrays are reachable (an `Integer` hashes to itself,
-    /// so pre-hashing composes).
+    /// A field's contribution to a hash accumulation. Primitives dispatch to their boxed type's
+    /// static hashCode so nothing boxes; array-holding types (see
+    /// [`compounds::contains_array_rendering`]) go through `UniffiDeepValue`.
     #[askama::filter_fn]
-    pub fn hash_element_expr<T: AsType, V: std::fmt::Display>(
+    pub fn hash_code_expr<T: AsType, V: std::fmt::Display>(
+        field: &T,
+        _v: &dyn askama::Values,
+        value: V,
+    ) -> Result<String, askama::Error> {
+        match field.as_type() {
+            Type::Boolean => Ok(format!("java.lang.Boolean.hashCode({})", value)),
+            Type::Int8 | Type::UInt8 => Ok(format!("java.lang.Byte.hashCode({})", value)),
+            Type::Int16 | Type::UInt16 => Ok(format!("java.lang.Short.hashCode({})", value)),
+            Type::Int32 | Type::UInt32 => Ok(format!("java.lang.Integer.hashCode({})", value)),
+            Type::Int64 | Type::UInt64 => Ok(format!("java.lang.Long.hashCode({})", value)),
+            Type::Float32 => Ok(format!("java.lang.Float.hashCode({})", value)),
+            Type::Float64 => Ok(format!("java.lang.Double.hashCode({})", value)),
+            ty if compounds::contains_array_rendering(&ty) => {
+                Ok(format!("UniffiDeepValue.hashCode({})", value))
+            }
+            _ => Ok(format!("java.util.Objects.hashCode({})", value)),
+        }
+    }
+
+    /// As [`hash_code_expr`], for positions whose components are reference types.
+    #[askama::filter_fn]
+    pub fn boxed_hash_code_expr<T: AsType, V: std::fmt::Display>(
         field: &T,
         _v: &dyn askama::Values,
         value: V,
@@ -2067,7 +2104,7 @@ mod filters {
         if compounds::contains_array_rendering(&field.as_type()) {
             Ok(format!("UniffiDeepValue.hashCode({})", value))
         } else {
-            Ok(value.to_string())
+            Ok(format!("java.util.Objects.hashCode({})", value))
         }
     }
 
@@ -2130,9 +2167,9 @@ mod tests {
     use uniffi_bindgen::interface::ComponentInterface;
     use uniffi_meta::{
         CallbackInterfaceMetadata, CustomTypeMetadata, EnumMetadata, EnumShape, FieldMetadata,
-        FnMetadata, FnParamMetadata, Metadata, MetadataGroup, MethodMetadata, NamespaceMetadata,
-        ObjectImpl, ObjectMetadata, ObjectTraitImplMetadata, RecordMetadata, TraitKind,
-        TraitMethodMetadata, Type, VariantMetadata,
+        FnMetadata, FnParamMetadata, LiteralMetadata, Metadata, MetadataGroup, MethodMetadata,
+        NamespaceMetadata, ObjectImpl, ObjectMetadata, ObjectTraitImplMetadata, Radix,
+        RecordMetadata, TraitKind, TraitMethodMetadata, Type, VariantMetadata,
     };
 
     #[test]
@@ -2188,8 +2225,15 @@ mod tests {
         ci.derive_ffi_funcs().unwrap();
         let bindings = generate_bindings(&Config::default(), &ci).unwrap();
         assert!(
-            bindings.contains("class Boom extends BoomException implements AutoCloseable"),
-            "a class cannot `extends A, B`:\n{}",
+            bindings.contains(
+                "public class BoomException extends java.lang.Exception implements AutoCloseable"
+            ),
+            "callers catch the base type, so try-with-resources must work there:\n{}",
+            error_variant_lines(&bindings)
+        );
+        assert!(
+            bindings.contains("public static class Boom extends BoomException {"),
+            "a class cannot `extends A, B`; the base provides AutoCloseable:\n{}",
             error_variant_lines(&bindings)
         );
         assert!(
@@ -2812,6 +2856,7 @@ mod tests {
             remote: false,
             fields: vec![
                 field("label", Type::String),
+                field("ratio", Type::Float64),
                 field("data", seq(Type::Int32)),
                 field("nested", seq(seq(Type::Int32))),
             ],
@@ -2831,11 +2876,16 @@ mod tests {
             "array fields must compare by value:\n{bindings}"
         );
         assert!(
-            bindings.contains(
-                "java.util.Objects.hash(label, UniffiDeepValue.hashCode(data), \
-                 UniffiDeepValue.hashCode(nested))"
-            ),
+            bindings.contains("java.lang.Double.compare(ratio, t.ratio) == 0"),
+            "`==` on a double breaks reflexivity for NaN:\n{bindings}"
+        );
+        assert!(
+            bindings.contains("31 * result + UniffiDeepValue.hashCode(data)"),
             "array fields must hash by value:\n{bindings}"
+        );
+        assert!(
+            bindings.contains("31 * result + java.lang.Double.hashCode(ratio)"),
+            "double fields must hash without boxing:\n{bindings}"
         );
     }
 
@@ -2856,6 +2906,10 @@ mod tests {
         assert!(
             bindings.contains("UniffiDeepValue.equals(data, t.data)"),
             "the record-generated equals sees array components by identity:\n{bindings}"
+        );
+        assert!(
+            bindings.contains("java.lang.Double.compare(ratio, t.ratio) == 0"),
+            "the override must keep the record default's NaN reflexivity:\n{bindings}"
         );
     }
 
@@ -2913,8 +2967,47 @@ mod tests {
             "the variant record's equals sees array components by identity:\n{bindings}"
         );
         assert!(
-            bindings.contains("java.util.Objects.hash(UniffiDeepValue.hashCode(v1))"),
+            bindings.contains("31 * result + UniffiDeepValue.hashCode(v1)"),
             "the variant record's hashCode must match its equals:\n{bindings}"
+        );
+    }
+
+    #[test]
+    fn u64_discriminant_above_signed_max_uses_the_hex_form() {
+        let mut group = test_group();
+        group.add_item(Metadata::Enum(EnumMetadata {
+            orig_name: None,
+            module_path: "test".to_string(),
+            name: "Big".to_string(),
+            shape: EnumShape::Enum,
+            remote: false,
+            variants: vec![VariantMetadata {
+                orig_name: None,
+                name: "Hi".to_string(),
+                discr: Some(LiteralMetadata::UInt(
+                    u64::MAX,
+                    Radix::Decimal,
+                    Type::UInt64,
+                )),
+                fields: vec![],
+                docstring: None,
+            }],
+            discr_type: Some(Type::UInt64),
+            non_exhaustive: false,
+            docstring: None,
+        }));
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+
+        assert!(
+            bindings.contains("HI(0xFFFFFFFFFFFFFFFFL)"),
+            "a decimal literal for u64::MAX does not compile:\n{}",
+            bindings
+                .lines()
+                .filter(|l| l.contains("HI("))
+                .collect::<Vec<_>>()
+                .join("\n")
         );
     }
 

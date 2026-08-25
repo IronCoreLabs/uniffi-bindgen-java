@@ -69,6 +69,15 @@ public class TestPrimitiveArrays {
         assert PrimitiveArrays.roundtripIntsEnum(ints).equals(ints) : "IntsEnum roundtrip failed";
         assert !ints.equals(new IntsEnum.Empty()) : "different variants should not be equal";
 
+        FloatHolder nan = new FloatHolder(Double.NaN, new int[] { 1 });
+        assert nan.equals(new FloatHolder(Double.NaN, new int[] { 1 }))
+            : "NaN fields should stay reflexively equal";
+        assert nan.hashCode() == new FloatHolder(Double.NaN, new int[] { 1 }).hashCode()
+            : "equal NaN holders should hash alike";
+        assert !new FloatHolder(0.0, new int[] { 1 }).equals(new FloatHolder(-0.0, new int[] { 1 }))
+            : "0.0 and -0.0 should stay distinct, matching Double.hashCode";
+        assert PrimitiveArrays.roundtripFloatHolder(nan).equals(nan) : "FloatHolder roundtrip failed";
+
         IntsKey k1 = new IntsKey(new int[] { 7, 8 });
         assert k1.equals(new IntsKey(new int[] { 7, 8 }))
             : "custom wrappers with equal arrays should be equal";

@@ -143,6 +143,18 @@ fn roundtrip_ints_enum(data: IntsEnum) -> IntsEnum {
     data
 }
 
+/// `f64` keeps Java's `==` out of the generated equals: NaN fields must stay reflexively equal.
+#[derive(uniffi::Record, PartialEq)]
+pub struct FloatHolder {
+    pub ratio: f64,
+    pub data: Vec<i32>,
+}
+
+#[uniffi::export]
+fn roundtrip_float_holder(data: FloatHolder) -> FloatHolder {
+    data
+}
+
 /// A custom newtype over an array-rendering builtin; its Java wrapper record must also compare
 /// by value.
 #[derive(PartialEq, Eq, Hash)]

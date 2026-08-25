@@ -26,15 +26,23 @@ public class {{ type_name }} extends java.lang.Exception {
 
 {%- else %}
 {%- call java::docstring(e, 0) %}{% endcall %}
-public class {{ type_name }} extends java.lang.Exception {
+public class {{ type_name }} extends java.lang.Exception{% if contains_object_references %} implements AutoCloseable{% endif %} {
     private {{ type_name }}(java.lang.String message) {
       super(message);
     }
 
+    {% if contains_object_references %}
+    {#- Callers catch and hold the base type, so try-with-resources has to work there; the
+        object-holding variants override this. Redeclared without `throws Exception` as on the
+        enum interface. -#}
+    @Override
+    public void close() {}
+    {% endif %}
+
     {% for variant in e.variants() -%}
     {%- call java::docstring(variant, 4) %}{% endcall %}
     {%- let variant_name = variant|error_variant_name %}
-    public static class {{ variant_name }} extends {{ type_name }}{% if contains_object_references %} implements AutoCloseable{% endif %} {
+    public static class {{ variant_name }} extends {{ type_name }} {
       {% for field in variant.fields() -%}
       {%- call java::docstring(field, 8) %}{% endcall %}
       {{ field|type_name(ci, config) }} {% call java::field_name(field, loop.index) %}{% endcall %};

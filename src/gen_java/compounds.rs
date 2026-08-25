@@ -146,7 +146,8 @@ impl CodeType for MapCodeType {
 /// deduplicates. Hashed positions render every array-producing type on the `Sequence`/`Optional`
 /// spine as boxed `java.util.List<T>` instead, however deep, and `bytes` as
 /// `java.util.List<java.lang.Byte>`. That spine is exhaustive: Rust's `Hash + Eq` bounds keep
-/// maps, sets, and float vectors out of hashed positions entirely.
+/// `HashMap`/`HashSet` and float vectors out of hashed positions, and uniffi 0.32.0 has no
+/// converters for the `BTree` collections that would otherwise qualify.
 ///
 /// `bytes` and `Vec<i8>` share a wire format (i32 length + raw bytes), so a hashed `bytes` can
 /// borrow the generic `Sequence<i8>` converter unchanged.
@@ -259,22 +260,24 @@ pub fn contains_array_rendering(ty: &Type) -> bool {
     }
 }
 
-/// Whether `Vec<inner>` renders as a Java primitive array.
+/// The code type for `Vec<inner>` when it renders as a Java primitive array.
 ///
 /// `Int8`/`UInt8` are absent because the separate `Bytes` type owns `byte[]`.
+pub fn primitive_array_code_type(inner: &Type) -> Option<Box<dyn CodeType>> {
+    match inner {
+        Type::Int16 | Type::UInt16 => Some(Box::new(Int16ArrayCodeType)),
+        Type::Int32 | Type::UInt32 => Some(Box::new(Int32ArrayCodeType)),
+        Type::Int64 | Type::UInt64 => Some(Box::new(Int64ArrayCodeType)),
+        Type::Float32 => Some(Box::new(Float32ArrayCodeType)),
+        Type::Float64 => Some(Box::new(Float64ArrayCodeType)),
+        Type::Boolean => Some(Box::new(BooleanArrayCodeType)),
+        _ => None,
+    }
+}
+
+/// Whether `Vec<inner>` renders as a Java primitive array.
 pub fn renders_as_primitive_array(inner: &Type) -> bool {
-    matches!(
-        inner,
-        Type::Int16
-            | Type::UInt16
-            | Type::Int32
-            | Type::UInt32
-            | Type::Int64
-            | Type::UInt64
-            | Type::Float32
-            | Type::Float64
-            | Type::Boolean
-    )
+    primitive_array_code_type(inner).is_some()
 }
 
 // Primitive array types for sequences of primitives.

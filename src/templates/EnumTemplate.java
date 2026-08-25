@@ -119,7 +119,12 @@ public sealed interface {{ type_name }}{% if uniffi_trait_methods.ord_cmp.is_som
     {%- if variant_trait_methods.hash_hash.is_none() && variant.fields()|has_array_rendered_field %}
     @Override
     public int hashCode() {
-      return java.util.Objects.hash({% for field in variant.fields() %}{% let fname = field|field_java_name(loop.index) %}{{ field|hash_element_expr(fname) }}{% if !loop.last %}, {% endif %}{% endfor %});
+      int result = 17;
+      {%- for field in variant.fields() %}
+      {%- let fname = field|field_java_name(loop.index) %}
+      result = 31 * result + {{ field|boxed_hash_code_expr(fname) }};
+      {%- endfor %}
+      return result;
     }
     {%- endif %}
     {% call java::uniffi_trait_impls(variant_trait_methods) %}{% endcall %}
