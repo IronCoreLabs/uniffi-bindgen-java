@@ -79,110 +79,12 @@ public class UniffiWithHandle {
     public static final UniffiWithHandle INSTANCE = new UniffiWithHandle();
 }
 
-{%- for type_ in ci.iter_local_types() %}
-{%- let type_name = type_|type_name(ci, config) %}
-{%- let ffi_converter_name = type_|ffi_converter_name %}
-{%- let ffi_converter_instance = type_|ffi_converter_instance(config, ci) %}
-{%- let canonical_type_name = type_|canonical_name %}
-{%- let contains_object_references = ci.item_contains_object_references(type_) %}
-
-{#
- # Map `Type` instances to an include statement for that type.
- #
- # There is a companion match in `JavaCodeOracle::create_code_type()` which performs a similar function for the
- # Rust code.
- #
- #   - When adding additional types here, make sure to also add a match arm to that function.
- #   - To keep things manageable, let's try to limit ourselves to these 2 mega-matches
- #}
-{%- match type_ %}
-
-{%- when Type::Boolean %}
-{%- include "BooleanHelper.java" %}
-
-{%- when Type::Bytes %}
-{%- include "ByteArrayHelper.java" %}
-
-{%- when Type::CallbackInterface { module_path, name } %}
-{% include "CallbackInterfaceTemplate.java" %}
-
-{%- when Type::Custom { module_path, name, builtin } %}
-{%- if !ci.is_external(type_) %}
-{% include "CustomTypeTemplate.java" %}
+{#- Runtime support shared by every callback interface / object, so it is emitted once here
+    rather than from inside the per-type templates. -#}
+{%- if ci.has_callback_definitions() %}
+{% include "CallbackInterfaceRuntime.java" %}
 {%- endif %}
 
-{%- when Type::Duration %}
-{% include "DurationHelper.java" %}
-
-{%- when Type::Enum { name, module_path } %}
-{%- let e = ci.get_enum_definition(name).unwrap() %}
-{%- if !ci.is_name_used_as_error(name) %}
-{% include "EnumTemplate.java" %}
-{%- else %}
-{% include "ErrorTemplate.java" %}
-{%- endif -%}
-
-{%- when Type::Int64 or Type::UInt64 %}
-{%- include "Int64Helper.java" %}
-
-{%- when Type::Int8 or Type::UInt8 %}
-{%- include "Int8Helper.java" %}
-
-{%- when Type::Int16 or Type::UInt16 %}
-{%- include "Int16Helper.java" %}
-
-{%- when Type::Int32 or Type::UInt32 %}
-{%- include "Int32Helper.java" %}
-
-{%- when Type::Float32 %}
-{%- include "Float32Helper.java" %}
-
-{%- when Type::Float64 %}
-{%- include "Float64Helper.java" %}
-
-{%- when Type::Map { key_type, value_type } %}
-{% include "MapTemplate.java" %}
-
-{%- when Type::Optional { inner_type } %}
-{% include "OptionalTemplate.java" %}
-
-{%- when Type::Object { module_path, name, imp } %}
-{% include "ObjectTemplate.java" %}
-
-{%- when Type::Record { name, module_path } %}
-{% include "RecordTemplate.java" %}
-
-{%- when Type::Sequence { inner_type } %}
-{%- match inner_type.as_ref() %}
-{%- when Type::Int16 or Type::UInt16 %}
-{%- include "Int16ArrayHelper.java" %}
-{%- when Type::Int32 or Type::UInt32 %}
-{%- include "Int32ArrayHelper.java" %}
-{%- when Type::Int64 or Type::UInt64 %}
-{%- include "Int64ArrayHelper.java" %}
-{%- when Type::Float32 %}
-{%- include "Float32ArrayHelper.java" %}
-{%- when Type::Float64 %}
-{%- include "Float64ArrayHelper.java" %}
-{%- when Type::Boolean %}
-{%- include "BooleanArrayHelper.java" %}
-{%- else %}
-{% include "SequenceTemplate.java" %}
-{%- endmatch %}
-
-{%- when Type::String %}
-{%- include "StringHelper.java" %}
-
-{%- when Type::Timestamp %}
-{% include "TimestampHelper.java" %}
-
-{%- else %}
-{%- endmatch %}
-{%- endfor %}
-
-{#- Generate external error handlers for external types used as errors -#}
-{%- for type_ in ci.iter_external_types() %}
-{%- let name = type_.name().unwrap() %}
-{%- let module_path = type_.module_path().unwrap() %}
-{% include "ExternalTypeTemplate.java" %}
-{%- endfor %}
+{%- if ci.has_object_definitions() %}
+{% include "ObjectCleanerHelper.java" %}
+{%- endif %}

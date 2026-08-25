@@ -1,3 +1,4 @@
+{%- import "macros.java" as java %}
 // This template implements a class for working with a Rust struct via a handle
 // to the live Rust struct on the other side of the FFI.
 //
@@ -95,23 +96,17 @@
 // [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
 //
 
-{%- if self.include_once_check("interface-support") %}
-  {%- include "ObjectCleanerHelper.java" %}
-{%- endif %}
-
-{%- let obj = ci.get_object_definition(name).unwrap() %}
 {%- let (interface_name, impl_class_name) = obj|object_names(ci) %}
 {%- let methods = obj.methods() %}
 {%- let uniffi_trait_methods = obj.uniffi_trait_methods() %}
 {%- let interface_docstring = obj.docstring() %}
-{%- let is_error = ci.is_name_used_as_error(name) %}
 {%- let ffi_converter_name = obj|ffi_converter_name %}
 
 {%- include "Interface.java" %}
 
 package {{ config.package_name() }};
 
-{%- call java::docstring(obj, 0) %}
+{%- call java::docstring(obj, 0) %}{% endcall %}
 {% if (is_error) %}
 public class {{ impl_class_name }} extends Exception implements AutoCloseable, {{ interface_name }}{% for t in obj.trait_impls() %}, {{ t.trait_ty|trait_interface_name(ci) }}{% endfor %}{% if uniffi_trait_methods.ord_cmp.is_some() %}, Comparable<{{ impl_class_name }}>{% endif %} {
 {% else -%}
@@ -147,9 +142,9 @@ public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }
   {%-     if cons.is_async() %}
   // Note no constructor generated for this object as it is async.
   {%-     else %}
-  {%- call java::docstring(cons, 4) %}
-  public {{ impl_class_name }}({% call java::arg_list(cons, true) -%}) {% match cons.throws_type() %}{% when Some(throwable) %}throws {{ throwable|type_name(ci, config) }}{% else %}{% endmatch %}{
-    this(UniffiWithHandle.INSTANCE, (long){%- call java::to_ffi_call(cons) -%});
+  {%- call java::docstring(cons, 4) %}{% endcall %}
+  public {{ impl_class_name }}({% call java::arg_list(cons, true) %}{% endcall -%}) {% match cons.throws_type() %}{% when Some(throwable) %}throws {{ throwable|type_name(ci, config) }}{% else %}{% endmatch %}{
+    this(UniffiWithHandle.INSTANCE, (long){%- call java::to_ffi_call(cons) %}{% endcall -%});
   }
   {%-     endif %}
   {%- when None %}
@@ -231,14 +226,14 @@ public class {{ impl_class_name }} implements AutoCloseable, {{ interface_name }
   }
 
   {% for meth in obj.methods() -%}
-  {%- call java::func_decl("public", "Override", meth, 4) %}
+  {%- call java::func_decl("public", "Override", meth, 4) %}{% endcall %}
   {% endfor %}
 
-  {% call java::uniffi_trait_impls(uniffi_trait_methods) %}
+  {% call java::uniffi_trait_impls(uniffi_trait_methods) %}{% endcall %}
 
   {% if !obj.alternate_constructors().is_empty() -%}
   {% for cons in obj.alternate_constructors() -%}
-  {% call java::func_decl("public static", "", cons, 4) %}
+  {% call java::func_decl("public static", "", cons, 4) %}{% endcall %}
   {% endfor %}
   {% endif %}
 }

@@ -97,14 +97,14 @@ package {{ config.package_name() }};
 //     adds up fast (e.g. 100k calls × 24-32 bytes = 2.4-3.2 MB never reclaimed).
 //   - Arena.ofAuto() per call: correct but creates a new Arena + PhantomReference
 //     per call, adding ~50-100ns of GC pressure to every call.
-//   - Thread-local reusable segment: zero overhead but causes SIGABRT — the FFM
+//   - Thread-local reusable segment: zero overhead but causes SIGABRT - the FFM
 //     runtime retains internal references to allocator-provided segments, so reusing
 //     the same segment across calls corrupts FFM's internal state.
 //
 // This slab approach: allocate a batch of slots from one Arena.ofAuto(), then hand
 // out slices. Each call gets a unique slice (avoiding the FFM reuse crash). When the
 // slab is exhausted, a new one is allocated and the old one becomes GC-eligible once
-// all its slices are consumed (which is immediate — callers read struct fields before
+// all its slices are consumed (which is immediate - callers read struct fields before
 // the next call). Amortized cost: one Arena + one native malloc per `slots` calls.
 class UniffiSlabAllocator implements java.lang.foreign.SegmentAllocator {
     private final long slabBytes;
@@ -292,5 +292,70 @@ public final class UniffiHelpers {
                 UniffiRustCallStatus.setErrorBuf(callStatus, {{ Type::String.borrow()|lower_fn(config, ci) }}(uniffiStackTraceToString(e)));
             }
         }
+    }
+}
+
+package {{ config.package_name() }};
+
+// Value equality for generated fields whose rendering holds a Java array at some depth:
+// primitive arrays from `Vec<prim>`, `byte[]` from `bytes`, possibly under lists, maps, or null.
+// Arrays compare and hash by identity, so `Objects.equals` is wrong for them anywhere it would
+// reach one. Map keys never hold arrays (hashed positions render boxed), so key lookups here
+// match by value.
+final class UniffiDeepValue {
+    private UniffiDeepValue() {}
+
+    static boolean equals(java.lang.Object a, java.lang.Object b) {
+        if (a == b) return true;
+        if (a instanceof java.util.List<?> x && b instanceof java.util.List<?> y) {
+            if (x.size() != y.size()) return false;
+            java.util.Iterator<?> i = x.iterator();
+            java.util.Iterator<?> j = y.iterator();
+            while (i.hasNext()) {
+                if (!equals(i.next(), j.next())) return false;
+            }
+            return true;
+        }
+        if (a instanceof java.util.Map<?, ?> x && b instanceof java.util.Map<?, ?> y) {
+            if (x.size() != y.size()) return false;
+            for (java.util.Map.Entry<?, ?> e : x.entrySet()) {
+                if (!y.containsKey(e.getKey()) || !equals(e.getValue(), y.get(e.getKey()))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        // Covers every primitive array type, so no per-type Arrays.equals arms are needed.
+        return java.util.Objects.deepEquals(a, b);
+    }
+
+    // Per-type arms rather than an Arrays.deepHashCode wrapper: equals has an allocation-free
+    // JDK entry point in Objects.deepEquals, hashCode does not.
+    static int hashCode(java.lang.Object o) {
+        if (o == null) return 0;
+        if (o instanceof byte[] x) return java.util.Arrays.hashCode(x);
+        if (o instanceof short[] x) return java.util.Arrays.hashCode(x);
+        if (o instanceof int[] x) return java.util.Arrays.hashCode(x);
+        if (o instanceof long[] x) return java.util.Arrays.hashCode(x);
+        if (o instanceof float[] x) return java.util.Arrays.hashCode(x);
+        if (o instanceof double[] x) return java.util.Arrays.hashCode(x);
+        if (o instanceof boolean[] x) return java.util.Arrays.hashCode(x);
+        if (o instanceof java.util.List<?> x) {
+            // The List.hashCode contract, with array-aware element hashes.
+            int result = 1;
+            for (java.lang.Object e : x) {
+                result = 31 * result + hashCode(e);
+            }
+            return result;
+        }
+        if (o instanceof java.util.Map<?, ?> x) {
+            // The Map.hashCode contract, with array-aware value hashes.
+            int result = 0;
+            for (java.util.Map.Entry<?, ?> e : x.entrySet()) {
+                result += java.util.Objects.hashCode(e.getKey()) ^ hashCode(e.getValue());
+            }
+            return result;
+        }
+        return o.hashCode();
     }
 }

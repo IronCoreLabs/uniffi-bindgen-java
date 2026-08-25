@@ -31,5 +31,13 @@ public class TestProcMacro {
         assert swt.concatStrings("foo", "bar").equals("test: foobar") : "StructWithTrait.concatStrings failed";
         assert swt instanceof TraitInterface : "StructWithTrait should implement TraitInterface";
 
+        // Test HashSet <-> java.util.Set
+        java.util.Set<String> madeSet = ProcMacro.makeHashSet("solo");
+        assert madeSet.equals(java.util.Set.of("solo")) : "makeHashSet should return {solo}";
+
+        java.util.Set<String> sent = new java.util.LinkedHashSet<>(java.util.List.of("a", "b", "c"));
+        assert ProcMacro.returnHashSet(sent).equals(sent) : "HashSet roundtrip failed";
+
+        assert ProcMacro.returnHashSet(java.util.Set.of()).isEmpty() : "empty HashSet roundtrip failed";
     }
 }

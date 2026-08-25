@@ -3,7 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import uniffi.primitive_arrays.*;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 public class TestPrimitiveArrays {
     public static void main(String[] args) {
@@ -16,8 +22,102 @@ public class TestPrimitiveArrays {
         testUnsignedArrays();
         testEmptyArrays();
         testLargeArrays();
+        testHashedPositions();
+        testNestedHashedPositions();
+        testValueEquality();
 
         System.out.println("All primitive array tests passed!");
+    }
+
+    static void testNestedHashedPositions() {
+        Set<List<List<Integer>>> nested = new HashSet<>(List.of(
+            List.of(List.of(1, 2), List.of(3)),
+            List.of(List.of(4))));
+        Set<List<List<Integer>>> nestedResult = PrimitiveArrays.roundtripNestedInt32Set(nested);
+        assert nestedResult.equals(nested) : "Set<List<List<Integer>>> roundtrip failed";
+        assert nestedResult.contains(List.of(List.of(1, 2), List.of(3)))
+            : "nested contains should match by value";
+
+        Set<List<Integer>> optional = new HashSet<>();
+        optional.add(List.of(1, 2, 3));
+        optional.add(null);
+        Set<List<Integer>> optionalResult = PrimitiveArrays.roundtripOptionalInt32Set(optional);
+        assert optionalResult.equals(optional) : "Set with an absent element roundtrip failed";
+        assert optionalResult.contains(List.of(1, 2, 3)) : "optional contains should match by value";
+        assert optionalResult.contains(null) : "the absent element should survive the roundtrip";
+    }
+
+    static void testValueEquality() {
+        // Guards identity-based equals/hashCode on generated types holding arrays, which would
+        // let value-equal instances coexist in sets and never match on contains.
+        IntsHolder a1 = holder();
+        IntsHolder a2 = holder();
+        assert a1.equals(a2) : "holders with equal arrays should be equal";
+        assert a1.hashCode() == a2.hashCode() : "equal holders should hash alike";
+
+        Set<IntsHolder> holders = new HashSet<>(List.of(a1, a2));
+        assert holders.size() == 1 : "value-equal holders should collapse";
+        Set<IntsHolder> holderResult = PrimitiveArrays.roundtripHolderSet(holders);
+        assert holderResult.equals(holders) : "Set<IntsHolder> roundtrip failed";
+        assert holderResult.contains(holder()) : "contains should match holders by value";
+
+        IntsEnum ints = new IntsEnum.Ints(new int[] { 5, 6 });
+        assert ints.equals(new IntsEnum.Ints(new int[] { 5, 6 }))
+            : "variants with equal arrays should be equal";
+        assert ints.hashCode() == new IntsEnum.Ints(new int[] { 5, 6 }).hashCode()
+            : "equal variants should hash alike";
+        assert PrimitiveArrays.roundtripIntsEnum(ints).equals(ints) : "IntsEnum roundtrip failed";
+        assert !ints.equals(new IntsEnum.Empty()) : "different variants should not be equal";
+
+        FloatHolder nan = new FloatHolder(Double.NaN, new int[] { 1 });
+        assert nan.equals(new FloatHolder(Double.NaN, new int[] { 1 }))
+            : "NaN fields should stay reflexively equal";
+        assert nan.hashCode() == new FloatHolder(Double.NaN, new int[] { 1 }).hashCode()
+            : "equal NaN holders should hash alike";
+        assert !new FloatHolder(0.0, new int[] { 1 }).equals(new FloatHolder(-0.0, new int[] { 1 }))
+            : "0.0 and -0.0 should stay distinct, matching Double.hashCode";
+        assert PrimitiveArrays.roundtripFloatHolder(nan).equals(nan) : "FloatHolder roundtrip failed";
+
+        IntsKey k1 = new IntsKey(new int[] { 7, 8 });
+        assert k1.equals(new IntsKey(new int[] { 7, 8 }))
+            : "custom wrappers with equal arrays should be equal";
+        Set<IntsKey> keys = new HashSet<>(List.of(k1, new IntsKey(new int[] { 7, 8 })));
+        assert keys.size() == 1 : "value-equal custom wrappers should collapse";
+        Set<IntsKey> keyResult = PrimitiveArrays.roundtripKeySet(keys);
+        assert keyResult.equals(keys) : "Set<IntsKey> roundtrip failed";
+        assert keyResult.contains(new IntsKey(new int[] { 7, 8 }))
+            : "contains should match custom wrappers by value";
+    }
+
+    static IntsHolder holder() {
+        return new IntsHolder("a", new int[] { 1, 2 }, List.of(new int[] { 3, 4 }));
+    }
+
+    static void testHashedPositions() {
+        // Guards the `int[]` lens being applied here too, which compiles but never matches on
+        // lookup and lets Java hold duplicates Rust collapsed.
+        Set<List<Integer>> set = new HashSet<>(List.of(List.of(1, 2, 3), List.of(4, 5)));
+        Set<List<Integer>> setResult = PrimitiveArrays.roundtripInt32Set(set);
+        assert setResult.equals(set) : "Set<List<Integer>> roundtrip failed";
+        assert setResult.contains(List.of(1, 2, 3)) : "contains should match by value";
+
+        Set<List<Integer>> duplicated = new HashSet<>(
+            List.of(List.of(1, 2, 3), new ArrayList<>(List.of(1, 2, 3))));
+        assert duplicated.size() == 1 : "value-equal lists should already collapse in Java";
+
+        Map<List<Integer>, String> map = new HashMap<>();
+        map.put(List.of(1, 2, 3), "first");
+        map.put(List.of(4, 5), "second");
+        Map<List<Integer>, String> mapResult = PrimitiveArrays.roundtripInt32KeyedMap(map);
+        assert mapResult.equals(map) : "Map<List<Integer>, String> roundtrip failed";
+        assert "first".equals(mapResult.get(List.of(1, 2, 3))) : "get should match by value";
+
+        // A map *value* is never hashed, so it keeps the double[] rendering.
+        Map<String, double[]> valued = new HashMap<>();
+        valued.put("a", new double[] { 1.5, 2.5 });
+        Map<String, double[]> valuedResult = PrimitiveArrays.roundtripFloat64ValuedMap(valued);
+        assert Arrays.equals(valuedResult.get("a"), new double[] { 1.5, 2.5 })
+            : "double[] map value roundtrip failed";
     }
 
     static void testFloat32Arrays() {

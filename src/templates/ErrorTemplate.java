@@ -1,3 +1,4 @@
+{%- import "macros.java" as java %}
 package {{ config.package_name() }};
 
 {%- let type_name = type_|type_name(ci, config) %}
@@ -5,15 +6,16 @@ package {{ config.package_name() }};
 {%- let canonical_type_name = type_|canonical_name %}
 
 {% if e.is_flat() %}
-{%- call java::docstring(e, 0) %}
+{%- call java::docstring(e, 0) %}{% endcall %}
 public class {{ type_name }} extends java.lang.Exception {
     private {{ type_name }}(java.lang.String message) {
       super(message);
     }
 
     {% for variant in e.variants() -%}
-    {%- call java::docstring(variant, 4) %}
-    public static class {{ variant|error_variant_name }} extends {{ type_name }}{% if contains_object_references %}, AutoCloseable{% endif %} {
+    {%- call java::docstring(variant, 4) %}{% endcall %}
+    {#- A flat variant carries only a message, so it never owns an object to close. -#}
+    public static class {{ variant|error_variant_name }} extends {{ type_name }} {
       public {{ variant|error_variant_name }}(java.lang.String message) {
         super(message);
       }
@@ -23,51 +25,59 @@ public class {{ type_name }} extends java.lang.Exception {
 
 
 {%- else %}
-{%- call java::docstring(e, 0) %}
-public class {{ type_name }} extends java.lang.Exception {
+{%- call java::docstring(e, 0) %}{% endcall %}
+public class {{ type_name }} extends java.lang.Exception{% if contains_object_references %} implements AutoCloseable{% endif %} {
     private {{ type_name }}(java.lang.String message) {
       super(message);
     }
 
+    {% if contains_object_references %}
+    {#- Callers catch and hold the base type, so try-with-resources has to work there; the
+        object-holding variants override this. Redeclared without `throws Exception` as on the
+        enum interface. -#}
+    @Override
+    public void close() {}
+    {% endif %}
+
     {% for variant in e.variants() -%}
-    {%- call java::docstring(variant, 4) %}
+    {%- call java::docstring(variant, 4) %}{% endcall %}
     {%- let variant_name = variant|error_variant_name %}
-    public static class {{ variant_name }} extends {{ type_name }}{% if contains_object_references %}, AutoCloseable{% endif %} {
+    public static class {{ variant_name }} extends {{ type_name }} {
       {% for field in variant.fields() -%}
-      {%- call java::docstring(field, 8) %}
-      {{ field|type_name(ci, config) }} {% call java::field_name(field, loop.index) %};
+      {%- call java::docstring(field, 8) %}{% endcall %}
+      {{ field|type_name(ci, config) }} {% call java::field_name(field, loop.index) %}{% endcall %};
       {% endfor -%}
 
       public {{ variant_name }}(
         {%- for field in variant.fields() -%}
-        {{ field|type_name(ci, config)}} {% call java::field_name(field, loop.index) %}{% if loop.last %}{% else %}, {% endif %}
+        {{ field|type_name(ci, config)}} {% call java::field_name(field, loop.index) %}{% endcall %}{% if loop.last %}{% else %}, {% endif %}
         {%- endfor -%}
       ) {
         super(new StringBuilder()
         {%- for field in variant.fields() %}
-        .append("{% call java::field_name_unquoted(field, loop.index) %}=")
-        .append({% call java::field_name(field, loop.index) %})
+        .append("{% call java::field_name_unquoted(field, loop.index) %}{% endcall %}=")
+        .append({% call java::field_name(field, loop.index) %}{% endcall %})
         {% if !loop.last %}
         .append(", ")
         {% endif %}
         {% endfor %}
         .toString());
         {% for field in variant.fields() -%}
-        this.{% call java::field_name(field, loop.index) %} = {% call java::field_name(field, loop.index) %};
+        this.{% call java::field_name(field, loop.index) %}{% endcall %} = {% call java::field_name(field, loop.index) %}{% endcall %};
         {% endfor -%}   
       }
 
       {% for field in variant.fields() -%}
-      public {{ field|type_name(ci, config) }} {% call java::field_name(field, loop.index) %}() {
-        return this.{% call java::field_name(field, loop.index) %};
+      public {{ field|type_name(ci, config) }} {% call java::field_name(field, loop.index) %}{% endcall %}() {
+        return this.{% call java::field_name(field, loop.index) %}{% endcall %};
       }
       {% endfor %}
       
       {% if contains_object_references %}
       @Override
-      void close() {
+      public void close() {
         {%- if variant.has_fields() %}
-        {% call java::destroy_fields(variant) %}
+        {% call java::destroy_fields(variant) %}{% endcall %}
         {% else -%}
         // Nothing to destroy
         {%- endif %}
@@ -127,7 +137,7 @@ public enum {{ e|ffi_converter_name }} implements FfiConverterRustBuffer<{{ type
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4L
                 {%- for field in variant.fields() %}
-                + {{ field|allocation_size_fn(config, ci) }}(x.{% call java::field_name(field, loop.index) %})
+                + {{ field|allocation_size_fn(config, ci) }}(x.{% call java::field_name(field, loop.index) %}{% endcall %})
                 {%- endfor %}
             );
             {%- endfor %}
@@ -143,7 +153,7 @@ public enum {{ e|ffi_converter_name }} implements FfiConverterRustBuffer<{{ type
             case {{ type_name }}.{{ variant|error_variant_name }} x -> {
                 buf.putInt({{ loop.index }});
                 {%- for field in variant.fields() %}
-                {{ field|write_fn(config, ci) }}(x.{% call java::field_name(field, loop.index) %}, buf);
+                {{ field|write_fn(config, ci) }}(x.{% call java::field_name(field, loop.index) %}{% endcall %}, buf);
                 {%- endfor %}
             }
             {%- endfor %}

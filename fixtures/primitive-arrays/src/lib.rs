@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+use std::collections::{HashMap, HashSet};
+
 uniffi::setup_scaffolding!("primitive_arrays");
 
 // Float32 (float[]) operations
@@ -83,5 +85,83 @@ fn roundtrip_uint32(data: Vec<u32>) -> Vec<u32> {
 
 #[uniffi::export]
 fn roundtrip_uint64(data: Vec<u64>) -> Vec<u64> {
+    data
+}
+
+// Hashed positions, where Java has to keep the boxed `List` rendering to preserve value equality.
+
+#[uniffi::export]
+fn roundtrip_int32_set(data: HashSet<Vec<i32>>) -> HashSet<Vec<i32>> {
+    data
+}
+
+#[uniffi::export]
+fn roundtrip_int32_keyed_map(data: HashMap<Vec<i32>, String>) -> HashMap<Vec<i32>, String> {
+    data
+}
+
+/// Values are not hashed, so `Vec<f64>` keeps the `double[]` rendering here.
+#[uniffi::export]
+fn roundtrip_float64_valued_map(data: HashMap<String, Vec<f64>>) -> HashMap<String, Vec<f64>> {
+    data
+}
+
+// Hashed positions reached through nesting, which must render boxed at every depth.
+
+#[uniffi::export]
+fn roundtrip_nested_int32_set(data: HashSet<Vec<Vec<i32>>>) -> HashSet<Vec<Vec<i32>>> {
+    data
+}
+
+#[uniffi::export]
+fn roundtrip_optional_int32_set(data: HashSet<Option<Vec<i32>>>) -> HashSet<Option<Vec<i32>>> {
+    data
+}
+
+// Array-holding fields, whose Java equals/hashCode must compare by value.
+
+#[derive(uniffi::Record, PartialEq, Eq, Hash)]
+pub struct IntsHolder {
+    pub label: String,
+    pub data: Vec<i32>,
+    pub nested: Vec<Vec<i32>>,
+}
+
+#[uniffi::export]
+fn roundtrip_holder_set(data: HashSet<IntsHolder>) -> HashSet<IntsHolder> {
+    data
+}
+
+#[derive(uniffi::Enum)]
+pub enum IntsEnum {
+    Empty,
+    Ints { values: Vec<i32> },
+}
+
+#[uniffi::export]
+fn roundtrip_ints_enum(data: IntsEnum) -> IntsEnum {
+    data
+}
+
+/// `f64` keeps Java's `==` out of the generated equals: NaN fields must stay reflexively equal.
+#[derive(uniffi::Record, PartialEq)]
+pub struct FloatHolder {
+    pub ratio: f64,
+    pub data: Vec<i32>,
+}
+
+#[uniffi::export]
+fn roundtrip_float_holder(data: FloatHolder) -> FloatHolder {
+    data
+}
+
+/// A custom newtype over an array-rendering builtin; its Java wrapper record must also compare
+/// by value.
+#[derive(PartialEq, Eq, Hash)]
+pub struct IntsKey(pub Vec<i32>);
+uniffi::custom_newtype!(IntsKey, Vec<i32>);
+
+#[uniffi::export]
+fn roundtrip_key_set(data: HashSet<IntsKey>) -> HashSet<IntsKey> {
     data
 }

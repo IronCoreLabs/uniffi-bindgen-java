@@ -1,3 +1,14 @@
+## 0.5.0
+
+- updated to UniFFI 0.32.0 (and Askama 0.16).
+- added support for `HashSet`, which UniFFI 0.32 exposes to proc-macros. Rust sets map to `java.util.Set`, preserving insertion order on the way back from Rust.
+- added zero-copy `&[u8]` / `[ByRef] bytes` arguments. Rust borrows the caller's buffer for the duration of the call instead of copying it into a `RustBuffer`, which also removes the separate FFI round-trip that allocating that buffer required. Measured 3x (64B) to 20x (1MB) faster than the owned path. Synchronous foreign-to-Rust and argument position only.
+
+### Breaking
+
+- `--config` now expects a UniFFI [global config file](https://mozilla.github.io/uniffi-rs/next/bindings.html#global-configuration) with `[defaults]`, `[crates.<name>]` and/or `[crate-roots]` sections, rather than a flat `uniffi.toml`-style override. Old-style files are ignored with a warning.
+- `&[u8]` / `[ByRef] bytes` arguments now take a **direct** `java.nio.ByteBuffer` rather than `byte[]`, matching Kotlin and Swift. Migrate with `ByteBuffer.allocateDirect(arr.length).put(arr).flip()`; a heap buffer throws `IllegalArgumentException`. Reuse the buffer across calls where you can - allocating a direct buffer per call is slower than reusing one, though still well ahead of the old owned path. Rust reads the buffer during the call, so it must not be mutated by another thread meanwhile.
+
 ## 0.4.2
 
 - Added `nullness_annotations` config option to emit JSpecify `@NullMarked` and

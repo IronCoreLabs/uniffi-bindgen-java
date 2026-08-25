@@ -10,16 +10,21 @@
     callWithHandle(uniffiHandle -> {
         try {
     {% if func.return_type().is_some() %}
-            return {%- call to_raw_ffi_call(func) %};
+            return {%- call to_raw_ffi_call(func) %}{% endcall %};
     {% else %}
-            {%- call to_raw_ffi_call(func) %};
+            {%- call to_raw_ffi_call(func) %}{% endcall %};
     {% endif %}
+    {#- The wrap below exists only to launder a declared error, which is checked, across
+        `Function.apply`. Rethrowing unchecked first keeps a method's exceptions identical to the
+        same call made as a free function, which has no wrap at all. -#}
+        } catch (java.lang.RuntimeException _uniffi_ex) {
+            throw _uniffi_ex;
         } catch (java.lang.Exception _uniffi_ex) {
             throw new java.lang.RuntimeException(_uniffi_ex);
         }
     })
     {% else %}
-        {%- call to_raw_ffi_call(func) %}
+        {%- call to_raw_ffi_call(func) %}{% endcall %}
     {% endmatch %}
 {%- endmacro %}
 
@@ -40,6 +45,11 @@
     {%- else %}
     UniffiHelpers.uniffiRustCall{% match func.return_type() %}{%- when Some(return_type) %}{{ return_type|primitive_call_suffix }}{% when None %}{% endmatch %}(
     {%- endmatch %} (_allocator, _status) -> {
+    {#- Only the wrapper is conditional: askama inlines a `call` at each site and emits both `if`
+        branches, so duplicating the invocation here doubles it in every generated call site. -#}
+    {%- if func|has_borrowed_bytes_args %}
+        try {
+    {%- endif %}
         {% if func.return_type().is_some() %}return {% endif %}UniffiLib.{{ func.ffi_func().name() }}(
             {%- match func.return_type() %}
             {%- when Some(return_type) %}
@@ -52,35 +62,40 @@
             {%- when Some(t) %}{{ t|lower_fn(config, ci) }}(this),
             {%- when None %}
             {%- endmatch %}
-            {% if func.arguments().len() != 0 %}{% call arg_list_lowered(func) -%}, {% endif -%}
+            {% if func.arguments().len() != 0 %}{% call arg_list_lowered(func) %}{% endcall -%}, {% endif -%}
             _status);
+    {%- if func|has_borrowed_bytes_args %}
+        } finally {
+            {{ func|reachability_fences }}
+        }
+    {%- endif %}
     })
 {%- endmacro -%}
 
 {%- macro func_decl(func_decl, annotation, callable, indent) %}
-    {%- call docstring(callable, indent) %}
+    {%- call docstring(callable, indent) %}{% endcall %}
     {%- if annotation != "" %}
     @{{ annotation }}
     {% endif %}
     {%- if callable.is_async() %}
     {#- Async methods use CompletableFuture<T> which requires boxed types -#}
-    {#- No-executor overload — defaults to ForkJoinPool.commonPool(), delegates to Executor version -#}
+    {#- No-executor overload - defaults to ForkJoinPool.commonPool(), delegates to Executor version -#}
     {{ func_decl }} java.util.concurrent.CompletableFuture<{% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|boxed_type_name(ci, config) }}{%- when None %}java.lang.Void{%- endmatch %}> {{ callable.name()|fn_name }}(
-        {%- call arg_list(callable, !callable.self_type().is_some()) -%}
+        {%- call arg_list(callable, !callable.self_type().is_some()) %}{% endcall -%}
     ){
-        return {{ callable.name()|fn_name }}({% call arg_name_list(callable) %}{% if !callable.arguments().is_empty() %}, {% endif %}java.util.concurrent.ForkJoinPool.commonPool());
+        return {{ callable.name()|fn_name }}({% call arg_name_list(callable) %}{% endcall %}{% if !callable.arguments().is_empty() %}, {% endif %}java.util.concurrent.ForkJoinPool.commonPool());
     }
 
-    {#- With-executor overload — does the actual async work -#}
+    {#- With-executor overload - does the actual async work -#}
     {{ func_decl }} java.util.concurrent.CompletableFuture<{% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|boxed_type_name(ci, config) }}{%- when None %}java.lang.Void{%- endmatch %}> {{ callable.name()|fn_name }}(
-        {%- call arg_list(callable, !callable.self_type().is_some()) -%}{% if !callable.arguments().is_empty() %}, {% endif %}java.util.concurrent.Executor uniffiExecutor
+        {%- call arg_list(callable, !callable.self_type().is_some()) %}{% endcall -%}{% if !callable.arguments().is_empty() %}, {% endif %}java.util.concurrent.Executor uniffiExecutor
     ){
-        return {% call call_async(callable) %};
+        return {% call call_async(callable) %}{% endcall %};
     }
     {%- else -%}
     {#- Sync methods can use primitives for return types -#}
     {{ func_decl }} {% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|type_name_for_field(ci, config) }}{%- when None %}void{%- endmatch %} {{ callable.name()|fn_name }}(
-        {%- call arg_list(callable, !callable.self_type().is_some()) -%}
+        {%- call arg_list(callable, !callable.self_type().is_some()) %}{% endcall -%}
     ) {% match callable.throws_type() -%}
         {%-     when Some(throwable) -%}
         throws {{ throwable|type_name(ci, config) }}
@@ -90,11 +105,11 @@
                 {% match callable.return_type() -%}
                 {%- when Some with (return_type) -%}
                 {%- if return_type|has_primitive_ffi_type -%}
-                return {% call to_ffi_call(callable) %}
+                return {% call to_ffi_call(callable) %}{% endcall %}
                 {%- else -%}
-                return {{ return_type|lift_fn(config, ci) }}({% call to_ffi_call(callable) %})
+                return {{ return_type|lift_fn(config, ci) }}({% call to_ffi_call(callable) %}{% endcall %})
                 {%- endif -%}
-                {%- when None %}{% call to_ffi_call(callable) %}{%- endmatch %};
+                {%- when None %}{% call to_ffi_call(callable) %}{% endcall %}{%- endmatch %};
             } catch (java.lang.RuntimeException _uniffi_ex) {
                 {% match callable.throws_type() %}
                 {% when Some(throwable) %}
@@ -120,16 +135,16 @@
         callWithHandle(uniffiHandle -> {
             return UniffiLib.{{ callable.ffi_func().name() }}(
                 uniffiHandle{% if callable.arguments().len() != 0 %},{% endif %}
-                {% call arg_list_lowered(callable) %}
+                {% call arg_list_lowered(callable) %}{% endcall %}
             );
         }),
 {%- when Some(t) %}
         UniffiLib.{{ callable.ffi_func().name() }}(
             {{ t|lower_fn(config, ci) }}(this){% if callable.arguments().len() != 0 %},{% endif %}
-            {% call arg_list_lowered(callable) %}
+            {% call arg_list_lowered(callable) %}{% endcall %}
         ),
 {%- when None %}
-        UniffiLib.{{ callable.ffi_func().name() }}({% call arg_list_lowered(callable) %}),
+        UniffiLib.{{ callable.ffi_func().name() }}({% call arg_list_lowered(callable) %}{% endcall %}),
 {%- endmatch %}
         {{ callable|async_poll(ci) }},
         {{ callable|async_complete(ci, config) }},
@@ -160,7 +175,7 @@
         {%- if arg|has_primitive_ffi_type -%}
         {{- arg.name()|var_name }}
         {%- else -%}
-        {{- arg|lower_fn(config, ci) }}({{ arg.name()|var_name }})
+        {{- arg|lower_fn_for_arg(config, ci) }}({{ arg.name()|var_name }})
         {%- endif -%}
     {%- if !loop.last %}, {% endif -%}
     {%- endfor %}
@@ -182,9 +197,10 @@
 // Note the var_name and type_name filters.
 -#}
 
+{#- Declaration side of a call into Rust, so zero-copy `&[u8]` shows as a ByteBuffer. -#}
 {% macro arg_list(func, is_decl) %}
 {%- for arg in func.arguments() -%}
-        {{ arg|type_name_for_field(ci, config) }} {{ arg.name()|var_name }}
+        {{ arg|lower_type_name_for_arg(ci, config) }} {{ arg.name()|var_name }}
 {%-     if !loop.last %}, {% endif -%}
 {%- endfor %}
 {%- endmacro %}
@@ -201,11 +217,7 @@
 {%- endmacro -%}
 
 {% macro field_name(field, field_num) %}
-{%- if field.name().is_empty() -%}
-v{{- field_num -}}
-{%- else -%}
-{{ field.name()|var_name }}
-{%- endif -%}
+{{- field|field_java_name(field_num) -}}
 {%- endmacro %}
 
 {% macro field_name_unquoted(field, field_num) %}
@@ -220,7 +232,7 @@ v{{- field_num -}}
 {%- macro destroy_fields(member) %}
     AutoCloseableHelper.close(
     {%- for field in member.fields() %}
-        this.{{ field.name()|var_name }}{%- if !loop.last %}, {% endif -%}
+        this.{% call field_name(field, loop.index) %}{% endcall %}{%- if !loop.last %}, {% endif -%}
     {% endfor -%});
 {%- endmacro -%}
 
@@ -233,7 +245,7 @@ v{{- field_num -}}
 {%- endmacro %}
 
 {%- macro docstring(defn, indent_spaces) %}
-{%- call docstring_value(defn.docstring(), indent_spaces) %}
+{%- call docstring_value(defn.docstring(), indent_spaces) %}{% endcall %}
 {%- endmacro %}
 
 {# Macro for uniffi_trait implementations - Display, Eq, Hash, Ord #}
@@ -242,7 +254,7 @@ v{{- field_num -}}
 {%- if let Some(fmt) = uniffi_trait_methods.display_fmt.or(uniffi_trait_methods.debug_fmt.clone()) %}
     @Override
     public java.lang.String toString() {
-        return {{ fmt.return_type().unwrap()|lift_fn(config, ci) }}({% call to_ffi_call(fmt) %});
+        return {{ fmt.return_type().unwrap()|lift_fn(config, ci) }}({% call to_ffi_call(fmt) %}{% endcall %});
     }
 {%- endif %}
 {%- if let Some(eq) = uniffi_trait_methods.eq_eq %}
@@ -251,20 +263,20 @@ v{{- field_num -}}
         if (this == obj) return true;
         if (!(obj instanceof {{ eq.object_name()|class_name(ci) }})) return false;
         {{ eq.object_name()|class_name(ci) }} other = ({{ eq.object_name()|class_name(ci) }}) obj;
-        return {{ eq.return_type().unwrap()|lift_fn(config, ci) }}({% call to_ffi_call(eq) %});
+        return {{ eq.return_type().unwrap()|lift_fn(config, ci) }}({% call to_ffi_call(eq) %}{% endcall %});
     }
 {%- endif %}
 {%- if let Some(hash) = uniffi_trait_methods.hash_hash %}
     @Override
     public int hashCode() {
-        return {{ hash.return_type().unwrap()|lift_fn(config, ci) }}({%- call to_ffi_call(hash) %}).intValue();
+        return {{ hash.return_type().unwrap()|lift_fn(config, ci) }}({%- call to_ffi_call(hash) %}{% endcall %}).intValue();
     }
 {%- endif %}
 {%- if let Some(cmp) = uniffi_trait_methods.ord_cmp %}
     @Override
     public int compareTo({{ cmp.object_name()|class_name(ci) }} other) {
         if (other == null) throw new java.lang.NullPointerException();
-        return {{ cmp.return_type().unwrap()|lift_fn(config, ci) }}({%- call to_ffi_call(cmp) %}).intValue();
+        return {{ cmp.return_type().unwrap()|lift_fn(config, ci) }}({%- call to_ffi_call(cmp) %}{% endcall %}).intValue();
     }
 {%- endif %}
 {%- endmacro %}
@@ -274,7 +286,7 @@ v{{- field_num -}}
 {# Prefer Display, fall back to Debug #}
 {%- if let Some(fmt) = uniffi_trait_methods.display_fmt.or(uniffi_trait_methods.debug_fmt.clone()) %}
     default java.lang.String toStringTrait() {
-        return {{ fmt.return_type().unwrap()|lift_fn(config, ci) }}({% call to_ffi_call(fmt) %});
+        return {{ fmt.return_type().unwrap()|lift_fn(config, ci) }}({% call to_ffi_call(fmt) %}{% endcall %});
     }
 {%- endif %}
 {%- if let Some(eq) = uniffi_trait_methods.eq_eq %}
@@ -282,18 +294,18 @@ v{{- field_num -}}
         if (this == obj) return true;
         if (!(obj instanceof {{ eq.object_name()|class_name(ci) }})) return false;
         {{ eq.object_name()|class_name(ci) }} other = ({{ eq.object_name()|class_name(ci) }}) obj;
-        return {{ eq.return_type().unwrap()|lift_fn(config, ci) }}({% call to_ffi_call(eq) %});
+        return {{ eq.return_type().unwrap()|lift_fn(config, ci) }}({% call to_ffi_call(eq) %}{% endcall %});
     }
 {%- endif %}
 {%- if let Some(hash) = uniffi_trait_methods.hash_hash %}
     default int hashCodeTrait() {
-        return {{ hash.return_type().unwrap()|lift_fn(config, ci) }}({%- call to_ffi_call(hash) %}).intValue();
+        return {{ hash.return_type().unwrap()|lift_fn(config, ci) }}({%- call to_ffi_call(hash) %}{% endcall %}).intValue();
     }
 {%- endif %}
 {%- if let Some(cmp) = uniffi_trait_methods.ord_cmp %}
     default int compareTo({{ cmp.object_name()|class_name(ci) }} other) {
         if (other == null) throw new java.lang.NullPointerException();
-        return {{ cmp.return_type().unwrap()|lift_fn(config, ci) }}({%- call to_ffi_call(cmp) %}).intValue();
+        return {{ cmp.return_type().unwrap()|lift_fn(config, ci) }}({%- call to_ffi_call(cmp) %}{% endcall %}).intValue();
     }
 {%- endif %}
 {%- endmacro %}

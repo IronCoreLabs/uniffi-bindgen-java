@@ -6,7 +6,6 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::Borrow,
-    cell::RefCell,
     collections::{HashMap, HashSet},
 };
 use uniffi_bindgen::{interface::*, to_askama_error};
@@ -279,8 +278,62 @@ impl CustomTypeConfig {
     }
 }
 
+/// Askama inlines every `include` into one generated `render_into`, and as of 0.16 the resulting
+/// frame overruns the 2 MiB a spawned thread gets by default in unoptimized builds. Rendering on
+/// an explicitly sized thread keeps that independent of whatever stack the caller happens to have.
+const RENDER_STACK_SIZE: usize = 32 * 1024 * 1024;
+
+/// `ForeignBytes` is a borrow that only survives one inbound call, so it works for arguments
+/// travelling foreign -> Rust and nowhere else. UniFFI nevertheless puts it in the vtable for a
+/// foreign-implemented method taking `&[u8]`, where it would arrive as a pointer the JVM never
+/// owned; fail the build rather than emit bindings that read it.
+fn reject_borrowed_bytes_in_callbacks(ci: &ComponentInterface) -> Result<()> {
+    let offenders = ci
+        .callback_interface_definitions()
+        .iter()
+        .flat_map(|cbi| cbi.methods().into_iter().map(|m| (cbi.name(), m)))
+        .chain(
+            ci.object_definitions()
+                .iter()
+                .filter(|obj| obj.has_callback_interface())
+                .flat_map(|obj| obj.methods().into_iter().map(|m| (obj.name(), m))),
+        )
+        .filter_map(|(owner, method)| {
+            let args = method
+                .arguments()
+                .iter()
+                .filter(|arg| arg.is_borrowed_bytes())
+                .map(|arg| arg.name().to_string())
+                .collect::<Vec<_>>();
+            (!args.is_empty()).then(|| format!("{}.{}: {}", owner, method.name(), args.join(", ")))
+        })
+        .collect::<Vec<_>>();
+
+    if offenders.is_empty() {
+        Ok(())
+    } else {
+        anyhow::bail!(
+            "zero-copy `&[u8]` is only supported for arguments passed into Rust, but it appears on \
+             foreign-implemented method(s): {}. Use `Vec<u8>` for these arguments.",
+            offenders.join("; ")
+        )
+    }
+}
+
 // Generate Java bindings for the given ComponentInterface, as a string.
 pub fn generate_bindings(config: &Config, ci: &ComponentInterface) -> Result<String> {
+    reject_borrowed_bytes_in_callbacks(ci)?;
+    std::thread::scope(|scope| {
+        std::thread::Builder::new()
+            .stack_size(RENDER_STACK_SIZE)
+            .spawn_scoped(scope, || render_bindings(config, ci))
+            .context("failed to spawn the bindings render thread")?
+            .join()
+            .map_err(|_| anyhow::anyhow!("the bindings render thread panicked"))?
+    })
+}
+
+fn render_bindings(config: &Config, ci: &ComponentInterface) -> Result<String> {
     let output = JavaWrapper::new(config.clone(), ci)
         .render()
         .context("failed to render java bindings")?;
@@ -308,8 +361,7 @@ pub struct JavaWrapper<'a> {
 
 impl<'a> JavaWrapper<'a> {
     pub fn new(config: Config, ci: &'a ComponentInterface) -> Self {
-        let type_renderer = TypeRenderer::new(&config, ci);
-        let type_helper_code = type_renderer.render().unwrap();
+        let type_helper_code = render_type_helpers(&config, ci).unwrap();
         Self {
             config,
             ci,
@@ -347,41 +399,410 @@ impl<'a> JavaWrapper<'a> {
     }
 }
 
-/// Renders Java helper code for all types
-///
-/// This template is a bit different than others in that it stores internal state from the render
-/// process.  Make sure to only call `render()` once.
+/// Renders the fixed helper classes and the runtime support shared by all types.
 #[derive(Template)]
 #[template(syntax = "java", escape = "none", path = "Types.java")]
 pub struct TypeRenderer<'a> {
     config: &'a Config,
     ci: &'a ComponentInterface,
-    // Track included modules for the `include_once()` macro
-    include_once_names: RefCell<HashSet<String>>,
 }
 
-impl<'a> TypeRenderer<'a> {
-    fn new(config: &'a Config, ci: &'a ComponentInterface) -> Self {
-        Self {
+/// Askama inlines an `include` into the including template's `render_into`, so a single template
+/// covering every type compiles into one function large enough to dominate this crate's build:
+/// roughly 10 GB of rustc memory and 110s, against 380 MB and 1s for everything else combined.
+/// Giving each type its own template keeps those functions small.
+///
+/// There is a companion match in [`JavaCodeOracle::create_code_type`]; both need an arm when a
+/// type is added.
+fn render_type_helpers(config: &Config, ci: &ComponentInterface) -> Result<String> {
+    let mut out = TypeRenderer { config, ci }
+        .render()
+        .context("failed to render shared type helpers")?;
+    for type_ in ci.iter_local_types() {
+        out.push_str(&render_one_type(type_, config, ci)?);
+    }
+    for type_ in ci.iter_external_types() {
+        let name = type_
+            .name()
+            .ok_or_else(|| anyhow::anyhow!("external type {type_:?} has no name"))?;
+        let module_path = type_
+            .module_path()
+            .ok_or_else(|| anyhow::anyhow!("external type {type_:?} has no module path"))?;
+        out.push_str(
+            &ExternalTypeRenderer {
+                config,
+                ci,
+                name,
+                module_path,
+            }
+            .render()
+            .with_context(|| format!("failed to render external type {name}"))?,
+        );
+    }
+    Ok(out)
+}
+
+/// Whether `type_` appears anywhere in `ci` in a hashed position: as a `Set` element or `Map`
+/// key, or nested under one along the `Sequence`/`Optional` spine. See [`compounds::Hashed`].
+fn used_in_hashed_position(ci: &ComponentInterface, type_: &Type) -> bool {
+    fn on_spine(root: &Type, target: &Type) -> bool {
+        root == target
+            || match root {
+                Type::Sequence { inner_type } | Type::Optional { inner_type } => {
+                    on_spine(inner_type, target)
+                }
+                _ => false,
+            }
+    }
+    ci.iter_local_types()
+        .chain(ci.iter_external_types())
+        .any(|t| match t {
+            Type::Set { inner_type } => on_spine(inner_type, type_),
+            Type::Map { key_type, .. } => on_spine(key_type, type_),
+            _ => false,
+        })
+}
+
+/// Whether some type in `ci` already renders a converter with this canonical name. The
+/// [`compounds::Hashed`] `bytes` aliasing can make a hashed variant coincide with a plain
+/// converter; emitting both would duplicate the class.
+fn universe_has_canonical(ci: &ComponentInterface, canonical: &str) -> bool {
+    ci.iter_local_types()
+        .chain(ci.iter_external_types())
+        .any(|t| JavaCodeOracle.find(t).canonical_name() == canonical)
+}
+
+/// The hashed converter variant for `type_`, rendered if a hashed position anywhere in `ci`
+/// needs it and no plain converter already has its name. Empty otherwise.
+fn render_hashed_variant(type_: &Type, config: &Config, ci: &ComponentInterface) -> Result<String> {
+    if !compounds::needs_hashed_rendering(type_) || !used_in_hashed_position(ci, type_) {
+        return Ok(String::new());
+    }
+    let hashed = compounds::Hashed(type_).as_codetype();
+    if universe_has_canonical(ci, &hashed.canonical_name()) {
+        return Ok(String::new());
+    }
+    let ffi_converter_name = hashed.ffi_converter_name();
+    match type_ {
+        Type::Sequence { inner_type } => SequenceTypeRenderer {
             config,
             ci,
-            include_once_names: RefCell::new(HashSet::new()),
+            ffi_converter_name,
+            inner_type: compounds::Hashed(inner_type),
         }
+        .render(),
+        Type::Optional { inner_type } => OptionalTypeRenderer {
+            config,
+            ci,
+            ffi_converter_name,
+            inner_type: compounds::Hashed(inner_type),
+        }
+        .render(),
+        Type::Bytes => SequenceTypeRenderer {
+            config,
+            ci,
+            ffi_converter_name,
+            inner_type: Type::Int8,
+        }
+        .render(),
+        _ => unreachable!("needs_hashed_rendering matches only Sequence, Optional, and Bytes"),
     }
+    .map_err(Into::into)
+}
 
-    // The following methods are used by the `Types.java` macros.
+fn render_one_type(type_: &Type, config: &Config, ci: &ComponentInterface) -> Result<String> {
+    let type_name = JavaCodeOracle.find(type_).type_label(ci, config);
+    let ffi_converter_name = JavaCodeOracle.find(type_).ffi_converter_name();
+    let contains_object_references = ci.item_contains_object_references(type_);
 
-    // Helper for the including a template, but only once.
-    //
-    // The first time this is called with a name it will return true, indicating that we should
-    // include the template.  Subsequent calls will return false.
-    fn include_once_check(&self, name: &str) -> bool {
-        self.include_once_names
-            .borrow_mut()
-            .insert(name.to_string())
-    }
+    let rendered = match type_ {
+        Type::Boolean => BooleanHelperRenderer { config }.render(),
+        Type::Bytes => ByteArrayHelperRenderer { config }.render(),
+        Type::Duration => DurationHelperRenderer { config }.render(),
+        Type::String => StringHelperRenderer { config }.render(),
+        Type::Timestamp => TimestampHelperRenderer { config }.render(),
+        Type::Int8 | Type::UInt8 => Int8HelperRenderer { config }.render(),
+        Type::Int16 | Type::UInt16 => Int16HelperRenderer { config }.render(),
+        Type::Int32 | Type::UInt32 => Int32HelperRenderer { config }.render(),
+        Type::Int64 | Type::UInt64 => Int64HelperRenderer { config }.render(),
+        Type::Float32 => Float32HelperRenderer { config }.render(),
+        Type::Float64 => Float64HelperRenderer { config }.render(),
 
-    // Get the package name for an external type (used by ExternalTypeTemplate.java)
+        Type::CallbackInterface { name, .. } => CallbackInterfaceTypeRenderer {
+            config,
+            ci,
+            ffi_converter_name,
+            name: name.clone(),
+            cbi: ci
+                .get_callback_interface_definition(name)
+                .ok_or_else(|| anyhow::anyhow!("callback interface not found: {name}"))?,
+        }
+        .render(),
+
+        Type::Custom { name, builtin, .. } => {
+            if ci.is_external(type_) {
+                Ok(String::new())
+            } else {
+                CustomTypeRenderer {
+                    config,
+                    ci,
+                    type_name,
+                    ffi_converter_name,
+                    name: name.clone(),
+                    builtin,
+                }
+                .render()
+            }
+        }
+
+        Type::Enum { name, .. } => {
+            let e = ci
+                .get_enum_definition(name)
+                .ok_or_else(|| anyhow::anyhow!("enum not found: {name}"))?;
+            if ci.is_name_used_as_error(name) {
+                ErrorTypeRenderer {
+                    config,
+                    ci,
+                    type_,
+                    contains_object_references,
+                    e,
+                }
+                .render()
+            } else {
+                EnumTypeRenderer {
+                    config,
+                    ci,
+                    type_name,
+                    contains_object_references,
+                    e,
+                }
+                .render()
+            }
+        }
+
+        Type::Map {
+            key_type,
+            value_type,
+        } => MapTypeRenderer {
+            config,
+            ci,
+            ffi_converter_name,
+            key_type: compounds::Hashed(key_type),
+            value_type,
+        }
+        .render(),
+
+        Type::Optional { inner_type } => OptionalTypeRenderer {
+            config,
+            ci,
+            ffi_converter_name,
+            inner_type,
+        }
+        .render(),
+
+        Type::Object { name, .. } => ObjectTypeRenderer {
+            config,
+            ci,
+            type_name,
+            ffi_converter_instance: JavaCodeOracle
+                .find(type_)
+                .ffi_converter_instance(config, ci),
+            name: name.clone(),
+            obj: ci
+                .get_object_definition(name)
+                .ok_or_else(|| anyhow::anyhow!("object not found: {name}"))?,
+            is_error: ci.is_name_used_as_error(name),
+        }
+        .render(),
+
+        Type::Record { name, .. } => RecordTypeRenderer {
+            config,
+            ci,
+            type_name,
+            contains_object_references,
+            name,
+        }
+        .render(),
+
+        Type::Sequence { inner_type } => match inner_type.as_ref() {
+            Type::Int16 | Type::UInt16 => Int16ArrayHelperRenderer { config }.render(),
+            Type::Int32 | Type::UInt32 => Int32ArrayHelperRenderer { config }.render(),
+            Type::Int64 | Type::UInt64 => Int64ArrayHelperRenderer { config }.render(),
+            Type::Float32 => Float32ArrayHelperRenderer { config }.render(),
+            Type::Float64 => Float64ArrayHelperRenderer { config }.render(),
+            Type::Boolean => BooleanArrayHelperRenderer { config }.render(),
+            _ => SequenceTypeRenderer {
+                config,
+                ci,
+                ffi_converter_name,
+                inner_type,
+            }
+            .render(),
+        },
+
+        Type::Set { inner_type } => SetTypeRenderer {
+            config,
+            ci,
+            ffi_converter_name,
+            inner_type: compounds::Hashed(inner_type),
+        }
+        .render(),
+
+        Type::Box { .. } => Ok(String::new()),
+    };
+
+    let rendered = rendered.with_context(|| format!("failed to render type {type_:?}"))?;
+    Ok(rendered + &render_hashed_variant(type_, config, ci)?)
+}
+
+/// Templates whose only input is the package name.
+macro_rules! simple_type_renderer {
+    ($($name:ident => $path:literal),* $(,)?) => {$(
+        #[derive(Template)]
+        #[template(syntax = "java", escape = "none", path = $path)]
+        struct $name<'a> {
+            config: &'a Config,
+        }
+    )*};
+}
+
+simple_type_renderer! {
+    BooleanHelperRenderer => "BooleanHelper.java",
+    ByteArrayHelperRenderer => "ByteArrayHelper.java",
+    DurationHelperRenderer => "DurationHelper.java",
+    StringHelperRenderer => "StringHelper.java",
+    TimestampHelperRenderer => "TimestampHelper.java",
+    Int8HelperRenderer => "Int8Helper.java",
+    Int16HelperRenderer => "Int16Helper.java",
+    Int32HelperRenderer => "Int32Helper.java",
+    Int64HelperRenderer => "Int64Helper.java",
+    Float32HelperRenderer => "Float32Helper.java",
+    Float64HelperRenderer => "Float64Helper.java",
+    Int16ArrayHelperRenderer => "Int16ArrayHelper.java",
+    Int32ArrayHelperRenderer => "Int32ArrayHelper.java",
+    Int64ArrayHelperRenderer => "Int64ArrayHelper.java",
+    Float32ArrayHelperRenderer => "Float32ArrayHelper.java",
+    Float64ArrayHelperRenderer => "Float64ArrayHelper.java",
+    BooleanArrayHelperRenderer => "BooleanArrayHelper.java",
+}
+
+#[derive(Template)]
+#[template(
+    syntax = "java",
+    escape = "none",
+    path = "CallbackInterfaceTemplate.java"
+)]
+struct CallbackInterfaceTypeRenderer<'a> {
+    config: &'a Config,
+    ci: &'a ComponentInterface,
+    ffi_converter_name: String,
+    // Used by the nested CallbackInterfaceImpl.java
+    name: String,
+    cbi: &'a CallbackInterface,
+}
+
+#[derive(Template)]
+#[template(syntax = "java", escape = "none", path = "CustomTypeTemplate.java")]
+struct CustomTypeRenderer<'a> {
+    config: &'a Config,
+    ci: &'a ComponentInterface,
+    type_name: String,
+    ffi_converter_name: String,
+    name: String,
+    builtin: &'a Type,
+}
+
+#[derive(Template)]
+#[template(syntax = "java", escape = "none", path = "EnumTemplate.java")]
+struct EnumTypeRenderer<'a> {
+    config: &'a Config,
+    ci: &'a ComponentInterface,
+    type_name: String,
+    contains_object_references: bool,
+    e: &'a uniffi_bindgen::interface::Enum,
+}
+
+#[derive(Template)]
+#[template(syntax = "java", escape = "none", path = "ErrorTemplate.java")]
+struct ErrorTypeRenderer<'a> {
+    config: &'a Config,
+    ci: &'a ComponentInterface,
+    type_: &'a Type,
+    contains_object_references: bool,
+    e: &'a uniffi_bindgen::interface::Enum,
+}
+
+#[derive(Template)]
+#[template(syntax = "java", escape = "none", path = "MapTemplate.java")]
+struct MapTypeRenderer<'a> {
+    config: &'a Config,
+    ci: &'a ComponentInterface,
+    ffi_converter_name: String,
+    key_type: compounds::Hashed<'a>,
+    value_type: &'a Type,
+}
+
+#[derive(Template)]
+#[template(syntax = "java", escape = "none", path = "OptionalTemplate.java")]
+struct OptionalTypeRenderer<'a, T: AsCodeType> {
+    config: &'a Config,
+    ci: &'a ComponentInterface,
+    ffi_converter_name: String,
+    inner_type: T,
+}
+
+#[derive(Template)]
+#[template(syntax = "java", escape = "none", path = "ObjectTemplate.java")]
+struct ObjectTypeRenderer<'a> {
+    config: &'a Config,
+    ci: &'a ComponentInterface,
+    type_name: String,
+    ffi_converter_instance: String,
+    // Used by the nested CallbackInterfaceImpl.java
+    name: String,
+    obj: &'a Object,
+    is_error: bool,
+}
+
+#[derive(Template)]
+#[template(syntax = "java", escape = "none", path = "RecordTemplate.java")]
+struct RecordTypeRenderer<'a> {
+    config: &'a Config,
+    ci: &'a ComponentInterface,
+    type_name: String,
+    contains_object_references: bool,
+    name: &'a str,
+}
+
+#[derive(Template)]
+#[template(syntax = "java", escape = "none", path = "SequenceTemplate.java")]
+struct SequenceTypeRenderer<'a, T: AsCodeType> {
+    config: &'a Config,
+    ci: &'a ComponentInterface,
+    ffi_converter_name: String,
+    inner_type: T,
+}
+
+#[derive(Template)]
+#[template(syntax = "java", escape = "none", path = "SetTemplate.java")]
+struct SetTypeRenderer<'a> {
+    config: &'a Config,
+    ci: &'a ComponentInterface,
+    ffi_converter_name: String,
+    inner_type: compounds::Hashed<'a>,
+}
+
+#[derive(Template)]
+#[template(syntax = "java", escape = "none", path = "ExternalTypeTemplate.java")]
+struct ExternalTypeRenderer<'a> {
+    config: &'a Config,
+    ci: &'a ComponentInterface,
+    name: &'a str,
+    module_path: &'a str,
+}
+
+impl ExternalTypeRenderer<'_> {
+    // Used by ExternalTypeTemplate.java
     fn external_type_package_name(&self, module_path: &str, namespace: &str) -> String {
         self.config
             .external_type_package_name(module_path, namespace)
@@ -728,16 +1149,15 @@ impl AsCodeType for Type {
             Type::Optional { inner_type } => {
                 Box::new(compounds::OptionalCodeType::new((*inner_type).clone()))
             }
-            Type::Sequence { inner_type } => match inner_type.as_ref() {
-                Type::Int16 | Type::UInt16 => Box::new(compounds::Int16ArrayCodeType),
-                Type::Int32 | Type::UInt32 => Box::new(compounds::Int32ArrayCodeType),
-                Type::Int64 | Type::UInt64 => Box::new(compounds::Int64ArrayCodeType),
-                Type::Float32 => Box::new(compounds::Float32ArrayCodeType),
-                Type::Float64 => Box::new(compounds::Float64ArrayCodeType),
-                Type::Boolean => Box::new(compounds::BooleanArrayCodeType),
-                // Int8/UInt8 sequences still use SequenceCodeType; the separate Bytes type handles byte[]
-                _ => Box::new(compounds::SequenceCodeType::new((*inner_type).clone())),
-            },
+            Type::Sequence { inner_type } => {
+                match compounds::primitive_array_code_type(&inner_type) {
+                    Some(array_type) => array_type,
+                    None => Box::new(compounds::SequenceCodeType::new((*inner_type).clone())),
+                }
+            }
+            Type::Set { inner_type } => {
+                Box::new(compounds::SetCodeType::new((*inner_type).clone()))
+            }
             Type::Map {
                 key_type,
                 value_type,
@@ -746,6 +1166,8 @@ impl AsCodeType for Type {
                 (*value_type).clone(),
             )),
             Type::Custom { name, .. } => Box::new(custom::CustomCodeType::new(name.clone())),
+            // `Box<T>` only exists for scaffolding; it's transparent to the bindings.
+            Type::Box { inner_type } => inner_type.as_codetype(),
         }
     }
 }
@@ -800,8 +1222,9 @@ mod filters {
     use super::*;
     use uniffi_meta::AsType;
 
-    // Askama 0.14 passes a Values parameter to all filters. We use `_v` to accept but ignore it.
+    // Askama passes a Values parameter to every filter, hence the unused `_v` throughout.
 
+    #[askama::filter_fn]
     pub(super) fn ffi_type(
         type_: &impl AsType,
         _v: &dyn askama::Values,
@@ -809,6 +1232,7 @@ mod filters {
         Ok(type_.as_type().into())
     }
 
+    #[askama::filter_fn]
     pub(super) fn type_name(
         as_ct: &impl AsCodeType,
         _v: &dyn askama::Values,
@@ -821,6 +1245,7 @@ mod filters {
     /// Generate a fully qualified type name including the package.
     /// This is needed for enum variant fields to avoid naming collisions
     /// when a variant field type has the same name as the enum itself.
+    #[askama::filter_fn]
     pub(super) fn qualified_type_name<T>(
         as_type: &T,
         _v: &dyn askama::Values,
@@ -848,26 +1273,30 @@ mod filters {
                     Ok(inner)
                 }
             }
-            Type::Sequence { inner_type } => match inner_type.as_ref() {
-                Type::Int16 | Type::UInt16 => Ok("short[]".to_string()),
-                Type::Int32 | Type::UInt32 => Ok("int[]".to_string()),
-                Type::Int64 | Type::UInt64 => Ok("long[]".to_string()),
-                Type::Float32 => Ok("float[]".to_string()),
-                Type::Float64 => Ok("double[]".to_string()),
-                Type::Boolean => Ok("boolean[]".to_string()),
-                _ => Ok(format!(
-                    "java.util.List<{}>",
-                    fully_qualified_type_label(inner_type, ci, config)?
-                )),
-            },
+            Type::Sequence { inner_type } => {
+                // Primitive array labels are already unqualified.
+                match compounds::primitive_array_code_type(inner_type) {
+                    Some(array_type) => Ok(array_type.type_label(ci, config)),
+                    None => Ok(format!(
+                        "java.util.List<{}>",
+                        fully_qualified_type_label(inner_type, ci, config)?
+                    )),
+                }
+            }
+            Type::Set { inner_type } => Ok(format!(
+                "java.util.Set<{}>",
+                hashed_fully_qualified_type_label(inner_type, ci, config)?
+            )),
             Type::Map {
                 key_type,
                 value_type,
             } => Ok(format!(
                 "java.util.Map<{}, {}>",
-                fully_qualified_type_label(key_type, ci, config)?,
+                hashed_fully_qualified_type_label(key_type, ci, config)?,
                 fully_qualified_type_label(value_type, ci, config)?
             )),
+            // `Box<T>` exists only in scaffolding; the bindings name `T`.
+            Type::Box { inner_type } => fully_qualified_type_label(inner_type, ci, config),
             Type::Enum { .. }
             | Type::Record { .. }
             | Type::Object { .. }
@@ -881,6 +1310,34 @@ mod filters {
                 Ok(format!("{}.{}", package_name, class_name))
             }
             _ => Ok(JavaCodeOracle.find(ty).type_label(ci, config)),
+        }
+    }
+
+    /// As [`fully_qualified_type_label`], for a `Set` element or `Map` key. See
+    /// [`compounds::Hashed`].
+    fn hashed_fully_qualified_type_label(
+        ty: &Type,
+        ci: &ComponentInterface,
+        config: &Config,
+    ) -> anyhow::Result<String> {
+        if !compounds::needs_hashed_rendering(ty) {
+            return fully_qualified_type_label(ty, ci, config);
+        }
+        match ty {
+            Type::Sequence { inner_type } => Ok(format!(
+                "java.util.List<{}>",
+                hashed_fully_qualified_type_label(inner_type, ci, config)?
+            )),
+            Type::Optional { inner_type } => {
+                let inner = hashed_fully_qualified_type_label(inner_type, ci, config)?;
+                Ok(if config.nullness_annotations() {
+                    nullable_type_label(&inner)
+                } else {
+                    inner
+                })
+            }
+            Type::Bytes => Ok("java.util.List<java.lang.Byte>".to_string()),
+            _ => unreachable!("needs_hashed_rendering matches only Sequence, Optional, and Bytes"),
         }
     }
 
@@ -918,6 +1375,7 @@ mod filters {
         }
     }
 
+    #[askama::filter_fn]
     pub(super) fn canonical_name(
         as_ct: &impl AsCodeType,
         _v: &dyn askama::Values,
@@ -926,6 +1384,7 @@ mod filters {
     }
 
     /// Check if a type is external (from another crate)
+    #[askama::filter_fn]
     pub(super) fn is_external(
         as_type: &impl AsType,
         _v: &dyn askama::Values,
@@ -934,6 +1393,7 @@ mod filters {
         Ok(ci.is_external(&as_type.as_type()))
     }
 
+    #[askama::filter_fn]
     pub(super) fn ffi_converter_instance(
         as_ct: &impl AsCodeType,
         _v: &dyn askama::Values,
@@ -943,6 +1403,7 @@ mod filters {
         Ok(as_ct.as_codetype().ffi_converter_instance(config, ci))
     }
 
+    #[askama::filter_fn]
     pub(super) fn ffi_converter_name(
         as_ct: &impl AsCodeType,
         _v: &dyn askama::Values,
@@ -950,6 +1411,7 @@ mod filters {
         Ok(as_ct.as_codetype().ffi_converter_name())
     }
 
+    #[askama::filter_fn]
     pub(super) fn lower_fn(
         as_ct: &impl AsCodeType,
         _v: &dyn askama::Values,
@@ -962,6 +1424,7 @@ mod filters {
         ))
     }
 
+    #[askama::filter_fn]
     pub(super) fn allocation_size_fn(
         as_ct: &impl AsCodeType,
         _v: &dyn askama::Values,
@@ -974,6 +1437,7 @@ mod filters {
         ))
     }
 
+    #[askama::filter_fn]
     pub(super) fn write_fn(
         as_ct: &impl AsCodeType,
         _v: &dyn askama::Values,
@@ -986,6 +1450,7 @@ mod filters {
         ))
     }
 
+    #[askama::filter_fn]
     pub(super) fn lift_fn(
         as_ct: &impl AsCodeType,
         _v: &dyn askama::Values,
@@ -998,6 +1463,7 @@ mod filters {
         ))
     }
 
+    #[askama::filter_fn]
     pub(super) fn read_fn(
         as_ct: &impl AsCodeType,
         _v: &dyn askama::Values,
@@ -1017,8 +1483,21 @@ mod filters {
                 // Byte and Short need explicit casts in Java
                 Type::Int8 | Type::UInt8 => Ok(format!("(byte){}", base10)),
                 Type::Int16 | Type::UInt16 => Ok(format!("(short){}", base10)),
-                Type::Int32 | Type::UInt32 => Ok(base10),
-                Type::Int64 | Type::UInt64 => Ok(base10),
+                Type::Int32 => Ok(base10),
+                // Java literals are signed and unsuffixed ones parse as `int`, so longs need the
+                // `L` suffix, and the upper half of an unsigned repr only fits as hex, which
+                // carries the bit pattern into the signed type.
+                Type::UInt32 => match base10.parse::<u32>() {
+                    Ok(v) if v > i32::MAX as u32 => Ok(format!("0x{:X}", v)),
+                    Ok(_) => Ok(base10),
+                    Err(_) => Err(to_askama_error(&format!("invalid u32 literal: {base10}"))),
+                },
+                Type::Int64 => Ok(format!("{}L", base10)),
+                Type::UInt64 => match base10.parse::<u64>() {
+                    Ok(v) if v > i64::MAX as u64 => Ok(format!("0x{:X}L", v)),
+                    Ok(_) => Ok(format!("{}L", base10)),
+                    Err(_) => Err(to_askama_error(&format!("invalid u64 literal: {base10}"))),
+                },
                 _ => Err(to_askama_error("Only ints are supported.")),
             }
         } else {
@@ -1027,6 +1506,7 @@ mod filters {
     }
 
     // Get the idiomatic Java rendering of an individual enum variant's discriminant
+    #[askama::filter_fn]
     pub fn variant_discr_literal(
         e: &Enum,
         _v: &dyn askama::Values,
@@ -1043,6 +1523,7 @@ mod filters {
     }
 
     /// FFI type name (primitive for scalars, MemorySegment for everything else)
+    #[askama::filter_fn]
     pub fn ffi_type_name(
         type_: &FfiType,
         _v: &dyn askama::Values,
@@ -1055,6 +1536,7 @@ mod filters {
     /// Returns the primitive call suffix (e.g. "Long", "Int") for primitive-specialized
     /// uniffiRustCall variants. Returns empty string for types where the high-level Java
     /// primitive doesn't match the FFI primitive (e.g. Boolean→byte) or non-primitive types.
+    #[askama::filter_fn]
     pub fn primitive_call_suffix(
         as_ct: &impl AsCodeType,
         _v: &dyn askama::Values,
@@ -1078,6 +1560,7 @@ mod filters {
     /// Returns true if the argument's FFI type is a primitive where the Java type matches
     /// the FFI type directly (no conversion needed). Used to skip lower_fn for primitive args.
     /// Excludes boolean (Java `boolean` vs FFI `byte`).
+    #[askama::filter_fn]
     pub fn has_primitive_ffi_type(
         as_ct: &impl AsCodeType,
         _v: &dyn askama::Values,
@@ -1089,6 +1572,7 @@ mod filters {
     }
 
     /// Maps FfiType to ValueLayout constant for FunctionDescriptor
+    #[askama::filter_fn]
     pub fn ffi_value_layout(
         type_: &FfiType,
         _v: &dyn askama::Values,
@@ -1097,6 +1581,7 @@ mod filters {
     }
 
     /// Generate the full structLayout body for an FfiStruct, with computed padding
+    #[askama::filter_fn]
     pub fn ffi_struct_layout_body(
         ffi_struct: &uniffi_bindgen::interface::FfiStruct,
         _v: &dyn askama::Values,
@@ -1127,7 +1612,7 @@ mod filters {
             if size > 0 {
                 offset += size;
             } else {
-                // Unknown size (e.g., user-defined FfiStruct) — can't compute further padding
+                // Unknown size (e.g., user-defined FfiStruct) - can't compute further padding
                 // but alignment was already handled
                 offset = 0; // reset; further padding may be wrong but this is rare
             }
@@ -1136,6 +1621,7 @@ mod filters {
     }
 
     /// Maps FfiType to UNALIGNED ValueLayout for struct field access
+    #[askama::filter_fn]
     pub fn ffi_value_layout_unaligned(
         type_: &FfiType,
         _v: &dyn askama::Values,
@@ -1144,6 +1630,7 @@ mod filters {
     }
 
     /// Cast prefix for invokeExact() return values
+    #[askama::filter_fn]
     pub fn ffi_invoke_exact_cast(
         type_: &FfiType,
         _v: &dyn askama::Values,
@@ -1152,6 +1639,7 @@ mod filters {
     }
 
     /// Returns true if the FFI return type is a struct needing SegmentAllocator
+    #[askama::filter_fn]
     pub fn ffi_type_is_struct(
         type_: &FfiType,
         _v: &dyn askama::Values,
@@ -1160,6 +1648,7 @@ mod filters {
     }
 
     /// Returns true if this is an embedded struct (slice-based access in struct fields)
+    #[askama::filter_fn]
     pub fn ffi_type_is_embedded_struct(
         type_: &FfiType,
         _v: &dyn askama::Values,
@@ -1168,6 +1657,7 @@ mod filters {
     }
 
     /// Get the struct class name for an FFI struct type
+    #[askama::filter_fn]
     pub fn ffi_struct_type_name(
         type_: &FfiType,
         _v: &dyn askama::Values,
@@ -1176,6 +1666,7 @@ mod filters {
     }
 
     /// FFI type name using boxed types for generic contexts (accepts high-level Type)
+    #[askama::filter_fn]
     pub fn ffi_type_name_boxed(
         type_: &impl AsType,
         _v: &dyn askama::Values,
@@ -1185,9 +1676,17 @@ mod filters {
     }
 
     /// Get the interface name for a trait implementation (for external trait interfaces).
+    #[askama::filter_fn]
     pub fn trait_interface_name(
         trait_ty: &Type,
         _v: &dyn askama::Values,
+        ci: &ComponentInterface,
+    ) -> Result<String, askama::Error> {
+        trait_interface_name_for(trait_ty, ci)
+    }
+
+    pub(super) fn trait_interface_name_for(
+        trait_ty: &Type,
         ci: &ComponentInterface,
     ) -> Result<String, askama::Error> {
         let Some(module_path) = trait_ty.module_path() else {
@@ -1229,6 +1728,7 @@ mod filters {
     }
 
     /// Get the idiomatic Java rendering of a class name from a string.
+    #[askama::filter_fn]
     pub fn class_name<S: AsRef<str>>(
         nm: S,
         _v: &dyn askama::Values,
@@ -1238,6 +1738,7 @@ mod filters {
     }
 
     /// Get the idiomatic Java rendering of a class name from a Type.
+    #[askama::filter_fn]
     pub fn class_name_from_type(
         as_type: &impl AsType,
         _v: &dyn askama::Values,
@@ -1261,11 +1762,13 @@ mod filters {
     }
 
     /// Get the idiomatic Java rendering of a function name.
+    #[askama::filter_fn]
     pub fn fn_name<S: AsRef<str>>(nm: S, _v: &dyn askama::Values) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.fn_name(nm.as_ref()))
     }
 
     /// Get the idiomatic Java rendering of a variable name.
+    #[askama::filter_fn]
     pub fn var_name<S: AsRef<str>>(
         nm: S,
         _v: &dyn askama::Values,
@@ -1274,6 +1777,7 @@ mod filters {
     }
 
     /// Get the idiomatic Java rendering of a variable name, without altering reserved words.
+    #[askama::filter_fn]
     pub fn var_name_raw<S: AsRef<str>>(
         nm: S,
         _v: &dyn askama::Values,
@@ -1282,11 +1786,13 @@ mod filters {
     }
 
     /// Get the idiomatic Java setter method name.
+    #[askama::filter_fn]
     pub fn setter<S: AsRef<str>>(nm: S, _v: &dyn askama::Values) -> Result<String, askama::Error> {
         Ok(JavaCodeOracle.setter(nm.as_ref()))
     }
 
     /// Get a String representing the name used for an individual enum variant.
+    #[askama::filter_fn]
     pub fn variant_name(
         variant: &Variant,
         _v: &dyn askama::Values,
@@ -1294,6 +1800,7 @@ mod filters {
         Ok(JavaCodeOracle.enum_variant_name(variant.name()))
     }
 
+    #[askama::filter_fn]
     pub fn error_variant_name(
         variant: &Variant,
         _v: &dyn askama::Values,
@@ -1303,6 +1810,7 @@ mod filters {
     }
 
     /// Get the idiomatic Java rendering of an FFI callback function name
+    #[askama::filter_fn]
     pub fn ffi_callback_name<S: AsRef<str>>(
         nm: S,
         _v: &dyn askama::Values,
@@ -1311,6 +1819,7 @@ mod filters {
     }
 
     /// Get the idiomatic Java rendering of an FFI struct name
+    #[askama::filter_fn]
     pub fn ffi_struct_name<S: AsRef<str>>(
         nm: S,
         _v: &dyn askama::Values,
@@ -1318,6 +1827,7 @@ mod filters {
         Ok(JavaCodeOracle.ffi_struct_name(nm.as_ref()))
     }
 
+    #[askama::filter_fn]
     pub fn object_names(
         obj: &Object,
         _v: &dyn askama::Values,
@@ -1326,28 +1836,37 @@ mod filters {
         Ok(JavaCodeOracle.object_names(ci, obj))
     }
 
+    // `#[askama::filter_fn]` turns each filter into a struct, so filters can't call each other.
+    fn inner_return_type(
+        callable: &impl Callable,
+        ci: &ComponentInterface,
+        config: &Config,
+    ) -> String {
+        callable.return_type().map_or_else(
+            || "java.lang.Void".to_string(),
+            |t| t.as_codetype().type_label(ci, config),
+        )
+    }
+
+    #[askama::filter_fn]
     pub fn async_inner_return_type(
         callable: impl Callable,
         _v: &dyn askama::Values,
         ci: &ComponentInterface,
         config: &Config,
     ) -> Result<String, askama::Error> {
-        callable
-            .return_type()
-            .map_or(Ok("java.lang.Void".to_string()), |t| {
-                type_name(t, _v, ci, config)
-            })
+        Ok(inner_return_type(&callable, ci, config))
     }
 
+    #[askama::filter_fn]
     pub fn async_return_type(
         callable: impl Callable,
         _v: &dyn askama::Values,
         ci: &ComponentInterface,
         config: &Config,
     ) -> Result<String, askama::Error> {
-        let is_async = callable.is_async();
-        let inner_type = async_inner_return_type(callable, _v, ci, config)?;
-        if is_async {
+        let inner_type = inner_return_type(&callable, ci, config);
+        if callable.is_async() {
             Ok(format!(
                 "java.util.concurrent.CompletableFuture<{inner_type}>"
             ))
@@ -1356,6 +1875,7 @@ mod filters {
         }
     }
 
+    #[askama::filter_fn]
     pub fn async_poll(
         callable: impl Callable,
         _v: &dyn askama::Values,
@@ -1367,11 +1887,12 @@ mod filters {
         ))
     }
 
+    #[askama::filter_fn]
     pub fn async_complete(
         callable: impl Callable,
         _v: &dyn askama::Values,
         ci: &ComponentInterface,
-        _config: &Config,
+        config: &Config,
     ) -> Result<String, askama::Error> {
         let ffi_func = callable.ffi_rust_future_complete(ci);
         // The complete function returns a RustBuffer for types that use RustBuffer FFI,
@@ -1385,6 +1906,7 @@ mod filters {
         Ok(format!("(_allocator, future, continuation) -> {call}"))
     }
 
+    #[askama::filter_fn]
     pub fn async_free(
         callable: impl Callable,
         _v: &dyn askama::Values,
@@ -1399,11 +1921,13 @@ mod filters {
     /// These are used to avoid name clashes with java identifiers, but sometimes you want to
     /// render the name unquoted.  One example is the message property for errors where we want to
     /// display the name for the user.
+    #[askama::filter_fn]
     pub fn unquote<S: AsRef<str>>(nm: S, _v: &dyn askama::Values) -> Result<String, askama::Error> {
         Ok(nm.as_ref().trim_matches('`').to_string())
     }
 
     /// Get the idiomatic Java rendering of docstring
+    #[askama::filter_fn]
     pub fn docstring<S: AsRef<str>>(
         docstring: S,
         _v: &dyn askama::Values,
@@ -1419,23 +1943,94 @@ mod filters {
     /// Returns the type name suitable for use in field declarations, method parameters, and return types.
     /// For non-optional primitives, returns the primitive type (int, long, boolean, etc.).
     /// For optional types and all other types, returns the boxed/object type.
+    #[askama::filter_fn]
     pub fn type_name_for_field(
         as_ct: &impl AsCodeType,
         _v: &dyn askama::Values,
         ci: &ComponentInterface,
         config: &Config,
     ) -> Result<String, askama::Error> {
-        // Check if the codetype has a primitive label available
+        Ok(field_type_label(as_ct, ci, config))
+    }
+
+    fn field_type_label(
+        as_ct: &impl AsCodeType,
+        ci: &ComponentInterface,
+        config: &Config,
+    ) -> String {
         let codetype = as_ct.as_codetype();
-        if let Some(primitive) = codetype.type_label_primitive() {
-            return Ok(primitive);
+        codetype
+            .type_label_primitive()
+            .unwrap_or_else(|| codetype.type_label(ci, config))
+    }
+
+    /// Java type for an argument being passed *to* Rust. A zero-copy `&[u8]` takes a direct
+    /// `java.nio.ByteBuffer`, the only Java type with a stable native address.
+    #[askama::filter_fn]
+    pub fn lower_type_name_for_arg(
+        arg: &Argument,
+        _v: &dyn askama::Values,
+        ci: &ComponentInterface,
+        config: &Config,
+    ) -> Result<String, askama::Error> {
+        if arg.is_borrowed_bytes() {
+            Ok("java.nio.ByteBuffer".to_string())
+        } else {
+            Ok(field_type_label(&arg, ci, config))
         }
-        // Otherwise use the standard boxed type label
-        Ok(codetype.type_label(ci, config))
+    }
+
+    #[askama::filter_fn]
+    pub fn has_borrowed_bytes_args(
+        callable: impl Callable,
+        _v: &dyn askama::Values,
+    ) -> Result<bool, askama::Error> {
+        Ok(callable.arguments().iter().any(|a| a.is_borrowed_bytes()))
+    }
+
+    /// Rust reads the buffer during the call while nothing in the generated Java touches it again,
+    /// so without a fence the JIT is free to treat it as dead and let the buffer be collected -
+    /// freeing the memory Rust is reading. The lambda that lowers the argument happens to keep it
+    /// reachable today; the fence stops that being load-bearing.
+    #[askama::filter_fn]
+    pub fn reachability_fences(
+        callable: impl Callable,
+        _v: &dyn askama::Values,
+    ) -> Result<String, askama::Error> {
+        Ok(callable
+            .arguments()
+            .iter()
+            .filter(|a| a.is_borrowed_bytes())
+            .map(|a| {
+                format!(
+                    "java.lang.ref.Reference.reachabilityFence({});",
+                    JavaCodeOracle.var_name(a.name())
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n            "))
+    }
+
+    #[askama::filter_fn]
+    pub fn lower_fn_for_arg(
+        arg: &Argument,
+        _v: &dyn askama::Values,
+        config: &Config,
+        ci: &ComponentInterface,
+    ) -> Result<String, askama::Error> {
+        if arg.is_borrowed_bytes() {
+            Ok("FfiConverterByRefBytes.INSTANCE.lower".to_string())
+        } else {
+            Ok(format!(
+                "{}.lower",
+                arg.as_codetype().ffi_converter_instance(config, ci)
+            ))
+        }
     }
 
     /// Always returns the boxed type name, for use in generic contexts like CompletableFuture<T>.
     /// This is the same as type_name but with a clearer name for template readability.
+    #[askama::filter_fn]
     pub fn boxed_type_name(
         as_ct: &impl AsCodeType,
         _v: &dyn askama::Values,
@@ -1447,25 +2042,39 @@ mod filters {
 
     /// Generates an equality expression for comparing two values of a field's type.
     /// For primitives: returns "left == right"
+    /// For floats: "Type.compare(left, right) == 0", which agrees with `Type.hashCode` on NaN
+    /// and signed zero where `==` does not
+    /// For other primitives: "left == right"
+    /// For array-holding types (see [`compounds::contains_array_rendering`]): "UniffiDeepValue.equals(left, right)"
     /// For objects: returns "java.util.Objects.equals(left, right)"
-    pub fn equals_expr<T: AsCodeType, L: std::fmt::Display, R: std::fmt::Display>(
+    #[askama::filter_fn]
+    pub fn equals_expr<T: AsCodeType + AsType, L: std::fmt::Display, R: std::fmt::Display>(
         field: &T,
         _v: &dyn askama::Values,
         left: L,
         right: R,
     ) -> Result<String, askama::Error> {
-        // Check if this type has a primitive label (meaning it's a primitive)
-        if field.as_codetype().type_label_primitive().is_some() {
-            Ok(format!("{} == {}", left, right))
-        } else {
-            Ok(format!("java.util.Objects.equals({}, {})", left, right))
+        match field.as_type() {
+            Type::Float32 => Ok(format!("java.lang.Float.compare({}, {}) == 0", left, right)),
+            Type::Float64 => Ok(format!(
+                "java.lang.Double.compare({}, {}) == 0",
+                left, right
+            )),
+            _ if field.as_codetype().type_label_primitive().is_some() => {
+                Ok(format!("{} == {}", left, right))
+            }
+            ty if compounds::contains_array_rendering(&ty) => {
+                Ok(format!("UniffiDeepValue.equals({}, {})", left, right))
+            }
+            _ => Ok(format!("java.util.Objects.equals({}, {})", left, right)),
         }
     }
 
-    /// Generates a hash code expression for a field value.
-    /// For primitives: returns "Type.hashCode(value)" (e.g., "java.lang.Integer.hashCode(value)")
-    /// For objects: returns "java.util.Objects.hashCode(value)"
-    pub fn hash_code_expr<T: AsCodeType + AsType, V: std::fmt::Display>(
+    /// A field's contribution to a hash accumulation. Primitives dispatch to their boxed type's
+    /// static hashCode so nothing boxes; array-holding types (see
+    /// [`compounds::contains_array_rendering`]) go through `UniffiDeepValue`.
+    #[askama::filter_fn]
+    pub fn hash_code_expr<T: AsType, V: std::fmt::Display>(
         field: &T,
         _v: &dyn askama::Values,
         value: V,
@@ -1478,7 +2087,76 @@ mod filters {
             Type::Int64 | Type::UInt64 => Ok(format!("java.lang.Long.hashCode({})", value)),
             Type::Float32 => Ok(format!("java.lang.Float.hashCode({})", value)),
             Type::Float64 => Ok(format!("java.lang.Double.hashCode({})", value)),
+            ty if compounds::contains_array_rendering(&ty) => {
+                Ok(format!("UniffiDeepValue.hashCode({})", value))
+            }
             _ => Ok(format!("java.util.Objects.hashCode({})", value)),
+        }
+    }
+
+    /// As [`hash_code_expr`], for positions whose components are reference types.
+    #[askama::filter_fn]
+    pub fn boxed_hash_code_expr<T: AsType, V: std::fmt::Display>(
+        field: &T,
+        _v: &dyn askama::Values,
+        value: V,
+    ) -> Result<String, askama::Error> {
+        if compounds::contains_array_rendering(&field.as_type()) {
+            Ok(format!("UniffiDeepValue.hashCode({})", value))
+        } else {
+            Ok(format!("java.util.Objects.hashCode({})", value))
+        }
+    }
+
+    /// As [`equals_expr`], for positions whose components are reference types (enum variant
+    /// records box their primitives, so `==` would compare boxed identities).
+    #[askama::filter_fn]
+    pub fn boxed_equals_expr<T: AsType, L: std::fmt::Display, R: std::fmt::Display>(
+        field: &T,
+        _v: &dyn askama::Values,
+        left: L,
+        right: R,
+    ) -> Result<String, askama::Error> {
+        if compounds::contains_array_rendering(&field.as_type()) {
+            Ok(format!("UniffiDeepValue.equals({}, {})", left, right))
+        } else {
+            Ok(format!("java.util.Objects.equals({}, {})", left, right))
+        }
+    }
+
+    /// See [`compounds::contains_array_rendering`].
+    #[askama::filter_fn]
+    pub fn contains_array_rendering(
+        as_type: &impl AsType,
+        _v: &dyn askama::Values,
+    ) -> Result<bool, askama::Error> {
+        Ok(compounds::contains_array_rendering(&as_type.as_type()))
+    }
+
+    /// Whether any field's rendering needs `UniffiDeepValue` equality. See
+    /// [`compounds::contains_array_rendering`].
+    #[askama::filter_fn]
+    pub fn has_array_rendered_field(
+        fields: &[Field],
+        _v: &dyn askama::Values,
+    ) -> Result<bool, askama::Error> {
+        Ok(fields
+            .iter()
+            .any(|f| compounds::contains_array_rendering(&f.as_type())))
+    }
+
+    /// The Java name of a field: `v{index}` for a tuple variant's positional fields. Mirrors the
+    /// `field_name` template macro for use in expression positions.
+    #[askama::filter_fn]
+    pub fn field_java_name(
+        field: &Field,
+        _v: &dyn askama::Values,
+        index: &usize,
+    ) -> Result<String, askama::Error> {
+        if field.name().is_empty() {
+            Ok(format!("v{index}"))
+        } else {
+            Ok(JavaCodeOracle.var_name(field.name()))
         }
     }
 }
@@ -1488,11 +2166,90 @@ mod tests {
     use super::*;
     use uniffi_bindgen::interface::ComponentInterface;
     use uniffi_meta::{
-        CallbackInterfaceMetadata, EnumMetadata, EnumShape, FieldMetadata, FnMetadata,
-        FnParamMetadata, Metadata, MetadataGroup, MethodMetadata, NamespaceMetadata, ObjectImpl,
-        ObjectMetadata, ObjectTraitImplMetadata, RecordMetadata, TraitMethodMetadata, Type,
-        VariantMetadata,
+        CallbackInterfaceMetadata, CustomTypeMetadata, EnumMetadata, EnumShape, FieldMetadata,
+        FnMetadata, FnParamMetadata, LiteralMetadata, Metadata, MetadataGroup, MethodMetadata,
+        NamespaceMetadata, ObjectImpl, ObjectMetadata, ObjectTraitImplMetadata, Radix,
+        RecordMetadata, TraitKind, TraitMethodMetadata, Type, VariantMetadata,
     };
+
+    #[test]
+    fn error_variant_holding_an_object_is_closeable() {
+        let mut group = test_group();
+        group.add_item(Metadata::Object(ObjectMetadata {
+            module_path: "test".to_string(),
+            name: "Thing".to_string(),
+            orig_name: None,
+            remote: false,
+            imp: ObjectImpl::Struct,
+            docstring: None,
+        }));
+        group.add_item(Metadata::Enum(EnumMetadata {
+            orig_name: None,
+            module_path: "test".to_string(),
+            name: "BoomError".to_string(),
+            shape: EnumShape::Error { flat: false },
+            remote: false,
+            variants: vec![VariantMetadata {
+                orig_name: None,
+                name: "Boom".to_string(),
+                discr: None,
+                fields: vec![field(
+                    "thing",
+                    Type::Object {
+                        module_path: "test".to_string(),
+                        name: "Thing".to_string(),
+                        imp: ObjectImpl::Struct,
+                    },
+                )],
+                docstring: None,
+            }],
+            discr_type: None,
+            non_exhaustive: false,
+            docstring: None,
+        }));
+        group.add_item(Metadata::Func(FnMetadata {
+            orig_name: None,
+            module_path: "test".to_string(),
+            name: "boom".to_string(),
+            is_async: false,
+            inputs: vec![],
+            return_type: None,
+            throws: Some(Type::Enum {
+                module_path: "test".to_string(),
+                name: "BoomError".to_string(),
+            }),
+            checksum: None,
+            docstring: None,
+        }));
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+        assert!(
+            bindings.contains(
+                "public class BoomException extends java.lang.Exception implements AutoCloseable"
+            ),
+            "callers catch the base type, so try-with-resources must work there:\n{}",
+            error_variant_lines(&bindings)
+        );
+        assert!(
+            bindings.contains("public static class Boom extends BoomException {"),
+            "a class cannot `extends A, B`; the base provides AutoCloseable:\n{}",
+            error_variant_lines(&bindings)
+        );
+        assert!(
+            bindings.contains("public void close()"),
+            "close() cannot narrow AutoCloseable's access:\n{}",
+            error_variant_lines(&bindings)
+        );
+    }
+
+    fn error_variant_lines(bindings: &str) -> String {
+        bindings
+            .lines()
+            .filter(|l| l.contains("class Boom") || l.contains("close()"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
 
     #[test]
     fn preserves_error_type_named_error() {
@@ -1507,11 +2264,13 @@ mod tests {
             items: Default::default(),
         };
         group.add_item(Metadata::Enum(EnumMetadata {
+            orig_name: None,
             module_path: "test".to_string(),
             name: "Error".to_string(),
             shape: EnumShape::Error { flat: true },
             remote: false,
             variants: vec![VariantMetadata {
+                orig_name: None,
                 name: "Oops".to_string(),
                 discr: None,
                 fields: vec![],
@@ -1522,6 +2281,7 @@ mod tests {
             docstring: None,
         }));
         group.add_item(Metadata::Func(FnMetadata {
+            orig_name: None,
             module_path: "test".to_string(),
             name: "always_fails".to_string(),
             is_async: false,
@@ -1591,6 +2351,7 @@ mod tests {
 
         for (name, inner_type) in primitive_types {
             group.add_item(Metadata::Func(FnMetadata {
+                orig_name: None,
                 module_path: "test".to_string(),
                 name: name.to_string(),
                 is_async: false,
@@ -1652,6 +2413,601 @@ mod tests {
         assert!(
             bindings.contains("public static double[] processDoubles(double[] data)"),
             "expected processDoubles method with double[] signature"
+        );
+    }
+
+    #[test]
+    fn box_renders_as_its_inner_type() {
+        // `Box<T>` exists only in scaffolding, so leaking it into a signature would name a Java
+        // type that was never generated.
+        let mut group = MetadataGroup {
+            namespace: NamespaceMetadata {
+                crate_name: "test".to_string(),
+                name: "test".to_string(),
+            },
+            namespace_docstring: None,
+            items: Default::default(),
+        };
+        group.add_item(Metadata::Func(FnMetadata {
+            orig_name: None,
+            module_path: "test".to_string(),
+            name: "unwrap_box".to_string(),
+            is_async: false,
+            inputs: vec![FnParamMetadata {
+                name: "data".to_string(),
+                ty: Type::Box {
+                    inner_type: Box::new(Type::String),
+                },
+                by_ref: false,
+                optional: false,
+                default: None,
+            }],
+            return_type: Some(Type::String),
+            throws: None,
+            checksum: None,
+            docstring: None,
+        }));
+
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+
+        assert!(
+            bindings.contains("public static java.lang.String unwrapBox(java.lang.String data)"),
+            "expected Box<String> to render as java.lang.String:\n{}",
+            bindings
+                .lines()
+                .filter(|line| line.contains("unwrapBox"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+
+    fn point_type() -> Type {
+        Type::Record {
+            module_path: "test".to_string(),
+            name: "Point".to_string(),
+        }
+    }
+
+    fn field(name: &str, ty: Type) -> FieldMetadata {
+        FieldMetadata {
+            orig_name: None,
+            name: name.to_string(),
+            ty,
+            default: None,
+            docstring: None,
+        }
+    }
+
+    /// Renders `enum Shape { Point, Group { ..fields } }` alongside a `Point` record, and returns
+    /// the `Group` variant's declaration on one line.
+    ///
+    /// The variant named `Point` shadows the top-level `Point` from inside the sealed interface,
+    /// so any field type that is not package-qualified resolves to the wrong `Point` and fails to
+    /// compile.
+    fn group_variant_decl(fields: Vec<FieldMetadata>) -> String {
+        let mut group = test_group();
+        group.add_item(Metadata::Record(RecordMetadata {
+            orig_name: None,
+            module_path: "test".to_string(),
+            name: "Point".to_string(),
+            remote: false,
+            fields: vec![field("x", Type::Int32)],
+            docstring: None,
+        }));
+        group.add_item(Metadata::Enum(EnumMetadata {
+            orig_name: None,
+            module_path: "test".to_string(),
+            name: "Shape".to_string(),
+            shape: EnumShape::Enum,
+            remote: false,
+            variants: vec![
+                VariantMetadata {
+                    orig_name: None,
+                    name: "Point".to_string(),
+                    discr: None,
+                    fields: vec![],
+                    docstring: None,
+                },
+                VariantMetadata {
+                    orig_name: None,
+                    name: "Group".to_string(),
+                    discr: None,
+                    fields,
+                    docstring: None,
+                },
+            ],
+            discr_type: None,
+            non_exhaustive: false,
+            docstring: None,
+        }));
+        group.add_item(Metadata::Func(FnMetadata {
+            orig_name: None,
+            module_path: "test".to_string(),
+            name: "get_shape".to_string(),
+            is_async: false,
+            inputs: vec![],
+            return_type: Some(Type::Enum {
+                module_path: "test".to_string(),
+                name: "Shape".to_string(),
+            }),
+            throws: None,
+            checksum: None,
+            docstring: None,
+        }));
+
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+
+        // The record header and its fields land on separate lines, so match the whole decl.
+        let lines: Vec<&str> = bindings.lines().collect();
+        let start = lines
+            .iter()
+            .position(|line| line.contains("record Group("))
+            .unwrap_or_else(|| panic!("no Group variant in:\n{bindings}"));
+        lines[start..]
+            .iter()
+            .take_while(|line| !line.contains("implements"))
+            .chain(lines[start..].iter().find(|l| l.contains("implements")))
+            .copied()
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    #[test]
+    fn set_field_on_an_enum_variant_is_package_qualified() {
+        let decl = group_variant_decl(vec![
+            field(
+                "members",
+                Type::Set {
+                    inner_type: Box::new(point_type()),
+                },
+            ),
+            field(
+                "ordered",
+                Type::Sequence {
+                    inner_type: Box::new(point_type()),
+                },
+            ),
+        ]);
+
+        assert!(
+            decl.contains("java.util.List<uniffi.Point>"),
+            "Vec<Point> should be qualified, got: {decl}"
+        );
+        assert!(
+            decl.contains("java.util.Set<uniffi.Point>"),
+            "HashSet<Point> should be qualified too, got: {decl}"
+        );
+    }
+
+    #[test]
+    fn box_field_on_an_enum_variant_is_package_qualified() {
+        let decl = group_variant_decl(vec![field(
+            "boxed",
+            Type::Box {
+                inner_type: Box::new(point_type()),
+            },
+        )]);
+
+        assert!(
+            decl.contains("uniffi.Point boxed"),
+            "Box<Point> should be qualified, got: {decl}"
+        );
+    }
+
+    #[test]
+    fn hashed_field_on_an_enum_variant_keeps_the_boxed_list() {
+        let decl = group_variant_decl(vec![
+            field(
+                "members",
+                Type::Set {
+                    inner_type: Box::new(Type::Sequence {
+                        inner_type: Box::new(Type::Int32),
+                    }),
+                },
+            ),
+            field(
+                "keyed",
+                Type::Map {
+                    key_type: Box::new(Type::Sequence {
+                        inner_type: Box::new(Type::Int32),
+                    }),
+                    value_type: Box::new(Type::Sequence {
+                        inner_type: Box::new(Type::Int32),
+                    }),
+                },
+            ),
+        ]);
+
+        assert!(
+            decl.contains("java.util.Set<java.util.List<java.lang.Integer>>"),
+            "Set element should stay boxed, got: {decl}"
+        );
+        assert!(
+            decl.contains("java.util.Map<java.util.List<java.lang.Integer>, int[]>"),
+            "only the Map key is hashed, got: {decl}"
+        );
+    }
+
+    #[test]
+    fn hashed_primitive_array_stays_boxed_in_a_signature() {
+        let mut group = test_group();
+        group.add_item(Metadata::Func(FnMetadata {
+            orig_name: None,
+            module_path: "test".to_string(),
+            name: "hashed".to_string(),
+            is_async: false,
+            inputs: vec![
+                FnParamMetadata {
+                    name: "set".to_string(),
+                    ty: Type::Set {
+                        inner_type: Box::new(Type::Sequence {
+                            inner_type: Box::new(Type::Int32),
+                        }),
+                    },
+                    by_ref: false,
+                    optional: false,
+                    default: None,
+                },
+                FnParamMetadata {
+                    name: "map".to_string(),
+                    ty: Type::Map {
+                        key_type: Box::new(Type::Sequence {
+                            inner_type: Box::new(Type::Int32),
+                        }),
+                        value_type: Box::new(Type::Sequence {
+                            inner_type: Box::new(Type::Float64),
+                        }),
+                    },
+                    by_ref: false,
+                    optional: false,
+                    default: None,
+                },
+            ],
+            return_type: None,
+            throws: None,
+            checksum: None,
+            docstring: None,
+        }));
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+
+        assert!(
+            bindings.contains(
+                "hashed(java.util.Set<java.util.List<java.lang.Integer>> set, \
+                 java.util.Map<java.util.List<java.lang.Integer>, double[]> map)"
+            ),
+            "hashed positions should stay boxed, values should not:\n{}",
+            bindings
+                .lines()
+                .filter(|l| l.contains("hashed("))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+        // The boxed rendering needs a converter the array helper does not provide.
+        assert!(
+            bindings.contains("enum FfiConverterSequenceInteger"),
+            "expected the generic sequence converter alongside FfiConverterInt32Array"
+        );
+        assert!(
+            bindings.contains("enum FfiConverterInt32Array"),
+            "expected the array helper to still be emitted"
+        );
+    }
+
+    fn seq(inner: Type) -> Type {
+        Type::Sequence {
+            inner_type: Box::new(inner),
+        }
+    }
+
+    fn param(name: &str, ty: Type) -> FnParamMetadata {
+        FnParamMetadata {
+            name: name.to_string(),
+            ty,
+            by_ref: false,
+            optional: false,
+            default: None,
+        }
+    }
+
+    /// Bindings for an interface holding a single function of these parameters.
+    fn bindings_for_fn(inputs: Vec<FnParamMetadata>, config: &Config) -> String {
+        let mut group = test_group();
+        group.add_item(Metadata::Func(FnMetadata {
+            orig_name: None,
+            module_path: "test".to_string(),
+            name: "subject".to_string(),
+            is_async: false,
+            inputs,
+            return_type: None,
+            throws: None,
+            checksum: None,
+            docstring: None,
+        }));
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+        generate_bindings(config, &ci).unwrap()
+    }
+
+    #[test]
+    fn nested_hashed_sequences_stay_boxed_at_every_depth() {
+        let bindings = bindings_for_fn(
+            vec![param(
+                "nested",
+                Type::Set {
+                    inner_type: Box::new(seq(seq(Type::Int32))),
+                },
+            )],
+            &Config::default(),
+        );
+
+        assert!(
+            bindings.contains(
+                "java.util.Set<java.util.List<java.util.List<java.lang.Integer>>> nested"
+            ),
+            "the inner array must stay boxed too, or contains() breaks one level down:\n{}",
+            signature_lines(&bindings)
+        );
+        assert!(
+            bindings.contains("enum FfiConverterSequenceSequenceInteger"),
+            "expected the hashed converter for the outer sequence"
+        );
+        assert!(
+            bindings.contains("enum FfiConverterSequenceInteger"),
+            "expected the hashed converter for the inner sequence"
+        );
+    }
+
+    #[test]
+    fn optional_wrapped_hashed_element_stays_boxed() {
+        let bindings = bindings_for_fn(
+            vec![param(
+                "opt",
+                Type::Set {
+                    inner_type: Box::new(Type::Optional {
+                        inner_type: Box::new(seq(Type::Int32)),
+                    }),
+                },
+            )],
+            &Config::default(),
+        );
+
+        assert!(
+            bindings.contains("java.util.Set<java.util.List<java.lang.Integer>> opt"),
+            "an optional element is invisibly nullable but must stay boxed:\n{}",
+            signature_lines(&bindings)
+        );
+        assert!(
+            bindings.contains("enum FfiConverterOptionalSequenceInteger"),
+            "expected the hashed optional converter"
+        );
+        assert!(
+            bindings.contains("enum FfiConverterSequenceInteger"),
+            "expected the hashed converter for the wrapped sequence"
+        );
+    }
+
+    #[test]
+    fn bytes_map_key_stays_boxed() {
+        let bindings = bindings_for_fn(
+            vec![param(
+                "keyed",
+                Type::Map {
+                    key_type: Box::new(Type::Bytes),
+                    value_type: Box::new(Type::String),
+                },
+            )],
+            &Config::default(),
+        );
+
+        assert!(
+            bindings
+                .contains("java.util.Map<java.util.List<java.lang.Byte>, java.lang.String> keyed"),
+            "byte[] keys never match on lookup:\n{}",
+            signature_lines(&bindings)
+        );
+        assert!(
+            bindings.contains("enum FfiConverterSequenceByte"),
+            "expected the byte sequence converter for the hashed key"
+        );
+    }
+
+    #[test]
+    fn hashed_bytes_reuses_an_existing_byte_sequence_converter() {
+        let bindings = bindings_for_fn(
+            vec![
+                param(
+                    "hashed",
+                    Type::Set {
+                        inner_type: Box::new(Type::Bytes),
+                    },
+                ),
+                param("plain", seq(Type::Int8)),
+            ],
+            &Config::default(),
+        );
+
+        assert_eq!(
+            bindings.matches("enum FfiConverterSequenceByte ").count(),
+            1,
+            "hashed bytes and Vec<i8> share a converter; two copies would not compile"
+        );
+    }
+
+    fn signature_lines(bindings: &str) -> String {
+        bindings
+            .lines()
+            .filter(|l| l.contains("subject("))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn holder_group() -> MetadataGroup {
+        let mut group = test_group();
+        group.add_item(Metadata::Record(RecordMetadata {
+            orig_name: None,
+            module_path: "test".to_string(),
+            name: "Holder".to_string(),
+            remote: false,
+            fields: vec![
+                field("label", Type::String),
+                field("ratio", Type::Float64),
+                field("data", seq(Type::Int32)),
+                field("nested", seq(seq(Type::Int32))),
+            ],
+            docstring: None,
+        }));
+        group
+    }
+
+    #[test]
+    fn record_with_array_fields_gets_value_equality() {
+        let mut ci = ComponentInterface::from_metadata(holder_group()).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+
+        assert!(
+            bindings.contains("UniffiDeepValue.equals(data, t.data)"),
+            "array fields must compare by value:\n{bindings}"
+        );
+        assert!(
+            bindings.contains("java.lang.Double.compare(ratio, t.ratio) == 0"),
+            "`==` on a double breaks reflexivity for NaN:\n{bindings}"
+        );
+        assert!(
+            bindings.contains("31 * result + UniffiDeepValue.hashCode(data)"),
+            "array fields must hash by value:\n{bindings}"
+        );
+        assert!(
+            bindings.contains("31 * result + java.lang.Double.hashCode(ratio)"),
+            "double fields must hash without boxing:\n{bindings}"
+        );
+    }
+
+    #[test]
+    fn immutable_record_with_array_fields_overrides_equality() {
+        let mut ci = ComponentInterface::from_metadata(holder_group()).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+        let config = Config {
+            generate_immutable_records: Some(true),
+            ..Config::default()
+        };
+        let bindings = generate_bindings(&config, &ci).unwrap();
+
+        assert!(
+            bindings.contains("public record Holder("),
+            "expected an immutable record:\n{bindings}"
+        );
+        assert!(
+            bindings.contains("UniffiDeepValue.equals(data, t.data)"),
+            "the record-generated equals sees array components by identity:\n{bindings}"
+        );
+        assert!(
+            bindings.contains("java.lang.Double.compare(ratio, t.ratio) == 0"),
+            "the override must keep the record default's NaN reflexivity:\n{bindings}"
+        );
+    }
+
+    #[test]
+    fn custom_type_wrapper_over_arrays_gets_value_equality() {
+        let mut group = test_group();
+        group.add_item(Metadata::CustomType(CustomTypeMetadata {
+            module_path: "test".to_string(),
+            name: "IntsKey".to_string(),
+            orig_name: None,
+            builtin: seq(Type::Int32),
+            docstring: None,
+        }));
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+
+        assert!(
+            bindings.contains("UniffiDeepValue.equals(value, t.value)"),
+            "the wrapper record's array component must compare by value:\n{bindings}"
+        );
+        assert!(
+            bindings.contains("UniffiDeepValue.hashCode(value)"),
+            "the wrapper record's hashCode must match its equals:\n{bindings}"
+        );
+    }
+
+    #[test]
+    fn enum_variant_with_array_field_overrides_equality() {
+        let mut group = test_group();
+        group.add_item(Metadata::Enum(EnumMetadata {
+            orig_name: None,
+            module_path: "test".to_string(),
+            name: "Payload".to_string(),
+            shape: EnumShape::Enum,
+            remote: false,
+            variants: vec![VariantMetadata {
+                orig_name: None,
+                name: "Ints".to_string(),
+                discr: None,
+                // A tuple variant, so the positional v1 name has to thread through.
+                fields: vec![field("", seq(Type::Int32))],
+                docstring: None,
+            }],
+            discr_type: None,
+            non_exhaustive: false,
+            docstring: None,
+        }));
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+
+        assert!(
+            bindings.contains("UniffiDeepValue.equals(v1, t.v1)"),
+            "the variant record's equals sees array components by identity:\n{bindings}"
+        );
+        assert!(
+            bindings.contains("31 * result + UniffiDeepValue.hashCode(v1)"),
+            "the variant record's hashCode must match its equals:\n{bindings}"
+        );
+    }
+
+    #[test]
+    fn u64_discriminant_above_signed_max_uses_the_hex_form() {
+        let mut group = test_group();
+        group.add_item(Metadata::Enum(EnumMetadata {
+            orig_name: None,
+            module_path: "test".to_string(),
+            name: "Big".to_string(),
+            shape: EnumShape::Enum,
+            remote: false,
+            variants: vec![VariantMetadata {
+                orig_name: None,
+                name: "Hi".to_string(),
+                discr: Some(LiteralMetadata::UInt(
+                    u64::MAX,
+                    Radix::Decimal,
+                    Type::UInt64,
+                )),
+                fields: vec![],
+                docstring: None,
+            }],
+            discr_type: Some(Type::UInt64),
+            non_exhaustive: false,
+            docstring: None,
+        }));
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+        let bindings = generate_bindings(&Config::default(), &ci).unwrap();
+
+        assert!(
+            bindings.contains("HI(0xFFFFFFFFFFFFFFFFL)"),
+            "a decimal literal for u64::MAX does not compile:\n{}",
+            bindings
+                .lines()
+                .filter(|l| l.contains("HI("))
+                .collect::<Vec<_>>()
+                .join("\n")
         );
     }
 
@@ -1779,6 +3135,7 @@ mod tests {
             items: Default::default(),
         };
         group.add_item(Metadata::Func(FnMetadata {
+            orig_name: None,
             module_path: "test".to_string(),
             name: "noop".to_string(),
             is_async: false,
@@ -1834,15 +3191,17 @@ mod tests {
 
         // A trait object defined in a submodule
         group.add_item(Metadata::Object(ObjectMetadata {
+            orig_name: None,
             module_path: submodule_path.to_string(),
             name: "MyTrait".to_string(),
             remote: false,
-            imp: ObjectImpl::CallbackTrait,
+            imp: ObjectImpl::Trait(TraitKind::ForeignOnly),
             docstring: None,
         }));
 
         // A concrete object that implements the trait, also in the submodule
         group.add_item(Metadata::Object(ObjectMetadata {
+            orig_name: None,
             module_path: submodule_path.to_string(),
             name: "MyObj".to_string(),
             remote: false,
@@ -1859,7 +3218,7 @@ mod tests {
             trait_ty: Type::Object {
                 module_path: submodule_path.to_string(),
                 name: "MyTrait".to_string(),
-                imp: ObjectImpl::CallbackTrait,
+                imp: ObjectImpl::Trait(TraitKind::ForeignOnly),
             },
         }));
 
@@ -1890,6 +3249,7 @@ mod tests {
             items: Default::default(),
         };
         group.add_item(Metadata::Object(ObjectMetadata {
+            orig_name: None,
             module_path: "test".to_string(),
             name: "DefaultMetricsRecorder".to_string(),
             remote: false,
@@ -1916,12 +3276,11 @@ mod tests {
         let mut ci = ComponentInterface::from_metadata(group).unwrap();
         ci.derive_ffi_funcs().unwrap();
 
-        let interface_name = super::filters::trait_interface_name(
+        let interface_name = super::filters::trait_interface_name_for(
             &Type::CallbackInterface {
                 module_path: "test::metrics".to_string(),
                 name: "MetricsRecorder".to_string(),
             },
-            &(),
             &ci,
         )
         .unwrap();
@@ -2010,6 +3369,7 @@ mod tests {
     fn nullness_annotations_disabled_by_default() {
         let mut group = test_group();
         group.add_item(Metadata::Func(FnMetadata {
+            orig_name: None,
             module_path: "test".to_string(),
             name: "maybe_string".to_string(),
             is_async: false,
@@ -2043,6 +3403,7 @@ mod tests {
     fn nullness_function_with_optional_param_and_return() {
         let mut group = test_group();
         group.add_item(Metadata::Func(FnMetadata {
+            orig_name: None,
             module_path: "test".to_string(),
             name: "foo".to_string(),
             is_async: false,
@@ -2094,17 +3455,20 @@ mod tests {
     fn nullness_record_with_optional_field() {
         let mut group = test_group();
         group.add_item(Metadata::Record(RecordMetadata {
+            orig_name: None,
             module_path: "test".to_string(),
             name: "Person".to_string(),
             remote: false,
             fields: vec![
                 FieldMetadata {
+                    orig_name: None,
                     name: "name".to_string(),
                     ty: Type::String,
                     default: None,
                     docstring: None,
                 },
                 FieldMetadata {
+                    orig_name: None,
                     name: "nickname".to_string(),
                     ty: Type::Optional {
                         inner_type: Box::new(Type::String),
@@ -2117,6 +3481,7 @@ mod tests {
         }));
         // Need a function to make the record reachable
         group.add_item(Metadata::Func(FnMetadata {
+            orig_name: None,
             module_path: "test".to_string(),
             name: "get_person".to_string(),
             is_async: false,
@@ -2152,17 +3517,20 @@ mod tests {
     fn nullness_immutable_record_with_optional_field() {
         let mut group = test_group();
         group.add_item(Metadata::Record(RecordMetadata {
+            orig_name: None,
             module_path: "test".to_string(),
             name: "Person".to_string(),
             remote: false,
             fields: vec![
                 FieldMetadata {
+                    orig_name: None,
                     name: "name".to_string(),
                     ty: Type::String,
                     default: None,
                     docstring: None,
                 },
                 FieldMetadata {
+                    orig_name: None,
                     name: "nickname".to_string(),
                     ty: Type::Optional {
                         inner_type: Box::new(Type::String),
@@ -2174,6 +3542,7 @@ mod tests {
             docstring: None,
         }));
         group.add_item(Metadata::Func(FnMetadata {
+            orig_name: None,
             module_path: "test".to_string(),
             name: "get_person".to_string(),
             is_async: false,
@@ -2210,6 +3579,7 @@ mod tests {
     fn nullness_object_method_with_optional_param() {
         let mut group = test_group();
         group.add_item(Metadata::Object(ObjectMetadata {
+            orig_name: None,
             module_path: "test".to_string(),
             name: "MyObj".to_string(),
             remote: false,
@@ -2217,6 +3587,7 @@ mod tests {
             docstring: None,
         }));
         group.add_item(Metadata::Method(MethodMetadata {
+            orig_name: None,
             module_path: "test".to_string(),
             self_name: "MyObj".to_string(),
             name: "do_thing".to_string(),
@@ -2254,6 +3625,7 @@ mod tests {
     fn nullness_object_cleanable_field_annotated() {
         let mut group = test_group();
         group.add_item(Metadata::Object(ObjectMetadata {
+            orig_name: None,
             module_path: "test".to_string(),
             name: "MyObj".to_string(),
             remote: false,
@@ -2279,6 +3651,7 @@ mod tests {
     fn nullness_object_cleanable_field_not_annotated_by_default() {
         let mut group = test_group();
         group.add_item(Metadata::Object(ObjectMetadata {
+            orig_name: None,
             module_path: "test".to_string(),
             name: "MyObj".to_string(),
             remote: false,
@@ -2302,14 +3675,17 @@ mod tests {
     fn nullness_enum_variant_with_optional_field() {
         let mut group = test_group();
         group.add_item(Metadata::Enum(EnumMetadata {
+            orig_name: None,
             module_path: "test".to_string(),
             name: "MyEnum".to_string(),
             shape: EnumShape::Enum,
             remote: false,
             variants: vec![VariantMetadata {
+                orig_name: None,
                 name: "WithOptional".to_string(),
                 discr: None,
                 fields: vec![FieldMetadata {
+                    orig_name: None,
                     name: "value".to_string(),
                     ty: Type::Optional {
                         inner_type: Box::new(Type::String),
@@ -2324,6 +3700,7 @@ mod tests {
             docstring: None,
         }));
         group.add_item(Metadata::Func(FnMetadata {
+            orig_name: None,
             module_path: "test".to_string(),
             name: "get_enum".to_string(),
             is_async: false,
@@ -2353,14 +3730,17 @@ mod tests {
     fn nullness_error_variant_with_optional_field() {
         let mut group = test_group();
         group.add_item(Metadata::Enum(EnumMetadata {
+            orig_name: None,
             module_path: "test".to_string(),
             name: "MyError".to_string(),
             shape: EnumShape::Error { flat: false },
             remote: false,
             variants: vec![VariantMetadata {
+                orig_name: None,
                 name: "BadInput".to_string(),
                 discr: None,
                 fields: vec![FieldMetadata {
+                    orig_name: None,
                     name: "detail".to_string(),
                     ty: Type::Optional {
                         inner_type: Box::new(Type::String),
@@ -2375,6 +3755,7 @@ mod tests {
             docstring: None,
         }));
         group.add_item(Metadata::Func(FnMetadata {
+            orig_name: None,
             module_path: "test".to_string(),
             name: "do_stuff".to_string(),
             is_async: false,
@@ -2404,6 +3785,7 @@ mod tests {
     fn nullness_async_function_with_optional_return() {
         let mut group = test_group();
         group.add_item(Metadata::Func(FnMetadata {
+            orig_name: None,
             module_path: "test".to_string(),
             name: "fetch".to_string(),
             is_async: true,
@@ -2433,6 +3815,7 @@ mod tests {
     fn nullness_non_optional_types_never_nullable() {
         let mut group = test_group();
         group.add_item(Metadata::Func(FnMetadata {
+            orig_name: None,
             module_path: "test".to_string(),
             name: "identity".to_string(),
             is_async: false,
@@ -2476,6 +3859,7 @@ mod tests {
     fn nullness_nested_optional_in_map_value() {
         let mut group = test_group();
         group.add_item(Metadata::Func(FnMetadata {
+            orig_name: None,
             module_path: "test".to_string(),
             name: "process_map".to_string(),
             is_async: false,
@@ -2509,6 +3893,7 @@ mod tests {
     fn nullness_nested_optional_in_list() {
         let mut group = test_group();
         group.add_item(Metadata::Func(FnMetadata {
+            orig_name: None,
             module_path: "test".to_string(),
             name: "process_list".to_string(),
             is_async: false,
@@ -2543,6 +3928,54 @@ mod tests {
     }
 
     #[test]
+    fn borrowed_bytes_on_a_callback_method_is_rejected() {
+        // Without this the vtable carries a ForeignBytes that Java has no way to lift, and the
+        // generated bindings read a pointer they never owned.
+        let mut group = MetadataGroup {
+            namespace: NamespaceMetadata {
+                crate_name: "test".to_string(),
+                name: "test".to_string(),
+            },
+            namespace_docstring: None,
+            items: Default::default(),
+        };
+        group.add_item(Metadata::CallbackInterface(CallbackInterfaceMetadata {
+            module_path: "test".to_string(),
+            name: "Sink".to_string(),
+            docstring: None,
+        }));
+        group.add_item(Metadata::TraitMethod(TraitMethodMetadata {
+            orig_name: None,
+            module_path: "test".to_string(),
+            trait_name: "Sink".to_string(),
+            index: 0,
+            name: "write".to_string(),
+            is_async: false,
+            inputs: vec![FnParamMetadata {
+                name: "data".to_string(),
+                ty: Type::Bytes,
+                by_ref: true,
+                optional: false,
+                default: None,
+            }],
+            return_type: None,
+            throws: None,
+            takes_self_by_arc: false,
+            checksum: None,
+            docstring: None,
+        }));
+
+        let mut ci = ComponentInterface::from_metadata(group).unwrap();
+        ci.derive_ffi_funcs().unwrap();
+
+        let err = generate_bindings(&Config::default(), &ci)
+            .expect_err("borrowed bytes on a callback method should not generate");
+        let msg = err.to_string();
+        assert!(msg.contains("Sink.write"), "should name the method: {msg}");
+        assert!(msg.contains("data"), "should name the argument: {msg}");
+    }
+
+    #[test]
     fn callback_interface_helpers_use_class_style_names() {
         let mut group = MetadataGroup {
             namespace: NamespaceMetadata {
@@ -2558,6 +3991,7 @@ mod tests {
             docstring: None,
         }));
         group.add_item(Metadata::TraitMethod(TraitMethodMetadata {
+            orig_name: None,
             module_path: "test".to_string(),
             trait_name: "Histogram".to_string(),
             index: 0,

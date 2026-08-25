@@ -12,10 +12,28 @@ class TestData {
     static final String testLargeString2 = "b".repeat(1500);
     static final TestRecord testRec1 = new TestRecord(-1, 1L, 1.5);
     static final TestRecord testRec2 = new TestRecord(-2, 2L, 4.5);
+    static final TestLargeRecord testLargeRec1 =
+        new TestLargeRecord((byte) 1, (short) 2, 3, 4L, 1.0f, 2.0, true);
+    static final TestLargeRecord testLargeRec2 =
+        new TestLargeRecord((byte) -1, (short) -2, -3, -4L, -1.0f, -2.0, false);
     static final TestEnum testEnum1 = new TestEnum.One(-1, 0L);
     static final TestEnum testEnum2 = new TestEnum.Two(1.5);
     static final int[] testVec1 = new int[]{0, 1};
     static final int[] testVec2 = new int[]{2, 4, 6};
+    static final byte[] testBytes = new byte[256];
+    static final int[] testPrimitiveList = new int[1025];
+    static final List<TestRecord> testRecordList = java.util.stream.IntStream
+        .rangeClosed(0, 1024)
+        .mapToObj(i -> new TestRecord(i, (long) i * 2, i / 2.0))
+        .toList();
+    static {
+        for (int i = 0; i < testBytes.length; i++) {
+            testBytes[i] = (byte) i;
+        }
+        for (int i = 0; i < testPrimitiveList.length; i++) {
+            testPrimitiveList[i] = i;
+        }
+    }
     static final Map<Integer, Integer> testMap1 = Map.of(0, 1, 1, 2);
     static final Map<Integer, Integer> testMap2 = Map.of(2, 4);
     static final TestInterface testInterface = new TestInterface();
@@ -63,6 +81,19 @@ class TestCallbackObj implements TestCallbackInterface {
     }
 
     @Override
+    public TestLargeRecord largeRecords(TestLargeRecord a, TestLargeRecord b) {
+        return new TestLargeRecord(
+            (byte) (a.a() + b.a()),
+            (short) (a.b() + b.b()),
+            a.c() + b.c(),
+            a.d() + b.d(),
+            a.e() + b.e(),
+            a.f() + b.f(),
+            a.g() && b.g()
+        );
+    }
+
+    @Override
     public TestEnum enums(TestEnum a, TestEnum b) {
         double aSum = switch (a) {
             case TestEnum.One one -> (double) one.a() + (double) one.b();
@@ -76,11 +107,38 @@ class TestCallbackObj implements TestCallbackInterface {
     }
 
     @Override
-    public int[] vecs(int[] a, int[] b) {
+    public int[] vecSmall(int[] a, int[] b) {
         int[] result = new int[a.length + b.length];
         System.arraycopy(a, 0, result, 0, a.length);
         System.arraycopy(b, 0, result, a.length, b.length);
         return result;
+    }
+
+    @Override
+    public int[] vecPrimitives(int[] v) {
+        return v;
+    }
+
+    @Override
+    public List<TestRecord> vecRecords(List<TestRecord> v) {
+        return v;
+    }
+
+    @Override
+    public int optionals(Integer a, Boolean b, String c) {
+        int sum = a == null ? 0 : a;
+        if (Boolean.TRUE.equals(b)) {
+            sum *= 2;
+        }
+        if (c != null) {
+            sum += c.length();
+        }
+        return sum;
+    }
+
+    @Override
+    public byte[] bytes(byte[] v) {
+        return v;
     }
 
     @Override
@@ -144,9 +202,39 @@ class TestCallbackObj implements TestCallbackInterface {
                     Benchmarks.testCaseEnums(TestData.testEnum1, TestData.testEnum2);
                 }
             }
-            case VECS -> {
+            case LARGE_RECORDS -> {
                 for (long i = 0; i < count; i++) {
-                    Benchmarks.testCaseVecs(TestData.testVec1, TestData.testVec2);
+                    Benchmarks.testCaseLargeRecords(TestData.testLargeRec1, TestData.testLargeRec2);
+                }
+            }
+            case OPTIONALS -> {
+                for (long i = 0; i < count; i++) {
+                    Benchmarks.testCaseOptionals(10, null, "testing-123");
+                }
+            }
+            case BYTES -> {
+                for (long i = 0; i < count; i++) {
+                    Benchmarks.testCaseBytes(TestData.testBytes);
+                }
+            }
+            case VEC_SMALL -> {
+                for (long i = 0; i < count; i++) {
+                    Benchmarks.testCaseVecSmall(TestData.testVec1, TestData.testVec2);
+                }
+            }
+            case VEC_PRIMITIVES -> {
+                for (long i = 0; i < count; i++) {
+                    Benchmarks.testCaseVecPrimitives(TestData.testPrimitiveList);
+                }
+            }
+            case VEC_RECORDS -> {
+                for (long i = 0; i < count; i++) {
+                    Benchmarks.testCaseVecRecords(TestData.testRecordList);
+                }
+            }
+            case METHODS -> {
+                for (long i = 0; i < count; i++) {
+                    TestData.testInterface.noopMethod();
                 }
             }
             case HASHMAPS -> {
@@ -178,6 +266,9 @@ class TestCallbackObj implements TestCallbackInterface {
                     }
                 }
             }
+            // An arrow switch statement isn't exhaustiveness-checked, so without this a TestCase
+            // added upstream would silently benchmark nothing and report ~0ns.
+            default -> throw new IllegalStateException("unhandled TestCase: " + testCase);
         }
         return System.nanoTime() - start;
     }

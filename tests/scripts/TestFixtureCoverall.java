@@ -553,7 +553,7 @@ public class TestFixtureCoverall {
     try (Coveralls coveralls = new Coveralls("test_reentrant_errors")) {
       // Interleaved success/error/panic/complex-error to verify the thread-local
       // RustCallStatus isn't corrupted across different outcome types.
-      // Only a few iterations — the bug is deterministic and panics spam stderr.
+      // Only a few iterations - the bug is deterministic and panics spam stderr.
       for (int i = 0; i < 5; i++) {
         assert coveralls.maybeThrow(false);
         try {
@@ -647,7 +647,7 @@ public class TestFixtureCoverall {
 
     // Regression test: struct return allocator must not permanently leak native memory.
     // Each struct-returning FFI call (e.g., String/record/list returns) allocates a 24-byte
-    // RustBuffer metadata segment. With Arena.global() this leaked permanently — 100k calls
+    // RustBuffer metadata segment. With Arena.global() this leaked permanently - 100k calls
     // would leak ~2.4 MB that GC could never reclaim.
     //
     // This test runs two 100k-call batches with GC between them and measures growth.
@@ -786,7 +786,7 @@ public class TestFixtureCoverall {
             try {
               coveralls.getName();
             } catch (IllegalStateException e) {
-              // Expected when close() beats us — object already destroyed
+              // Expected when close() beats us - object already destroyed
             }
           }));
         }

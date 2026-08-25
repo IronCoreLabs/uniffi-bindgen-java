@@ -4,7 +4,7 @@ Criterion-based benchmarks measuring FFI call overhead for the generated Java bi
 
 ## Prerequisites
 
-Rust toolchain and JDK 21+ — all provided by `nix develop`.
+Rust toolchain and JDK 21+ - all provided by `nix develop`.
 
 ## Running
 
@@ -28,8 +28,8 @@ Criterion runs inside the Rust fixture library. The Java side implements `TestCa
 
 ## Benchmark Groups
 
-- **function-calls** — Java calling Rust functions across 12 type categories
-- **callbacks** — Rust calling Java callback methods across the same 12 categories
+- **function-calls** - Java calling Rust functions across 12 type categories
+- **callbacks** - Rust calling Java callback methods across the same 12 categories
 
 ## Results
 

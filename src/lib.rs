@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand};
 use std::collections::HashMap;
 use std::fs;
 use uniffi_bindgen::{
-    BindgenLoader, BindgenPaths, Component, ComponentInterface, interface::rename,
+    BindgenLoader, BindgenPaths, Component, ComponentInterface, GlobalConfig, interface::rename,
 };
 
 mod gen_java;
@@ -147,24 +147,31 @@ fn apply_renames_and_external_packages(components: &mut Vec<Component<Config>>) 
     }
 }
 
-/// Create BindgenPaths with cargo metadata layer and optional config override
 fn create_bindgen_paths(
-    config_override: Option<&Utf8Path>,
+    global_config_path: Option<&Utf8Path>,
     metadata_no_deps: bool,
-) -> Result<BindgenPaths> {
+) -> Result<(BindgenPaths, GlobalConfig)> {
     let mut paths = BindgenPaths::default();
 
-    // Add config override layer first (takes precedence)
-    if let Some(config_path) = config_override {
-        paths.add_config_override_layer(config_path.to_path_buf());
-    }
+    // `BindgenPaths` resolves through layers first-added-wins, so `[crate-roots]` has to land
+    // before cargo metadata to override it.
+    let global_config = match global_config_path {
+        Some(path) => {
+            let (config, crate_roots) = GlobalConfig::from_file(path)
+                .with_context(|| format!("Failed to load global config: {path}"))?;
+            if let Some(layer) = crate_roots {
+                paths.add_layer(layer);
+            }
+            config
+        }
+        None => GlobalConfig::default(),
+    };
 
-    // Add cargo metadata layer for finding crate configs
     paths
         .add_cargo_metadata_layer(metadata_no_deps)
         .context("Failed to load cargo metadata")?;
 
-    Ok(paths)
+    Ok((paths, global_config))
 }
 
 #[derive(Parser)]
@@ -189,7 +196,8 @@ enum Commands {
         #[clap(long, short)]
         no_format: bool,
 
-        /// Path to optional uniffi config file. This config is merged with the `uniffi.toml` config present in each crate, with its values taking precedence.
+        /// Path to an optional uniffi global config file, with `[defaults]`, `[crates.<name>]`
+        /// and/or `[crate-roots]` sections. Merged with each crate's `uniffi.toml`.
         #[clap(long, short)]
         config: Option<Utf8PathBuf>,
 
@@ -248,9 +256,8 @@ pub fn run_main() -> Result<()> {
                     .unwrap_or_else(|| Utf8PathBuf::from("."))
             });
 
-            // Create BindgenPaths with cargo metadata and optional config override
-            let paths = create_bindgen_paths(config.as_deref(), metadata_no_deps)?;
-            let loader = BindgenLoader::new(paths);
+            let (paths, global_config) = create_bindgen_paths(config.as_deref(), metadata_no_deps)?;
+            let loader = BindgenLoader::new(paths, global_config);
 
             fs::create_dir_all(&out_dir)?;
 

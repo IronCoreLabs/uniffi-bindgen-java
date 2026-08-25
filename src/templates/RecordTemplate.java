@@ -1,13 +1,14 @@
+{%- import "macros.java" as java %}
 {%- let rec = ci.get_record_definition(name).unwrap() %}
 {%- let uniffi_trait_methods = rec.uniffi_trait_methods() %}
 package {{ config.package_name() }};
 
-{%- call java::docstring(rec, 0) %}
+{%- call java::docstring(rec, 0) %}{% endcall %}
 {%- if rec.has_fields() %}
 {%- if config.generate_immutable_records() %}
 public record {{ type_name }}(
     {%- for field in rec.fields() %}
-    {%- call java::docstring(field, 4) %}
+    {%- call java::docstring(field, 4) %}{% endcall %}
     {{ field|type_name_for_field(ci, config) }} {{ field.name()|var_name -}}
     {% if !loop.last %}, {% endif %}
     {%- endfor %}
@@ -15,19 +16,43 @@ public record {{ type_name }}(
     {% if contains_object_references %}
     @Override
     public void close() {
-        {% call java::destroy_fields(rec) %}
+        {% call java::destroy_fields(rec) %}{% endcall %}
     }
     {% endif %}
+    {#- The record-generated equals/hashCode compare array components by identity. -#}
+    {%- if uniffi_trait_methods.eq_eq.is_none() && rec.fields()|has_array_rendered_field %}
+    @Override
+    public boolean equals(java.lang.Object other) {
+        if (other instanceof {{ type_name }}) {
+            {{ type_name }} t = ({{ type_name }}) other;
+            return ({% for field in rec.fields() %}{% let field_var_name = field.name()|var_name %}
+              {{ field|equals_expr(field_var_name, "t." ~ field_var_name) }}{% if !loop.last%} && {% endif %}
+              {% endfor %}
+            );
+        };
+        return false;
+    }
+    {%- endif %}
+    {%- if uniffi_trait_methods.hash_hash.is_none() && rec.fields()|has_array_rendered_field %}
+    @Override
+    public int hashCode() {
+        int result = 17;
+        {%- for field in rec.fields() %}
+        result = 31 * result + {{ field|hash_code_expr(field.name()|var_name) }};
+        {%- endfor %}
+        return result;
+    }
+    {%- endif %}
     {% for meth in rec.methods() -%}
-    {%- call java::func_decl("public", "", meth, 4) %}
+    {%- call java::func_decl("public", "", meth, 4) %}{% endcall %}
     {% endfor %}
     {# Add trait implementations for immutable records - these override record's auto-generated methods #}
-    {% call java::uniffi_trait_impls(uniffi_trait_methods) %}
+    {% call java::uniffi_trait_impls(uniffi_trait_methods) %}{% endcall %}
 }
 {% else %}
 public class {{ type_name }} {% if contains_object_references %}implements AutoCloseable{% if uniffi_trait_methods.ord_cmp.is_some() %}, Comparable<{{ type_name }}>{% endif %}{% else %}{% if uniffi_trait_methods.ord_cmp.is_some() %}implements Comparable<{{ type_name }}> {% endif %}{% endif %}{
     {%- for field in rec.fields() %}
-    {%- call java::docstring(field, 4) %}
+    {%- call java::docstring(field, 4) %}{% endcall %}
     private {{ field|type_name_for_field(ci, config) }} {{ field.name()|var_name -}};
     {%- endfor %}
 
@@ -60,7 +85,7 @@ public class {{ type_name }} {% if contains_object_references %}implements AutoC
     {% if contains_object_references %}
     @Override
     public void close() {
-        {% call java::destroy_fields(rec) %}
+        {% call java::destroy_fields(rec) %}{% endcall %}
     }
     {% endif %}
 
@@ -91,10 +116,10 @@ public class {{ type_name }} {% if contains_object_references %}implements AutoC
     {%- endif %}
 
     {% for meth in rec.methods() -%}
-    {%- call java::func_decl("public", "", meth, 4) %}
+    {%- call java::func_decl("public", "", meth, 4) %}{% endcall %}
     {% endfor %}
     {# Add trait implementations #}
-    {% call java::uniffi_trait_impls(uniffi_trait_methods) %}
+    {% call java::uniffi_trait_impls(uniffi_trait_methods) %}{% endcall %}
 }
 {% endif %}
 {%- else %}
@@ -114,10 +139,10 @@ public class {{ type_name }}{% if uniffi_trait_methods.ord_cmp.is_some() %} impl
     {%- endif %}
 
     {% for meth in rec.methods() -%}
-    {%- call java::func_decl("public", "", meth, 4) %}
+    {%- call java::func_decl("public", "", meth, 4) %}{% endcall %}
     {% endfor %}
     {# Add trait implementations #}
-    {% call java::uniffi_trait_impls(uniffi_trait_methods) %}
+    {% call java::uniffi_trait_impls(uniffi_trait_methods) %}{% endcall %}
 }
 {%- endif %}
 

@@ -51,7 +51,7 @@ Arguments:
 Options:
   -o, --out-dir <OUT_DIR>   Directory in which to write generated files. Default is same folder as .udl file
   -n, --no-format           Do not try to format the generated bindings
-  -c, --config <CONFIG>     Path to optional uniffi config file. This config is merged with the `uniffi.toml` config present in each crate, with its values taking precedence
+  -c, --config <CONFIG>     Path to an optional uniffi global config file, with `[defaults]`, `[crates.<name>]` and/or `[crate-roots]` sections. Merged with each crate's `uniffi.toml`
       --crate <CRATE_NAME>  When a library is passed as SOURCE, only generate bindings for this crate. When a UDL file is passed, use this as the crate name instead of attempting to locate and parse Cargo.toml
       --metadata-no-deps    Whether we should exclude dependencies when running "cargo metadata". This will mean external types may not be resolved if they are implemented in crates outside of this workspace. This can be used in environments when all types are in the namespace and fetching all sub-dependencies causes obscure platform specific problems
   -h, --help                Print help
@@ -217,7 +217,7 @@ dependencies {
 </dependency>
 ```
 
-There is no runtime dependency — the JVM ignores annotation classes that are not present at
+There is no runtime dependency - the JVM ignores annotation classes that are not present at
 runtime.
 
 ### Kotlin Interop
@@ -234,6 +234,7 @@ scope).
 
 ## Notes
 
+- a Rust `&[u8]` argument is borrowed by Rust for the duration of the call rather than copied, and takes a **direct** `java.nio.ByteBuffer` (as in Kotlin) instead of `byte[]`. Build one with `ByteBuffer.allocateDirect(arr.length).put(arr).flip()`; a heap buffer throws `IllegalArgumentException`. Reuse the buffer across calls where you can, and don't let another thread write to it while a call is in flight. `Vec<u8>` is unaffected and still maps to `byte[]`.
 - failures in CompletableFutures will cause them to `completeExceptionally`. The error that caused the failure can be checked with `e.getCause()`. When implementing an async Rust trait in Java, you'll need to `completeExceptionally` instead of throwing. See `TestFixtureFutures.java` for an example trait implementation with errors.
 - all primitives are signed in Java by default. Rust correctly interprets the a signed primitive value from Java as unsigned when told to. Callers of Uniffi functions need to be aware when making comparisons (`compareUnsigned`) or printing when a value is actually unsigned to code around footguns on this side.
 - this is an internal note for development but because Enum variants are not cases/hanging off their parent in Java, their named standalone, they can conflict with any/all `java.lang` types. We could do extensive checking and forced renaming around this, but instead we use fully qualified names for all `java.lang` types in all templates. Ensure that when you're making changes you're not dropping those qualified names or adding generated code without them.
@@ -246,7 +247,7 @@ scope).
 
 ## Testing
 
-We pull down the pinned examples directly from Uniffi (currently v0.31.0) and run Java tests using the generated bindings. Run `cargo t` to run all of them.
+We pull down the pinned examples directly from Uniffi (currently v0.32.0) and run Java tests using the generated bindings. Run `cargo t` to run all of them.
 
 Note that if you need additional toml entries for your test, you can put a `uniffi-extras.toml` as a sibling of the test and it will be read in addition to the base `uniffi.toml` for the example. See [CustomTypes](./tests/scripts/TestCustomTypes/) for an example. Settings in `uniffi-extras.toml` apply across all namespaces.
 

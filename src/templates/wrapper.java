@@ -38,10 +38,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
-{%- call java::docstring_value(ci.namespace_docstring(), 0) %}
+{%- call java::docstring_value(ci.namespace_docstring(), 0) %}{% endcall %}
 public class {{ self.namespace_class_name() }} {
   {%- for func in ci.function_definitions() %}
-  {% call java::func_decl("public static", "", func, 4) %}
+  {% call java::func_decl("public static", "", func, 4) %}{% endcall %}
   {%- endfor %}
 }
 {%- endif %}

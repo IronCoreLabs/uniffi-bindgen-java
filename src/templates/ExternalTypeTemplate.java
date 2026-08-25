@@ -8,7 +8,7 @@ package {{ config.package_name() }};
 public class {{ class_name }}ExternalErrorHandler implements UniffiRustCallStatusErrorHandler<{{ external_package_name }}.{{ class_name }}> {
     @Override
     public {{ external_package_name }}.{{ class_name }} lift(java.lang.foreign.MemorySegment errorBuf) {
-        // In FFM, RustBuffer is already a java.lang.foreign.MemorySegment — pass directly to external package
+        // In FFM, RustBuffer is already a java.lang.foreign.MemorySegment - pass directly to external package
         return new {{ external_package_name }}.{{ class_name }}ErrorHandler().lift(errorBuf);
     }
 }
