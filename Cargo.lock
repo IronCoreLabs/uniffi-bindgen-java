@@ -1648,7 +1648,7 @@ dependencies = [
 
 [[package]]
 name = "uniffi-bindgen-java"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "askama",
