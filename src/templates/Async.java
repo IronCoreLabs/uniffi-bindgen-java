@@ -45,9 +45,10 @@ public final class UniffiAsyncHelpers {
     }
 
     // The pipeline is the sole freer; cancel() only signals Rust, which fires the in-flight poll's
-    // continuation and makes later polls return Ready. `lock` covers only rust_future_cancel and
-    // rust_future_free, neither of which runs user code. A failed tryLock means free() is in
-    // progress and there is nothing left to cancel.
+    // continuation and makes later polls return Ready. A failed tryLock means free() is in progress
+    // and there is nothing left to cancel. Under an inline executor rust_future_cancel invokes that
+    // continuation synchronously, so the critical section extends through the completion pipeline
+    // and a reentrant free().
     static final class UniffiFreeingFuture<T> extends java.util.concurrent.CompletableFuture<T> {
         private final long rustFuture;
         private final java.util.function.Consumer<java.lang.Long> cancelFunc;
@@ -222,7 +223,13 @@ public final class UniffiAsyncHelpers {
     private static java.util.concurrent.CompletableFuture<java.lang.Void> pollUntilReady(long rustFuture, PollingFunction pollFunc, java.util.concurrent.Executor uniffiExecutor) {
         java.util.concurrent.CompletableFuture<java.lang.Byte> pollFuture = new java.util.concurrent.CompletableFuture<>();
         var handle = uniffiContinuationHandleMap.insert(pollFuture);
-        pollFunc.apply(rustFuture, CONTINUATION_CALLBACK_STUB, handle);
+        try {
+            pollFunc.apply(rustFuture, CONTINUATION_CALLBACK_STUB, handle);
+        } catch (java.lang.Throwable e) {
+            // Rust never took the handle, so nothing else will remove it.
+            uniffiContinuationHandleMap.remove(handle);
+            throw e;
+        }
         return pollFuture.thenComposeAsync(pollResult -> {
             if (pollResult == UNIFFI_RUST_FUTURE_POLL_READY) {
                 return java.util.concurrent.CompletableFuture.completedFuture(null);

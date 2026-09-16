@@ -9,5 +9,4 @@ name = "uniffi_fixture_async_lifecycle"
 
 [dependencies]
 async-trait = "0.1"
-parking_lot = "0.12"
 uniffi = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "release-v0.32.x" }

@@ -1971,17 +1971,20 @@ mod filters {
     }
 
     const ASYNC_COMMON_POOL_DOC: &str = "\
-Polls on {@link java.util.concurrent.ForkJoinPool#commonPool()}. See the overload taking an
-{@link java.util.concurrent.Executor} for the contract an executor must meet.";
+Re-polls and completes on {@link java.util.concurrent.ForkJoinPool#commonPool()}. See the overload
+taking an {@link java.util.concurrent.Executor} for the contract an executor must meet.";
 
     const ASYNC_EXECUTOR_PARAM_DOC: &str = "\
-@param uniffiExecutor runs each poll and the completion of the returned future. Any executor
-    that hands tasks to its own threads works: {@link java.util.concurrent.ForkJoinPool#commonPool()},
-    a fixed, cached or single-thread pool, or a virtual-thread executor. Rust invokes the
-    continuation from inside {@code Waker::wake()}, so an executor that runs tasks on the
-    submitting thread, such as {@code Runnable::run}, polls the future from within its own waker
-    and deadlocks any future that holds a lock while waking. Cancelling the returned future
-    signals Rust; the Rust future is dropped on this executor once its in-flight poll completes.";
+@param _uniffiExecutor runs every re-poll and the completion of the returned future. The first
+    poll runs on the calling thread, before this method returns. Any executor that hands tasks to
+    its own threads works: {@link java.util.concurrent.ForkJoinPool#commonPool()}, a fixed, cached
+    or single-thread pool, or a virtual-thread executor. Rust invokes the continuation from inside
+    {@code Waker::wake()}, so an executor that runs tasks on the submitting thread, such as
+    {@code Runnable::run}, polls the future from within its own waker and deadlocks any future
+    that holds a lock while waking. Cancelling the returned future signals Rust; the pipeline then
+    frees the Rust future, so an executor that accepts a task and never runs it, such as one using
+    {@link java.util.concurrent.ThreadPoolExecutor.DiscardPolicy} or one whose queue was drained
+    by {@code shutdownNow()}, leaks the Rust future and everything it owns.";
 
     fn javadoc(body: &str, spaces: i32) -> String {
         let middle = textwrap::indent(body, " * ");

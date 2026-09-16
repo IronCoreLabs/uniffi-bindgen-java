@@ -24,17 +24,17 @@ bench = false
 [dependencies]
 anyhow = "1"
 askama = { version = "0.16", default-features = false, features = [
-    "config",
-    "derive",
-    "alloc",
+  "config",
+  "derive",
+  "alloc",
 ] }
 camino = "1.1.6"
 cargo_metadata = "0.23"
 clap = { version = "4", default-features = false, features = [
-    "derive",
-    "help",
-    "std",
-    "cargo",
+  "derive",
+  "help",
+  "std",
+  "cargo",
 ] }
 heck = "0.5"
 once_cell = "1.19.0"

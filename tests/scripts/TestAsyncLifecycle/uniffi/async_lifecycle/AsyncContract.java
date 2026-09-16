@@ -3,7 +3,6 @@ package uniffi.async_lifecycle;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
@@ -18,9 +17,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 // cancel on a handle after it has been freed.
 public final class AsyncContract {
     static final class Ledger {
-        final AtomicInteger polls = new AtomicInteger();
         final AtomicInteger completes = new AtomicInteger();
-        final AtomicInteger cancels = new AtomicInteger();
         final AtomicInteger frees = new AtomicInteger();
         volatile boolean freed;
         // Pipeline stage in progress: at most one thread, re-entrant on an inline executor.
@@ -70,11 +67,14 @@ public final class AsyncContract {
             (future, callback, continuation) -> {
                 boolean live = enter(l, "poll", future);
                 try {
-                    l.polls.incrementAndGet();
                     // Native calls are serialized per handle only after the overlap has been
                     // recorded, so a violation is reported instead of executed.
                     synchronized (l) {
-                        if (live && !l.freed) {
+                        if (live && l.freed) {
+                            violate("poll after free, won by free inside enter", future);
+                            live = false;
+                        }
+                        if (live) {
                             UniffiLib.ffi_uniffi_fixture_async_lifecycle_rust_future_poll_void(future, callback, continuation);
                         } else {
                             // Keeps the pipeline draining so the run ends and reports.
@@ -93,7 +93,11 @@ public final class AsyncContract {
                         live = false;
                     }
                     synchronized (l) {
-                        if (live && !l.freed) {
+                        if (live && l.freed) {
+                            violate("complete after free, won by free inside enter", future);
+                            live = false;
+                        }
+                        if (live) {
                             UniffiLib.ffi_uniffi_fixture_async_lifecycle_rust_future_complete_void(future, status);
                         }
                     }
@@ -102,7 +106,6 @@ public final class AsyncContract {
                 }
             },
             (future) -> {
-                l.cancels.incrementAndGet();
                 synchronized (l) {
                     if (l.freed) {
                         violate("cancel after free", future);
@@ -142,7 +145,7 @@ public final class AsyncContract {
         ledgers.clear();
         violations.clear();
         List<Thread> workers = new ArrayList<>();
-        List<CompletableFuture<Void>> futures = new java.util.concurrent.CopyOnWriteArrayList<>();
+        ConcurrentLinkedQueue<CompletableFuture<Void>> futures = new ConcurrentLinkedQueue<>();
         for (int t = 0; t < threads; t++) {
             final int seed = t;
             Thread w = new Thread(() -> {

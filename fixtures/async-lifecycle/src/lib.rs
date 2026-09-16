@@ -4,12 +4,11 @@
 
 //! Async functions whose futures count their own construction and drop.
 
-use parking_lot::Mutex;
 use std::{
     future::Future,
     pin::Pin,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicU64, Ordering},
     },
     task::{Context, Poll, Waker},
@@ -58,8 +57,8 @@ struct TimerState {
     waker: Option<Waker>,
 }
 
-/// Completes after `duration` on a spawned thread, after `spurious_wakes` wakes that leave the
-/// future pending; the foreign side re-polls once per wake.
+/// Completes after `duration` on a spawned thread, having woken the future `spurious_wakes` times
+/// first. A wake with no waker stored yet is dropped.
 struct Timer {
     state: Arc<Mutex<TimerState>>,
 }
@@ -76,14 +75,14 @@ impl Timer {
         thread::spawn(move || {
             for _ in 0..spurious_wakes {
                 thread::sleep(Duration::from_millis(1));
-                let waker = thread_state.lock().waker.take();
+                let waker = thread_state.lock().unwrap().waker.take();
                 if let Some(waker) = waker {
                     waker.wake();
                 }
             }
             thread::sleep(duration);
             let waker = {
-                let mut state = thread_state.lock();
+                let mut state = thread_state.lock().unwrap();
                 state.completed = true;
                 state.waker.take()
             };
@@ -99,7 +98,7 @@ impl Future for Timer {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
-        let mut state = self.state.lock();
+        let mut state = self.state.lock().unwrap();
         if state.completed {
             Poll::Ready(())
         } else {

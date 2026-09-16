@@ -247,13 +247,13 @@ fn run_test_with_library_override(
     Ok(())
 }
 
-/// `java` with allocator debug checks that abort on a stale write into freed native memory. Each
-/// platform ignores the other's variables.
+/// `java` with allocator poisoning, so a use-after-free of native memory reads a fill pattern
+/// instead of plausible data. Each platform ignores the other's variables.
 fn java_command() -> Command {
     let mut cmd = Command::new("java");
-    // glibc: fill freed memory with a pattern.
+    // glibc: fill allocated and freed memory with 0xa5 and its complement.
     cmd.env("GLIBC_TUNABLES", "glibc.malloc.perturb=165");
-    // macOS libmalloc: fill freed memory and guard large allocations.
+    // macOS libmalloc: fill freed memory, and abort on access past a guarded large allocation.
     cmd.env("MallocScribble", "1");
     cmd.env("MallocGuardEdges", "1");
     cmd
