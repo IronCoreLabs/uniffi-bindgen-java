@@ -1,3 +1,7 @@
+## 0.5.1
+
+- adjust dependency requirements to allow consumption of `uniffi` patch bumps
+
 ## 0.5.0
 
 - updated to UniFFI 0.32.0 (and Askama 0.16).
@@ -77,4 +81,3 @@ Consumers will also need to update to uniffi 0.29.1, but there will be no change
 ## 0.1.0
 
 Initial pre-release. This library will be used to provide Java bindings for [IronCore Alloy](https://github.com/IronCoreLabs/ironcore-alloy/tree/main). It will recieve frequent breaking changes initially as we find improvements through that libaries' usage of it.
-

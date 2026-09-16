@@ -1,6 +1,6 @@
 [package]
 name = "uniffi-bindgen-java"
-version = "0.5.0"
+version = "0.5.1"
 authors = ["IronCore Labs <info@ironcorelabs.com>"]
 readme = "README.md"
 license = "MPL-2.0"
@@ -23,14 +23,18 @@ bench = false
 
 [dependencies]
 anyhow = "1"
-askama = { version = "0.16", default-features = false, features = ["config", "derive", "alloc"] }
+askama = { version = "0.16", default-features = false, features = [
+  "config",
+  "derive",
+  "alloc",
+] }
 camino = "1.1.6"
-cargo_metadata = "0.19"
+cargo_metadata = "0.23"
 clap = { version = "4", default-features = false, features = [
-    "derive",
-    "help",
-    "std",
-    "cargo",
+  "derive",
+  "help",
+  "std",
+  "cargo",
 ] }
 heck = "0.5"
 once_cell = "1.19.0"
@@ -38,32 +42,32 @@ paste = "1"
 regex = "1.10.4"
 serde = "1"
 textwrap = "0.16.1"
-toml = ">=0.8, <=0.9" # must match uniffi_bindgen's toml version
-uniffi_bindgen = "0.32.0"
-uniffi_meta = "0.32.0"
+toml = "1" # must match uniffi_bindgen's toml version
+uniffi_bindgen = "0.32.1"
+uniffi_meta = "0.32.1"
 
 [dev-dependencies]
 glob = "0.3"
-itertools = "0.14.0"
-uniffi-example-arithmetic = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.32.0" }
-uniffi-example-custom-types = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.32.0" }
-uniffi-example-futures = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.32.0" }
-uniffi-example-geometry = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.32.0" }
-uniffi-example-rondpoint = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.32.0" }
-uniffi-example-sprites = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.32.0" }
-uniffi-example-todolist = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.32.0" }
-uniffi-fixture-benchmarks = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.32.0" }
-uniffi-fixture-coverall = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.32.0" }
-uniffi-fixture-enum-types = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.32.0" }
-uniffi-fixture-ext-types = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.32.0" }
-uniffi-fixture-futures = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.32.0" }
+itertools = "0.15.0"
+uniffi-example-arithmetic = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "release-v0.32.x" }
+uniffi-example-custom-types = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "release-v0.32.x" }
+uniffi-example-futures = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "release-v0.32.x" }
+uniffi-example-geometry = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "release-v0.32.x" }
+uniffi-example-rondpoint = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "release-v0.32.x" }
+uniffi-example-sprites = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "release-v0.32.x" }
+uniffi-example-todolist = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "release-v0.32.x" }
+uniffi-fixture-benchmarks = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "release-v0.32.x" }
+uniffi-fixture-coverall = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "release-v0.32.x" }
+uniffi-fixture-enum-types = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "release-v0.32.x" }
+uniffi-fixture-ext-types = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "release-v0.32.x" }
+uniffi-fixture-futures = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "release-v0.32.x" }
 uniffi-fixture-primitive-arrays = { path = "fixtures/primitive-arrays" }
-uniffi-fixture-proc-macro = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.32.0" }
-uniffi-fixture-rename = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.32.0" }
-uniffi-fixture-time = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.32.0" }
-uniffi-fixture-trait-methods = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.32.0" }
+uniffi-fixture-proc-macro = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "release-v0.32.x" }
+uniffi-fixture-rename = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "release-v0.32.x" }
+uniffi-fixture-time = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "release-v0.32.x" }
+uniffi-fixture-trait-methods = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "release-v0.32.x" }
 uniffi-fixture-zero-copy = { path = "fixtures/zero-copy" }
-uniffi_testing = { git = "https://github.com/mozilla/uniffi-rs.git", tag = "v0.32.0" }
+uniffi_testing = "0.32.1"
 
 [[bench]]
 name = "benchmarks"
