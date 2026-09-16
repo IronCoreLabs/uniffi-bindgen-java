@@ -392,6 +392,7 @@ fixture_tests! {
     (test_rename, "uniffi-fixture-rename", "scripts/TestRename/TestRename.java"),
     (test_primitive_arrays, "uniffi-fixture-primitive-arrays", "scripts/TestPrimitiveArrays.java"),
     (test_zero_copy, "uniffi-fixture-zero-copy", "scripts/TestZeroCopy.java"),
+    (test_name_collisions, "uniffi-fixture-name-collisions", "scripts/TestNameCollisions.java"),
 }
 
 #[test]

@@ -1,3 +1,7 @@
+## 0.5.2
+
+- fix generated Java failing to compile when a Rust field or parameter name matched a name the generator used in the same scope, such as an enum variant field named `value` ([#63](https://github.com/IronCoreLabs/uniffi-bindgen-java/issues/63)). Enum and error variant field names, and function, method, constructor and callback-interface parameter names can no longer collide with anything the Java generator emits. Names uniffi-rs itself reserves on the Rust side, such as a field named `buf` or a callback-interface parameter named `uniffi_handle`, are rejected by the Rust derive before bindings are generated and remain unavailable.
+
 ## 0.5.1
 
 - adjust dependency requirements to allow consumption of `uniffi` patch bumps
