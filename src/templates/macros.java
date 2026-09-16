@@ -1,13 +1,15 @@
 {#
-// Template to call into rust. Used in several places.
-// Variable names in `arg_list` should match up with arg lists
-// passed to rust via `arg_list_lowered`
+// Template to call into rust. Variable names in `arg_list` should match up with arg lists
+// passed to rust via `arg_list_lowered`.
+//
+// Generated locals sharing a scope with user argument names start with `_`; the invariant
+// is on `JavaCodeOracle::var_name`.
 #}
 
 {%- macro to_ffi_call(func) -%}
     {%- match func.self_type() %}
     {%- when Some with (Type::Object { .. }) %}
-    callWithHandle(uniffiHandle -> {
+    callWithHandle(_uniffiHandle -> {
         try {
     {% if func.return_type().is_some() %}
             return {%- call to_raw_ffi_call(func) %}{% endcall %};
@@ -58,7 +60,7 @@
             {%- when None %}
             {%- endmatch %}
             {%- match func.self_type() %}
-            {%- when Some with (Type::Object { .. }) %}uniffiHandle,
+            {%- when Some with (Type::Object { .. }) %}_uniffiHandle,
             {%- when Some(t) %}{{ t|lower_fn(config, ci) }}(this),
             {%- when None %}
             {%- endmatch %}
@@ -88,7 +90,7 @@
 
     {#- With-executor overload - does the actual async work -#}
     {{ func_decl }} java.util.concurrent.CompletableFuture<{% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|boxed_type_name(ci, config) }}{%- when None %}java.lang.Void{%- endmatch %}> {{ callable.name()|fn_name }}(
-        {%- call arg_list(callable, !callable.self_type().is_some()) %}{% endcall -%}{% if !callable.arguments().is_empty() %}, {% endif %}java.util.concurrent.Executor uniffiExecutor
+        {%- call arg_list(callable, !callable.self_type().is_some()) %}{% endcall -%}{% if !callable.arguments().is_empty() %}, {% endif %}java.util.concurrent.Executor _uniffiExecutor
     ){
         return {% call call_async(callable) %}{% endcall %};
     }
@@ -129,12 +131,12 @@
 
 {%- macro call_async(callable) -%}
     UniffiAsyncHelpers.uniffiRustCallAsync(
-        uniffiExecutor,
+        _uniffiExecutor,
 {%- match callable.self_type() %}
 {%- when Some with (Type::Object { .. }) %}
-        callWithHandle(uniffiHandle -> {
+        callWithHandle(_uniffiHandle -> {
             return UniffiLib.{{ callable.ffi_func().name() }}(
-                uniffiHandle{% if callable.arguments().len() != 0 %},{% endif %}
+                _uniffiHandle{% if callable.arguments().len() != 0 %},{% endif %}
                 {% call arg_list_lowered(callable) %}{% endcall %}
             );
         }),
@@ -152,7 +154,7 @@
         // lift function
         {%- match callable.return_type() %}
         {%- when Some(return_type) %}
-        (it) -> {{ return_type|lift_fn(config, ci) }}(it),
+        (_uniffiResult) -> {{ return_type|lift_fn(config, ci) }}(_uniffiResult),
         {%- when None %}
         () -> {},
         {%- endmatch %}
@@ -204,17 +206,6 @@
 {%-     if !loop.last %}, {% endif -%}
 {%- endfor %}
 {%- endmacro %}
-
-{#-
-// Arglist as used in the UniffiLib function declarations.
-// Note unfiltered name but ffi_type_name filters.
--#}
-{%- macro arg_list_ffi_decl(func) %}
-    {%- for arg in func.arguments() %}
-        {{- arg.type_().borrow()|ffi_type_name(config, ci) }} {{arg.name()|var_name -}}{%- if !loop.last %}, {% endif -%}
-    {%- endfor %}
-    {%- if func.has_rust_call_status_arg() %}{% if func.arguments().len() != 0 %}, {% endif %}java.lang.foreign.MemorySegment uniffi_out_errmk{% endif %}
-{%- endmacro -%}
 
 {% macro field_name(field, field_num) %}
 {{- field|field_java_name(field_num) -}}

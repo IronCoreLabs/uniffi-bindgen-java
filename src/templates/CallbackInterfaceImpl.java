@@ -36,15 +36,15 @@ public class {{ trait_impl }} {
             {{ arg.type_().borrow()|ffi_type_name(config, ci) }} {{ arg.name().borrow()|var_name }}{% if !loop.last || (loop.last && ffi_callback.has_rust_call_status_arg()) %},{% endif %}
             {%- endfor -%}
             {%- if ffi_callback.has_rust_call_status_arg() -%}
-            java.lang.foreign.MemorySegment uniffiCallStatus
+            java.lang.foreign.MemorySegment _uniffiCallStatus
             {%- endif -%}
         ) {
             {%- if ffi_callback.has_rust_call_status_arg() %}
-            uniffiCallStatus = uniffiCallStatus.reinterpret(UniffiRustCallStatus.LAYOUT.byteSize());
+            _uniffiCallStatus = _uniffiCallStatus.reinterpret(UniffiRustCallStatus.LAYOUT.byteSize());
             {%- endif %}
-            var uniffiObj = {{ ffi_converter_name }}.INSTANCE.handleMap.get(uniffiHandle);
-            {% if !meth.is_async() && meth.throws_type().is_some() %}java.util.concurrent.Callable{% else %}java.util.function.Supplier{%endif%}<{% if meth.is_async() %}{{ meth|async_return_type(ci, config) }}{% else %}{% match meth.return_type() %}{% when Some(return_type)%}{{ return_type|type_name(ci, config)}}{% when None %}java.lang.Void{% endmatch %}{% endif %}> makeCall = () -> {
-                {% if meth.return_type().is_some() || meth.is_async() %}return {% endif %}uniffiObj.{{ meth.name()|fn_name() }}(
+            var _uniffiObj = {{ ffi_converter_name }}.INSTANCE.handleMap.get(uniffiHandle);
+            {% if !meth.is_async() && meth.throws_type().is_some() %}java.util.concurrent.Callable{% else %}java.util.function.Supplier{%endif%}<{% if meth.is_async() %}{{ meth|async_return_type(ci, config) }}{% else %}{% match meth.return_type() %}{% when Some(return_type)%}{{ return_type|type_name(ci, config)}}{% when None %}java.lang.Void{% endmatch %}{% endif %}> _uniffiMakeCall = () -> {
+                {% if meth.return_type().is_some() || meth.is_async() %}return {% endif %}_uniffiObj.{{ meth.name()|fn_name() }}(
                     {%- for arg in meth.arguments() %}
                     {{ arg|lift_fn(config, ci) }}({{ arg.name()|var_name }}){% if !loop.last %},{% endif %}
                     {%- endfor %}
@@ -55,29 +55,29 @@ public class {{ trait_impl }} {
             {%- match meth.return_type() %}
             {%- when Some(return_type) %}
             {%- let ffi_return_type = return_type|ffi_type %}
-            java.util.function.Consumer<{{ return_type|type_name(ci, config)}}> writeReturn = ({{ return_type|type_name(ci, config) }} uniffiValue) -> {
+            java.util.function.Consumer<{{ return_type|type_name(ci, config)}}> _uniffiWriteReturn = ({{ return_type|type_name(ci, config) }} _uniffiValue) -> {
                 {%- if ffi_return_type.borrow()|ffi_type_is_embedded_struct %}
-                java.lang.foreign.MemorySegment outReturn = uniffiOutReturn.reinterpret({{ ffi_return_type.borrow()|ffi_struct_type_name }}.LAYOUT.byteSize());
-                java.lang.foreign.MemorySegment lowered = {{ return_type|lower_fn(config, ci) }}(uniffiValue);
-                java.lang.foreign.MemorySegment.copy(lowered, 0, outReturn, 0, {{ ffi_return_type.borrow()|ffi_struct_type_name }}.LAYOUT.byteSize());
+                java.lang.foreign.MemorySegment _uniffiOut = uniffiOutReturn.reinterpret({{ ffi_return_type.borrow()|ffi_struct_type_name }}.LAYOUT.byteSize());
+                java.lang.foreign.MemorySegment _uniffiLowered = {{ return_type|lower_fn(config, ci) }}(_uniffiValue);
+                java.lang.foreign.MemorySegment.copy(_uniffiLowered, 0, _uniffiOut, 0, {{ ffi_return_type.borrow()|ffi_struct_type_name }}.LAYOUT.byteSize());
                 {%- else %}
-                java.lang.foreign.MemorySegment outReturn = uniffiOutReturn.reinterpret({{ ffi_return_type.borrow()|ffi_value_layout }}.byteSize());
-                outReturn.set({{ ffi_return_type.borrow()|ffi_value_layout_unaligned }}, 0, {{ return_type|lower_fn(config, ci) }}(uniffiValue));
+                java.lang.foreign.MemorySegment _uniffiOut = uniffiOutReturn.reinterpret({{ ffi_return_type.borrow()|ffi_value_layout }}.byteSize());
+                _uniffiOut.set({{ ffi_return_type.borrow()|ffi_value_layout_unaligned }}, 0, {{ return_type|lower_fn(config, ci) }}(_uniffiValue));
                 {%- endif %}
             };
             {%- when None %}
-            java.util.function.Consumer<java.lang.Void> writeReturn = (nothing) -> {};
+            java.util.function.Consumer<java.lang.Void> _uniffiWriteReturn = (_uniffiNothing) -> {};
             {%- endmatch %}
 
             {%- match meth.throws_type() %}
             {%- when None %}
-            UniffiHelpers.uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn);
+            UniffiHelpers.uniffiTraitInterfaceCall(_uniffiCallStatus, _uniffiMakeCall, _uniffiWriteReturn);
             {%- when Some(error_type) %}
             UniffiHelpers.uniffiTraitInterfaceCallWithError(
-                uniffiCallStatus,
-                makeCall,
-                writeReturn,
-                ({{error_type|type_name(ci, config) }} e) -> { return {{ error_type|lower_fn(config, ci) }}(e); },
+                _uniffiCallStatus,
+                _uniffiMakeCall,
+                _uniffiWriteReturn,
+                ({{error_type|type_name(ci, config) }} _uniffiErr) -> { return {{ error_type|lower_fn(config, ci) }}(_uniffiErr); },
                 {{error_type|type_name(ci, config)}}.class
             );
             {%- endmatch %}
@@ -86,60 +86,60 @@ public class {{ trait_impl }} {
             {#- Async callback interface method -#}
             {%- let result_struct_name = meth.foreign_future_ffi_result_struct().name()|ffi_struct_name %}
             // The completion callback always has signature: (long callbackData, java.lang.foreign.MemorySegment result) -> void
-            java.lang.foreign.FunctionDescriptor uniffiCompletionDescriptor = java.lang.foreign.FunctionDescriptor.ofVoid(
+            java.lang.foreign.FunctionDescriptor _uniffiCompletionDescriptor = java.lang.foreign.FunctionDescriptor.ofVoid(
                 java.lang.foreign.ValueLayout.JAVA_LONG, {{ result_struct_name }}.LAYOUT
             );
-            java.util.function.Consumer<{{ meth|async_inner_return_type(ci, config) }}> uniffiHandleSuccess = ({% match meth.return_type() %}{%- when Some(return_type) %}returnValue{%- when None %}nothing{% endmatch %}) -> {
-                java.lang.foreign.MemorySegment uniffiResult = java.lang.foreign.Arena.ofAuto().allocate({{ result_struct_name }}.LAYOUT);
+            java.util.function.Consumer<{{ meth|async_inner_return_type(ci, config) }}> _uniffiHandleSuccess = ({% match meth.return_type() %}{%- when Some(return_type) %}_uniffiReturnValue{%- when None %}_uniffiNothing{% endmatch %}) -> {
+                java.lang.foreign.MemorySegment _uniffiResult = java.lang.foreign.Arena.ofAuto().allocate({{ result_struct_name }}.LAYOUT);
                 {%- match meth.return_type() %}
                 {%- when Some(return_type) %}
                 {%- let ffi_return_type = return_type|ffi_type %}
                 {%- if ffi_return_type.borrow()|ffi_type_is_embedded_struct %}
-                java.lang.foreign.MemorySegment lowered = {{ return_type|lower_fn(config, ci) }}(returnValue);
-                {{ result_struct_name }}.setreturnValue(uniffiResult, lowered);
+                java.lang.foreign.MemorySegment _uniffiLowered = {{ return_type|lower_fn(config, ci) }}(_uniffiReturnValue);
+                {{ result_struct_name }}.setreturnValue(_uniffiResult, _uniffiLowered);
                 {%- else %}
-                {{ result_struct_name }}.setreturnValue(uniffiResult, {{ return_type|lower_fn(config, ci) }}(returnValue));
+                {{ result_struct_name }}.setreturnValue(_uniffiResult, {{ return_type|lower_fn(config, ci) }}(_uniffiReturnValue));
                 {%- endif %}
                 {%- when None %}
                 {%- endmatch %}
                 // Set status to success (zeroed out already)
                 try {
                     // Convert the upcall java.lang.foreign.MemorySegment to a globally-scoped one for cross-thread use
-                    java.lang.foreign.MemorySegment globalCallback = java.lang.foreign.MemorySegment.ofAddress(uniffiFutureCallback.address());
-                    java.lang.invoke.MethodHandle mh = java.lang.foreign.Linker.nativeLinker().downcallHandle(
-                        globalCallback, uniffiCompletionDescriptor);
-                    mh.invokeExact(uniffiCallbackData, uniffiResult);
-                } catch (Throwable t) {
-                    throw new AssertionError("invokeExact failed", t);
+                    java.lang.foreign.MemorySegment _uniffiGlobalCallback = java.lang.foreign.MemorySegment.ofAddress(uniffiFutureCallback.address());
+                    java.lang.invoke.MethodHandle _uniffiMh = java.lang.foreign.Linker.nativeLinker().downcallHandle(
+                        _uniffiGlobalCallback, _uniffiCompletionDescriptor);
+                    _uniffiMh.invokeExact(uniffiCallbackData, _uniffiResult);
+                } catch (Throwable _uniffiThrowable) {
+                    throw new AssertionError("invokeExact failed", _uniffiThrowable);
                 }
             };
-            java.util.function.Consumer<java.lang.foreign.MemorySegment> uniffiHandleError = (callStatus) -> {
-                java.lang.foreign.MemorySegment uniffiResult = java.lang.foreign.Arena.ofAuto().allocate({{ result_struct_name }}.LAYOUT);
-                {{ result_struct_name }}.setcallStatus(uniffiResult, callStatus);
+            java.util.function.Consumer<java.lang.foreign.MemorySegment> _uniffiHandleError = (_uniffiErrStatus) -> {
+                java.lang.foreign.MemorySegment _uniffiResult = java.lang.foreign.Arena.ofAuto().allocate({{ result_struct_name }}.LAYOUT);
+                {{ result_struct_name }}.setcallStatus(_uniffiResult, _uniffiErrStatus);
                 try {
-                    java.lang.foreign.MemorySegment globalCallback = java.lang.foreign.MemorySegment.ofAddress(uniffiFutureCallback.address());
-                    java.lang.invoke.MethodHandle mh = java.lang.foreign.Linker.nativeLinker().downcallHandle(
-                        globalCallback, uniffiCompletionDescriptor);
-                    mh.invokeExact(uniffiCallbackData, uniffiResult);
-                } catch (Throwable t) {
-                    throw new AssertionError("invokeExact failed", t);
+                    java.lang.foreign.MemorySegment _uniffiGlobalCallback = java.lang.foreign.MemorySegment.ofAddress(uniffiFutureCallback.address());
+                    java.lang.invoke.MethodHandle _uniffiMh = java.lang.foreign.Linker.nativeLinker().downcallHandle(
+                        _uniffiGlobalCallback, _uniffiCompletionDescriptor);
+                    _uniffiMh.invokeExact(uniffiCallbackData, _uniffiResult);
+                } catch (Throwable _uniffiThrowable) {
+                    throw new AssertionError("invokeExact failed", _uniffiThrowable);
                 }
             };
 
             {%- match meth.throws_type() %}
             {%- when None %}
             UniffiAsyncHelpers.uniffiTraitInterfaceCallAsync(
-                makeCall,
-                uniffiHandleSuccess,
-                uniffiHandleError,
+                _uniffiMakeCall,
+                _uniffiHandleSuccess,
+                _uniffiHandleError,
                 uniffiOutDroppedCallback
             );
             {%- when Some(error_type) %}
             UniffiAsyncHelpers.uniffiTraitInterfaceCallAsyncWithError(
-                makeCall,
-                uniffiHandleSuccess,
-                uniffiHandleError,
-                ({{error_type|type_name(ci, config) }} e) -> {{ error_type|lower_fn(config, ci) }}(e),
+                _uniffiMakeCall,
+                _uniffiHandleSuccess,
+                _uniffiHandleError,
+                ({{error_type|type_name(ci, config) }} _uniffiErr) -> {{ error_type|lower_fn(config, ci) }}(_uniffiErr),
                 {{ error_type|type_name(ci, config)}}.class,
                 uniffiOutDroppedCallback
             );

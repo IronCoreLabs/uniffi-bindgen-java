@@ -158,14 +158,16 @@ public enum {{ e|ffi_converter_name}} implements FfiConverterRustBuffer<{{ type_
       };
     }
 
+    {#- Pattern bindings are positional so no user field name enters this scope; a field named
+        `value` or `buf` would otherwise clash with the converter's own parameters. -#}
     @Override
     public long allocationSize({{ type_name }} value) {
         return switch (value) {
           {%- for variant in e.variants() %}
-          case {{ type_name }}.{{ variant|type_name(ci, config) }}({%- for field in variant.fields() %}var {% call java::field_name(field, loop.index) %}{% endcall -%}{% if !loop.last%}, {% endif %}{% endfor %}) ->
+          case {{ type_name }}.{{ variant|type_name(ci, config) }}({%- for field in variant.fields() %}var v{{ loop.index }}{% if !loop.last%}, {% endif %}{% endfor %}) ->
             (4L
             {%- for field in variant.fields() %}
-            + {{ field|allocation_size_fn(config, ci) }}({%- call java::field_name(field, loop.index) %}{% endcall -%})
+            + {{ field|allocation_size_fn(config, ci) }}(v{{ loop.index }})
             {%- endfor %});
           {%- endfor %}
         };
@@ -175,10 +177,10 @@ public enum {{ e|ffi_converter_name}} implements FfiConverterRustBuffer<{{ type_
     public void write({{ type_name }} value, java.nio.ByteBuffer buf) {
       switch (value) {
         {%- for variant in e.variants() %}
-        case {{ type_name }}.{{ variant|type_name(ci, config) }}({%- for field in variant.fields() %}var {% call java::field_name(field, loop.index) %}{% endcall -%}{% if !loop.last%}, {% endif %}{% endfor %}) -> {
+        case {{ type_name }}.{{ variant|type_name(ci, config) }}({%- for field in variant.fields() %}var v{{ loop.index }}{% if !loop.last%}, {% endif %}{% endfor %}) -> {
           buf.putInt({{ loop.index }});
           {%- for field in variant.fields() %}
-          {{ field|write_fn(config, ci) }}({%- call java::field_name(field, loop.index) %}{% endcall -%}, buf);
+          {{ field|write_fn(config, ci) }}(v{{ loop.index }}, buf);
           {%- endfor %}
         }
         {%- endfor %}
