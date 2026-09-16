@@ -450,41 +450,49 @@ public class TestFixtureFutures {
         System.out.println("immediate cancellation (100 iterations) ... ok");
       }
 
-      // There is a theoretical race in our async code: if cancel() fires between the
-      // isCancelled() check and the freeFunc call in whenComplete, both paths call
-      // rust_future_free on the same handle. Currently this is safe because uniffi's
-      // rust_future_free is effectively idempotent:
-      //   - Handle::into_arc_borrowed increments the Arc refcount before creating the Arc,
-      //     so the RustFuture allocation stays alive across multiple free calls.
-      //   - RustFuture::free() just clears internal state (future=None, result=None) and
-      //     cancels the scheduler; the second call is a no-op.
-      //
-      // This test remains in place to catch any regression if uniffi changes its handle
-      // management to be less tolerant of double-free.
+      // cancel() from many threads racing the pipeline's complete/free and re-poll stages on
+      // the common pool. rust_future_free consumes the handle's Arc reference, so a second free
+      // or a poll after free corrupts the heap; glibc reports it as "tcache_thread_shutdown():
+      // unaligned tcache chunk detected" when the fixture's timer thread exits. Crashed the
+      // broken bindings 3/3 within 2s on an M4 where the 200-iteration single-thread loop passed.
       {
-        for (int i = 0; i < 200; i++) {
-            // 1ms sleep means the future may complete around the same time we cancel
-            var job = Futures.sayAfter((short)1, "race-" + i);
-            // Small random-ish delay to vary the race timing
-            if (i % 3 == 0) {
-                Thread.yield();
-            }
-            job.cancel(true);
+        int threads = 8, iters = 20_000;
+        var failure = new java.util.concurrent.atomic.AtomicReference<Throwable>();
+        Thread[] workers = new Thread[threads];
+        for (int t = 0; t < threads; t++) {
+            final int seed = t;
+            workers[t] = new Thread(() -> {
+                try {
+                    for (int i = 0; i < iters; i++) {
+                        CompletableFuture<?> job = switch ((i + seed) % 3) {
+                            case 0 -> Futures.sayAfter((short)1, "race");
+                            case 1 -> Futures.brokenSleep((short)1, (short)1);
+                            default -> Futures.alwaysReady();
+                        };
+                        if (i % 2 == 0) {
+                            Thread.yield();
+                        }
+                        job.cancel(true);
+                    }
+                } catch (Throwable e) {
+                    failure.compareAndSet(null, e);
+                }
+            });
+            workers[t].start();
         }
-        // Verify the system is still healthy after many race attempts.
+        for (Thread w : workers) {
+            w.join();
+        }
+        assert failure.get() == null : "cancel stress threw: " + failure.get();
+        // Lets the 1ms timer threads finish.
+        TestFixtureFutures.delay(50).get();
         var result = Futures.sayAfter((short)1, "post-race").get();
-        assert result.equals("Hello, post-race!") : "async broken after double-free race test";
-        System.out.println("double-free race (200 iterations) ... ok");
+        assert result.equals("Hello, post-race!") : "async broken after cancel race test";
+        System.out.println(MessageFormat.format("cancel race ({0} threads x {1} iterations) ... ok", threads, iters));
       }
 
-      // When a future is cancelled, our pollUntilReady chain may still have an in-flight
-      // poll when freeFunc is called. The orphaned chain can then call rust_future_poll on
-      // the freed handle. Currently this is safe because uniffi's Scheduler enters the
-      // Cancelled state on free, and any subsequent poll short-circuits to Ready via
-      // is_cancelled() without touching the inner future.
-      //
-      // This test remains in place to catch any regression if uniffi changes its
-      // post-free poll behavior.
+      // cancel() racing an in-flight re-poll. rust_future_poll on a freed handle increments a
+      // refcount in freed memory.
       {
         for (int i = 0; i < 50; i++) {
             // brokenSleep calls the waker multiple times, creating multiple polls.
