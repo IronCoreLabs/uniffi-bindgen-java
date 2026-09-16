@@ -1,3 +1,7 @@
+## 0.5.2
+
+- fix a narrow race in async cancellation. If `cancel()` on a `CompletableFuture` returned by an async function landed in the few instructions between the pipeline's `isCancelled()` check and its own `rust_future_free`, or between a wake and the re-poll it triggers, the Rust future was freed twice or polled after being freed. Seen once in CI as a glibc `tcache_thread_shutdown()` abort. Every use of the handle now runs under the future's monitor and stops once it has been freed. No measurable change to async call overhead.
+
 ## 0.5.1
 
 - adjust dependency requirements to allow consumption of `uniffi` patch bumps
