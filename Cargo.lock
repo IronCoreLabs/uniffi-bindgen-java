@@ -1658,6 +1658,7 @@ dependencies = [
  "uniffi-fixture-enum-types",
  "uniffi-fixture-ext-types",
  "uniffi-fixture-futures",
+ "uniffi-fixture-name-collisions",
  "uniffi-fixture-primitive-arrays",
  "uniffi-fixture-proc-macro",
  "uniffi-fixture-rename",
@@ -1840,6 +1841,15 @@ dependencies = [
  "once_cell",
  "thiserror",
  "tokio",
+ "uniffi",
+]
+
+[[package]]
+name = "uniffi-fixture-name-collisions"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "thiserror",
  "uniffi",
 ]
 

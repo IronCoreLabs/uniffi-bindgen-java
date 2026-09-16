@@ -849,6 +849,9 @@ impl JavaCodeOracle {
     }
 
     /// Get the idiomatic Java rendering of a variable name.
+    ///
+    /// Output is `[a-z][A-Za-z0-9]*`, or `_` followed by a Java keyword. Templates rely on this:
+    /// a generated local named `_x` with `x` not a keyword can never equal a user's argument name.
     pub fn var_name(&self, nm: &str) -> String {
         fixup_keyword(self.var_name_raw(nm))
     }
@@ -2218,6 +2221,29 @@ mod tests {
         NamespaceMetadata, ObjectImpl, ObjectMetadata, ObjectTraitImplMetadata, Radix,
         RecordMetadata, TraitKind, TraitMethodMetadata, Type, VariantMetadata,
     };
+
+    #[test]
+    fn var_name_never_yields_underscore_prefixed_non_keyword() {
+        for input in [
+            "_status",
+            "__uniffi_handle",
+            "_",
+            "uniffi_handle",
+            "_uniffiHandle",
+            "make_call",
+            "_allocator",
+            "it",
+        ] {
+            let name = JavaCodeOracle.var_name(input);
+            let rest = name.strip_prefix('_');
+            assert!(
+                rest.is_none_or(|rest| KEYWORDS.contains(rest)),
+                "{input:?} rendered as {name:?}, which a template-owned `_` local could equal"
+            );
+        }
+        assert_eq!(JavaCodeOracle.var_name("int"), "_int");
+        assert_eq!(JavaCodeOracle.var_name("uniffi_handle"), "uniffiHandle");
+    }
 
     #[test]
     fn error_variant_holding_an_object_is_closeable() {

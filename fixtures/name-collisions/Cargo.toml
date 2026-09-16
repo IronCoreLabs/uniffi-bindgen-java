@@ -1,0 +1,13 @@
+[package]
+name = "uniffi-fixture-name-collisions"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "uniffi_fixture_name_collisions"
+
+[dependencies]
+uniffi = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "release-v0.32.x" }
+async-trait = "0.1"
+thiserror = "2"

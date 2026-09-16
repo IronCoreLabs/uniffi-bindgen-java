@@ -57,7 +57,7 @@ public final class {{ callback.name()|ffi_callback_name }} {
             {{ arg.type_().borrow()|ffi_type_name(config, ci) }} {{ arg.name().borrow()|var_name }}{% if !loop.last %},{% endif %}
             {%- endfor -%}
             {%- if callback.has_rust_call_status_arg() -%}{% if callback.arguments().len() != 0 %},{% endif %}
-            java.lang.foreign.MemorySegment uniffiCallStatus
+            java.lang.foreign.MemorySegment _uniffiCallStatus
             {%- endif -%}
         );
     }
@@ -158,26 +158,26 @@ final class UniffiLib {
     {%- if return_type|ffi_type_is_struct %}
     private static final java.lang.invoke.MethodHandle MH_{{ func.name() }} = findDowncallHandle("{{ func.name() }}", java.lang.foreign.FunctionDescriptor.of({{ return_type|ffi_value_layout }}{% for arg in func.arguments() %}, {{ arg.type_().borrow()|ffi_value_layout }}{% endfor %}{% if func.has_rust_call_status_arg() %}, java.lang.foreign.ValueLayout.ADDRESS{% endif %}));
 
-    static java.lang.foreign.MemorySegment {{ func.name() }}(java.lang.foreign.SegmentAllocator _allocator{% for arg in func.arguments() %}, {{ arg.type_().borrow()|ffi_type_name(config, ci) }} {{ arg.name()|var_name }}{% endfor %}{% if func.has_rust_call_status_arg() %}, java.lang.foreign.MemorySegment uniffiOutErr{% endif %}) {
+    static java.lang.foreign.MemorySegment {{ func.name() }}(java.lang.foreign.SegmentAllocator _allocator{% for arg in func.arguments() %}, {{ arg.type_().borrow()|ffi_type_name(config, ci) }} {{ arg.name()|var_name }}{% endfor %}{% if func.has_rust_call_status_arg() %}, java.lang.foreign.MemorySegment _uniffiOutErr{% endif %}) {
         try {
-            return (java.lang.foreign.MemorySegment) MH_{{ func.name() }}.invokeExact(_allocator{% for arg in func.arguments() %}, {{ arg.name()|var_name }}{% endfor %}{% if func.has_rust_call_status_arg() %}, uniffiOutErr{% endif %});
+            return (java.lang.foreign.MemorySegment) MH_{{ func.name() }}.invokeExact(_allocator{% for arg in func.arguments() %}, {{ arg.name()|var_name }}{% endfor %}{% if func.has_rust_call_status_arg() %}, _uniffiOutErr{% endif %});
         } catch (Throwable _ex) { throw new AssertionError("invokeExact failed", _ex); }
     }
     {%- else %}
     private static final java.lang.invoke.MethodHandle MH_{{ func.name() }} = findDowncallHandle("{{ func.name() }}", java.lang.foreign.FunctionDescriptor.of({{ return_type|ffi_value_layout }}{% for arg in func.arguments() %}, {{ arg.type_().borrow()|ffi_value_layout }}{% endfor %}{% if func.has_rust_call_status_arg() %}, java.lang.foreign.ValueLayout.ADDRESS{% endif %}));
 
-    static {{ return_type|ffi_type_name(config, ci) }} {{ func.name() }}({% for arg in func.arguments() %}{{ arg.type_().borrow()|ffi_type_name(config, ci) }} {{ arg.name()|var_name }}{% if !loop.last %}, {% endif %}{% endfor %}{% if func.has_rust_call_status_arg() %}{% if func.arguments().len() != 0 %}, {% endif %}java.lang.foreign.MemorySegment uniffiOutErr{% endif %}) {
+    static {{ return_type|ffi_type_name(config, ci) }} {{ func.name() }}({% for arg in func.arguments() %}{{ arg.type_().borrow()|ffi_type_name(config, ci) }} {{ arg.name()|var_name }}{% if !loop.last %}, {% endif %}{% endfor %}{% if func.has_rust_call_status_arg() %}{% if func.arguments().len() != 0 %}, {% endif %}java.lang.foreign.MemorySegment _uniffiOutErr{% endif %}) {
         try {
-            return {{ return_type|ffi_invoke_exact_cast }}MH_{{ func.name() }}.invokeExact({% for arg in func.arguments() %}{{ arg.name()|var_name }}{% if !loop.last %}, {% endif %}{% endfor %}{% if func.has_rust_call_status_arg() %}{% if func.arguments().len() != 0 %}, {% endif %}uniffiOutErr{% endif %});
+            return {{ return_type|ffi_invoke_exact_cast }}MH_{{ func.name() }}.invokeExact({% for arg in func.arguments() %}{{ arg.name()|var_name }}{% if !loop.last %}, {% endif %}{% endfor %}{% if func.has_rust_call_status_arg() %}{% if func.arguments().len() != 0 %}, {% endif %}_uniffiOutErr{% endif %});
         } catch (Throwable _ex) { throw new AssertionError("invokeExact failed", _ex); }
     }
     {%- endif %}
     {%- when None %}
     private static final java.lang.invoke.MethodHandle MH_{{ func.name() }} = findDowncallHandle("{{ func.name() }}", java.lang.foreign.FunctionDescriptor.ofVoid({% for arg in func.arguments() %}{{ arg.type_().borrow()|ffi_value_layout }}{% if !loop.last %}, {% endif %}{% endfor %}{% if func.has_rust_call_status_arg() %}{% if func.arguments().len() != 0 %}, {% endif %}java.lang.foreign.ValueLayout.ADDRESS{% endif %}));
 
-    static void {{ func.name() }}({% for arg in func.arguments() %}{{ arg.type_().borrow()|ffi_type_name(config, ci) }} {{ arg.name()|var_name }}{% if !loop.last %}, {% endif %}{% endfor %}{% if func.has_rust_call_status_arg() %}{% if func.arguments().len() != 0 %}, {% endif %}java.lang.foreign.MemorySegment uniffiOutErr{% endif %}) {
+    static void {{ func.name() }}({% for arg in func.arguments() %}{{ arg.type_().borrow()|ffi_type_name(config, ci) }} {{ arg.name()|var_name }}{% if !loop.last %}, {% endif %}{% endfor %}{% if func.has_rust_call_status_arg() %}{% if func.arguments().len() != 0 %}, {% endif %}java.lang.foreign.MemorySegment _uniffiOutErr{% endif %}) {
         try {
-            MH_{{ func.name() }}.invokeExact({% for arg in func.arguments() %}{{ arg.name()|var_name }}{% if !loop.last %}, {% endif %}{% endfor %}{% if func.has_rust_call_status_arg() %}{% if func.arguments().len() != 0 %}, {% endif %}uniffiOutErr{% endif %});
+            MH_{{ func.name() }}.invokeExact({% for arg in func.arguments() %}{{ arg.name()|var_name }}{% if !loop.last %}, {% endif %}{% endfor %}{% if func.has_rust_call_status_arg() %}{% if func.arguments().len() != 0 %}, {% endif %}_uniffiOutErr{% endif %});
         } catch (Throwable _ex) { throw new AssertionError("invokeExact failed", _ex); }
     }
     {%- endmatch %}

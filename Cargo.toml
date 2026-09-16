@@ -62,6 +62,7 @@ uniffi-fixture-coverall = { git = "https://github.com/mozilla/uniffi-rs.git", br
 uniffi-fixture-enum-types = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "release-v0.32.x" }
 uniffi-fixture-ext-types = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "release-v0.32.x" }
 uniffi-fixture-futures = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "release-v0.32.x" }
+uniffi-fixture-name-collisions = { path = "fixtures/name-collisions" }
 uniffi-fixture-primitive-arrays = { path = "fixtures/primitive-arrays" }
 uniffi-fixture-proc-macro = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "release-v0.32.x" }
 uniffi-fixture-rename = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "release-v0.32.x" }
