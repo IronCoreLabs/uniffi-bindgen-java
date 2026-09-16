@@ -116,9 +116,12 @@ fn run_test(fixture_name: &str, test_file: &str) -> Result<()> {
     let jar_file = build_jar(fixture_name, &out_dir)?;
 
     // compile test
+    // Helper sources in a package directory beside the test compile from here, e.g. to reach
+    // package-private generated helpers.
+    let test_dir = test_path.parent().unwrap().to_path_buf();
     let status = Command::new("javac")
         .arg("-classpath")
-        .arg(calc_classpath(vec![&out_dir, &jar_file]))
+        .arg(calc_classpath(vec![&out_dir, &jar_file, &test_dir]))
         // Our tests should not produce any warnings.
         .arg("-Werror")
         .arg(&test_path)
@@ -132,7 +135,7 @@ fn run_test(fixture_name: &str, test_file: &str) -> Result<()> {
 
     // run resulting test
     let compiled_path = test_path.file_stem().unwrap();
-    let run_status = Command::new("java")
+    let run_status = java_command()
         // allow for runtime assertions
         .arg("-ea")
         // Enable FFM native access
@@ -140,11 +143,7 @@ fn run_test(fixture_name: &str, test_file: &str) -> Result<()> {
         // Set native library path so System.loadLibrary can find the cdylib
         .arg(format!("-Djava.library.path={}", native_lib_dir))
         .arg("-classpath")
-        .arg(calc_classpath(vec![
-            &out_dir,
-            &jar_file,
-            &test_path.parent().unwrap().to_path_buf(),
-        ]))
+        .arg(calc_classpath(vec![&out_dir, &jar_file, &test_dir]))
         .arg(compiled_path)
         .spawn()
         .context("Failed to spawn `java` to run Java test")?
@@ -222,7 +221,7 @@ fn run_test_with_library_override(
     // Run with library override set to an absolute path and NO java.library.path,
     // so this can only work if the generated code uses System.load() for absolute paths.
     let compiled_path = test_path.file_stem().unwrap();
-    let run_status = Command::new("java")
+    let run_status = java_command()
         .arg("-ea")
         .arg("--enable-native-access=ALL-UNNAMED")
         .arg(format!(
@@ -246,6 +245,18 @@ fn run_test_with_library_override(
     }
 
     Ok(())
+}
+
+/// `java` with allocator debug checks that abort on a stale write into freed native memory. Each
+/// platform ignores the other's variables.
+fn java_command() -> Command {
+    let mut cmd = Command::new("java");
+    // glibc: fill freed memory with a pattern.
+    cmd.env("GLIBC_TUNABLES", "glibc.malloc.perturb=165");
+    // macOS libmalloc: fill freed memory and guard large allocations.
+    cmd.env("MallocScribble", "1");
+    cmd.env("MallocGuardEdges", "1");
+    cmd
 }
 
 /// Get the uniffi_toml of the fixture if it exists.
@@ -391,6 +402,7 @@ fixture_tests! {
     (test_proc_macro, "uniffi-fixture-proc-macro", "scripts/TestProcMacro.java"),
     (test_rename, "uniffi-fixture-rename", "scripts/TestRename/TestRename.java"),
     (test_primitive_arrays, "uniffi-fixture-primitive-arrays", "scripts/TestPrimitiveArrays.java"),
+    (test_async_lifecycle, "uniffi-fixture-async-lifecycle", "scripts/TestAsyncLifecycle/TestAsyncLifecycle.java"),
     (test_zero_copy, "uniffi-fixture-zero-copy", "scripts/TestZeroCopy.java"),
 }
 

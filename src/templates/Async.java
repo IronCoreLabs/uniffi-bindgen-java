@@ -44,67 +44,52 @@ public final class UniffiAsyncHelpers {
         void apply(java.lang.foreign.SegmentAllocator allocator, long rustFuture, java.lang.foreign.MemorySegment status);
     }
 
-    // Every use of the handle holds the monitor and checks `freed` first. cancel() frees on the
-    // calling thread while the poll/complete pipeline may be mid-call on an executor thread.
+    // The pipeline is the sole freer; cancel() only signals Rust, which fires the in-flight poll's
+    // continuation and makes later polls return Ready. `lock` covers only rust_future_cancel and
+    // rust_future_free, neither of which runs user code. A failed tryLock means free() is in
+    // progress and there is nothing left to cancel.
     static final class UniffiFreeingFuture<T> extends java.util.concurrent.CompletableFuture<T> {
         private final long rustFuture;
+        private final java.util.function.Consumer<java.lang.Long> cancelFunc;
         private final java.util.function.Consumer<java.lang.Long> freeFunc;
+        private final java.util.concurrent.locks.ReentrantLock lock = new java.util.concurrent.locks.ReentrantLock();
         private boolean freed;
 
-        UniffiFreeingFuture(long rustFuture, java.util.function.Consumer<java.lang.Long> freeFunc) {
+        UniffiFreeingFuture(
+            long rustFuture,
+            java.util.function.Consumer<java.lang.Long> cancelFunc,
+            java.util.function.Consumer<java.lang.Long> freeFunc
+        ) {
             this.rustFuture = rustFuture;
+            this.cancelFunc = cancelFunc;
             this.freeFunc = freeFunc;
         }
 
         @Override
         public boolean cancel(boolean mayInterruptIfRunning) {
             boolean cancelled = super.cancel(mayInterruptIfRunning);
-            if (cancelled) {
-                free();
+            if (cancelled && lock.tryLock()) {
+                try {
+                    if (!freed) {
+                        cancelFunc.accept(rustFuture);
+                    }
+                } finally {
+                    lock.unlock();
+                }
             }
             return cancelled;
         }
 
-        synchronized void free() {
-            if (freed) {
-                return;
+        void free() {
+            lock.lock();
+            try {
+                if (!freed) {
+                    freed = true;
+                    freeFunc.accept(rustFuture);
+                }
+            } finally {
+                lock.unlock();
             }
-            freed = true;
-            freeFunc.accept(rustFuture);
-        }
-
-        // Returns false, without polling, once freed.
-        synchronized boolean poll(PollingFunction pollFunc, long continuationHandle) {
-            if (freed) {
-                return false;
-            }
-            pollFunc.apply(rustFuture, CONTINUATION_CALLBACK_STUB, continuationHandle);
-            return true;
-        }
-
-        // Returns null once freed, which the pipeline only reaches after cancel().
-        synchronized <F, E extends java.lang.Exception> F completeRust(
-            AsyncCompleteFunction<F> completeFunc,
-            UniffiRustCallStatusErrorHandler<E> errorHandler
-        ) throws E {
-            if (freed) {
-                return null;
-            }
-            return UniffiHelpers.uniffiRustCallWithError(errorHandler, (_allocator, status) -> {
-                return completeFunc.apply(_allocator, rustFuture, status);
-            });
-        }
-
-        synchronized <E extends java.lang.Exception> void completeRustVoid(
-            AsyncCompleteVoidFunction completeFunc,
-            UniffiRustCallStatusErrorHandler<E> errorHandler
-        ) throws E {
-            if (freed) {
-                return;
-            }
-            UniffiHelpers.uniffiRustCallWithError(errorHandler, (_allocator, status) -> {
-                completeFunc.apply(_allocator, rustFuture, status);
-            });
         }
     }
 
@@ -132,15 +117,16 @@ public final class UniffiAsyncHelpers {
         long rustFuture,
         PollingFunction pollFunc,
         AsyncCompleteFunction<F> completeFunc,
+        java.util.function.Consumer<java.lang.Long> cancelFunc,
         java.util.function.Consumer<java.lang.Long> freeFunc,
         java.util.function.Function<F, T> liftFunc,
         UniffiRustCallStatusErrorHandler<E> errorHandler
     ){
-        UniffiFreeingFuture<T> future = new UniffiFreeingFuture<>(rustFuture, freeFunc);
+        UniffiFreeingFuture<T> future = new UniffiFreeingFuture<>(rustFuture, cancelFunc, freeFunc);
 
         java.util.concurrent.CompletableFuture<java.lang.Void> pollChain;
         try {
-            pollChain = pollUntilReady(future, pollFunc, uniffiExecutor);
+            pollChain = pollUntilReady(rustFuture, pollFunc, uniffiExecutor);
         } catch (java.lang.Exception e) {
             future.completeExceptionally(e);
             future.free();
@@ -152,8 +138,10 @@ public final class UniffiAsyncHelpers {
                 return null;
             }
             try {
-                F result = future.completeRust(completeFunc, errorHandler);
-                return result == null ? null : liftFunc.apply(result);
+                F result = UniffiHelpers.uniffiRustCallWithError(errorHandler, (_allocator, status) -> {
+                    return completeFunc.apply(_allocator, rustFuture, status);
+                });
+                return liftFunc.apply(result);
             } catch (java.lang.Exception e) {
                 throw new java.util.concurrent.CompletionException(e);
             }
@@ -184,15 +172,16 @@ public final class UniffiAsyncHelpers {
         long rustFuture,
         PollingFunction pollFunc,
         AsyncCompleteVoidFunction completeFunc,
+        java.util.function.Consumer<java.lang.Long> cancelFunc,
         java.util.function.Consumer<java.lang.Long> freeFunc,
         java.lang.Runnable liftFunc,
         UniffiRustCallStatusErrorHandler<E> errorHandler
     ){
-        UniffiFreeingFuture<java.lang.Void> future = new UniffiFreeingFuture<>(rustFuture, freeFunc);
+        UniffiFreeingFuture<java.lang.Void> future = new UniffiFreeingFuture<>(rustFuture, cancelFunc, freeFunc);
 
         java.util.concurrent.CompletableFuture<java.lang.Void> pollChain;
         try {
-            pollChain = pollUntilReady(future, pollFunc, uniffiExecutor);
+            pollChain = pollUntilReady(rustFuture, pollFunc, uniffiExecutor);
         } catch (java.lang.Exception e) {
             future.completeExceptionally(e);
             future.free();
@@ -204,7 +193,9 @@ public final class UniffiAsyncHelpers {
                 return null;
             }
             try {
-                future.completeRustVoid(completeFunc, errorHandler);
+                UniffiHelpers.uniffiRustCallWithError(errorHandler, (_allocator, status) -> {
+                    completeFunc.apply(_allocator, rustFuture, status);
+                });
             } catch (java.lang.Exception e) {
                 throw new java.util.concurrent.CompletionException(e);
             }
@@ -228,18 +219,15 @@ public final class UniffiAsyncHelpers {
         return future;
     }
 
-    private static java.util.concurrent.CompletableFuture<java.lang.Void> pollUntilReady(UniffiFreeingFuture<?> future, PollingFunction pollFunc, java.util.concurrent.Executor uniffiExecutor) {
+    private static java.util.concurrent.CompletableFuture<java.lang.Void> pollUntilReady(long rustFuture, PollingFunction pollFunc, java.util.concurrent.Executor uniffiExecutor) {
         java.util.concurrent.CompletableFuture<java.lang.Byte> pollFuture = new java.util.concurrent.CompletableFuture<>();
         var handle = uniffiContinuationHandleMap.insert(pollFuture);
-        if (!future.poll(pollFunc, handle)) {
-            uniffiContinuationHandleMap.remove(handle);
-            return java.util.concurrent.CompletableFuture.completedFuture(null);
-        }
+        pollFunc.apply(rustFuture, CONTINUATION_CALLBACK_STUB, handle);
         return pollFuture.thenComposeAsync(pollResult -> {
             if (pollResult == UNIFFI_RUST_FUTURE_POLL_READY) {
                 return java.util.concurrent.CompletableFuture.completedFuture(null);
             } else {
-                return pollUntilReady(future, pollFunc, uniffiExecutor);
+                return pollUntilReady(rustFuture, pollFunc, uniffiExecutor);
             }
         }, uniffiExecutor);
     }

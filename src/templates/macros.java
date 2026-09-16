@@ -73,11 +73,11 @@
 {%- endmacro -%}
 
 {%- macro func_decl(func_decl, annotation, callable, indent) %}
-    {%- call docstring(callable, indent) %}{% endcall %}
+    {%- if callable.is_async() %}
+    {{ callable|async_docstring(indent, false) }}
     {%- if annotation != "" %}
     @{{ annotation }}
     {% endif %}
-    {%- if callable.is_async() %}
     {#- Async methods use CompletableFuture<T> which requires boxed types -#}
     {#- No-executor overload - defaults to ForkJoinPool.commonPool(), delegates to Executor version -#}
     {{ func_decl }} java.util.concurrent.CompletableFuture<{% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|boxed_type_name(ci, config) }}{%- when None %}java.lang.Void{%- endmatch %}> {{ callable.name()|fn_name }}(
@@ -87,12 +87,17 @@
     }
 
     {#- With-executor overload - does the actual async work -#}
+    {{ callable|async_docstring(indent, true) }}
     {{ func_decl }} java.util.concurrent.CompletableFuture<{% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|boxed_type_name(ci, config) }}{%- when None %}java.lang.Void{%- endmatch %}> {{ callable.name()|fn_name }}(
         {%- call arg_list(callable, !callable.self_type().is_some()) %}{% endcall -%}{% if !callable.arguments().is_empty() %}, {% endif %}java.util.concurrent.Executor uniffiExecutor
     ){
         return {% call call_async(callable) %}{% endcall %};
     }
     {%- else -%}
+    {%- call docstring(callable, indent) %}{% endcall %}
+    {%- if annotation != "" %}
+    @{{ annotation }}
+    {% endif %}
     {#- Sync methods can use primitives for return types -#}
     {{ func_decl }} {% match callable.return_type() -%}{%- when Some with (return_type) -%}{{ return_type|type_name_for_field(ci, config) }}{%- when None %}void{%- endmatch %} {{ callable.name()|fn_name }}(
         {%- call arg_list(callable, !callable.self_type().is_some()) %}{% endcall -%}
@@ -148,6 +153,7 @@
 {%- endmatch %}
         {{ callable|async_poll(ci) }},
         {{ callable|async_complete(ci, config) }},
+        {{ callable|async_cancel(ci) }},
         {{ callable|async_free(ci) }},
         // lift function
         {%- match callable.return_type() %}

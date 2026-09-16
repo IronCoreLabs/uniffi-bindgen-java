@@ -1907,6 +1907,16 @@ mod filters {
     }
 
     #[askama::filter_fn]
+    pub fn async_cancel(
+        callable: impl Callable,
+        _v: &dyn askama::Values,
+        ci: &ComponentInterface,
+    ) -> Result<String, askama::Error> {
+        let ffi_func = callable.ffi_rust_future_cancel(ci);
+        Ok(format!("(future) -> UniffiLib.{ffi_func}(future)"))
+    }
+
+    #[askama::filter_fn]
     pub fn async_free(
         callable: impl Callable,
         _v: &dyn askama::Values,
@@ -1933,11 +1943,48 @@ mod filters {
         _v: &dyn askama::Values,
         spaces: &i32,
     ) -> Result<String, askama::Error> {
-        let middle = textwrap::indent(&textwrap::dedent(docstring.as_ref()), " * ");
-        let wrapped = format!("/**\n{middle}\n */");
+        Ok(javadoc(&textwrap::dedent(docstring.as_ref()), *spaces))
+    }
 
-        let spaces = usize::try_from(*spaces).unwrap_or_default();
-        Ok(textwrap::indent(&wrapped, &" ".repeat(spaces)))
+    /// Javadoc for one overload of an async callable.
+    #[askama::filter_fn]
+    pub fn async_docstring(
+        callable: impl Callable,
+        _v: &dyn askama::Values,
+        spaces: &i32,
+        with_executor: bool,
+    ) -> Result<String, askama::Error> {
+        let mut body = String::new();
+        if let Some(docstring) = callable.docstring() {
+            body.push_str(&textwrap::dedent(docstring));
+            body.push_str("\n\n");
+        }
+        body.push_str(if with_executor {
+            ASYNC_EXECUTOR_PARAM_DOC
+        } else {
+            ASYNC_COMMON_POOL_DOC
+        });
+        Ok(javadoc(&body, *spaces))
+    }
+
+    const ASYNC_COMMON_POOL_DOC: &str = "\
+Polls on {@link java.util.concurrent.ForkJoinPool#commonPool()}. See the overload taking an
+{@link java.util.concurrent.Executor} for the contract an executor must meet.";
+
+    const ASYNC_EXECUTOR_PARAM_DOC: &str = "\
+@param uniffiExecutor runs each poll and the completion of the returned future. Any executor
+    that hands tasks to its own threads works: {@link java.util.concurrent.ForkJoinPool#commonPool()},
+    a fixed, cached or single-thread pool, or a virtual-thread executor. Rust invokes the
+    continuation from inside {@code Waker::wake()}, so an executor that runs tasks on the
+    submitting thread, such as {@code Runnable::run}, polls the future from within its own waker
+    and deadlocks any future that holds a lock while waking. Cancelling the returned future
+    signals Rust; the Rust future is dropped on this executor once its in-flight poll completes.";
+
+    fn javadoc(body: &str, spaces: i32) -> String {
+        let middle = textwrap::indent(body, " * ");
+        let wrapped = format!("/**\n{middle}\n */");
+        let spaces = usize::try_from(spaces).unwrap_or_default();
+        textwrap::indent(&wrapped, &" ".repeat(spaces))
     }
 
     /// Returns the type name suitable for use in field declarations, method parameters, and return types.
