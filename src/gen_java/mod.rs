@@ -1886,7 +1886,7 @@ mod filters {
     ) -> Result<String, askama::Error> {
         let ffi_func = callable.ffi_rust_future_poll(ci);
         Ok(format!(
-            "(future, callback, continuationHandle) -> UniffiLib.{ffi_func}(future, callback, continuationHandle)"
+            "(_uniffiFuture, _uniffiCallback, _uniffiContinuationHandle) -> UniffiLib.{ffi_func}(_uniffiFuture, _uniffiCallback, _uniffiContinuationHandle)"
         ))
     }
 
@@ -1904,9 +1904,15 @@ mod filters {
             let ffi_type: FfiType = t.into();
             JavaCodeOracle.ffi_type_is_struct(&ffi_type)
         });
-        let allocator_arg = if needs_allocator { "_allocator, " } else { "" };
-        let call = format!("UniffiLib.{ffi_func}({allocator_arg}future, continuation)");
-        Ok(format!("(_allocator, future, continuation) -> {call}"))
+        let allocator_arg = if needs_allocator {
+            "_uniffiAllocator, "
+        } else {
+            ""
+        };
+        let call = format!("UniffiLib.{ffi_func}({allocator_arg}_uniffiFuture, _uniffiStatus)");
+        Ok(format!(
+            "(_uniffiAllocator, _uniffiFuture, _uniffiStatus) -> {call}"
+        ))
     }
 
     #[askama::filter_fn]
@@ -1916,7 +1922,9 @@ mod filters {
         ci: &ComponentInterface,
     ) -> Result<String, askama::Error> {
         let ffi_func = callable.ffi_rust_future_cancel(ci);
-        Ok(format!("(future) -> UniffiLib.{ffi_func}(future)"))
+        Ok(format!(
+            "(_uniffiFuture) -> UniffiLib.{ffi_func}(_uniffiFuture)"
+        ))
     }
 
     #[askama::filter_fn]
@@ -1926,7 +1934,9 @@ mod filters {
         ci: &ComponentInterface,
     ) -> Result<String, askama::Error> {
         let ffi_func = callable.ffi_rust_future_free(ci);
-        Ok(format!("(future) -> UniffiLib.{ffi_func}(future)"))
+        Ok(format!(
+            "(_uniffiFuture) -> UniffiLib.{ffi_func}(_uniffiFuture)"
+        ))
     }
 
     /// Remove the "`" chars we put around function/variable names
@@ -2948,19 +2958,19 @@ mod tests {
         let bindings = generate_bindings(&Config::default(), &ci).unwrap();
 
         assert!(
-            bindings.contains("UniffiDeepValue.equals(data, t.data)"),
+            bindings.contains("UniffiDeepValue.equals(data, _uniffiThat.data)"),
             "array fields must compare by value:\n{bindings}"
         );
         assert!(
-            bindings.contains("java.lang.Double.compare(ratio, t.ratio) == 0"),
+            bindings.contains("java.lang.Double.compare(ratio, _uniffiThat.ratio) == 0"),
             "`==` on a double breaks reflexivity for NaN:\n{bindings}"
         );
         assert!(
-            bindings.contains("31 * result + UniffiDeepValue.hashCode(data)"),
+            bindings.contains("31 * _uniffiHash + UniffiDeepValue.hashCode(data)"),
             "array fields must hash by value:\n{bindings}"
         );
         assert!(
-            bindings.contains("31 * result + java.lang.Double.hashCode(ratio)"),
+            bindings.contains("31 * _uniffiHash + java.lang.Double.hashCode(ratio)"),
             "double fields must hash without boxing:\n{bindings}"
         );
     }
@@ -2980,11 +2990,11 @@ mod tests {
             "expected an immutable record:\n{bindings}"
         );
         assert!(
-            bindings.contains("UniffiDeepValue.equals(data, t.data)"),
+            bindings.contains("UniffiDeepValue.equals(data, _uniffiThat.data)"),
             "the record-generated equals sees array components by identity:\n{bindings}"
         );
         assert!(
-            bindings.contains("java.lang.Double.compare(ratio, t.ratio) == 0"),
+            bindings.contains("java.lang.Double.compare(ratio, _uniffiThat.ratio) == 0"),
             "the override must keep the record default's NaN reflexivity:\n{bindings}"
         );
     }
@@ -3039,11 +3049,11 @@ mod tests {
         let bindings = generate_bindings(&Config::default(), &ci).unwrap();
 
         assert!(
-            bindings.contains("UniffiDeepValue.equals(v1, t.v1)"),
+            bindings.contains("UniffiDeepValue.equals(v1, _uniffiThat.v1)"),
             "the variant record's equals sees array components by identity:\n{bindings}"
         );
         assert!(
-            bindings.contains("31 * result + UniffiDeepValue.hashCode(v1)"),
+            bindings.contains("31 * _uniffiHash + UniffiDeepValue.hashCode(v1)"),
             "the variant record's hashCode must match its equals:\n{bindings}"
         );
     }

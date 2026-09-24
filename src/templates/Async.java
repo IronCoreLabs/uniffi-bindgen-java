@@ -44,11 +44,13 @@ public final class UniffiAsyncHelpers {
         void apply(java.lang.foreign.SegmentAllocator allocator, long rustFuture, java.lang.foreign.MemorySegment status);
     }
 
-    // The pipeline is the sole freer; cancel() only signals Rust, which fires the in-flight poll's
-    // continuation and makes later polls return Ready. A failed tryLock means free() is in progress
-    // and there is nothing left to cancel. Under an inline executor rust_future_cancel invokes that
-    // continuation synchronously, so the critical section extends through the completion pipeline
-    // and a reentrant free().
+    // The pipeline is the sole freer; cancel() only signals Rust, which makes later polls return
+    // Ready. The lock keeps rust_future_cancel off a handle that free() has already consumed, which
+    // is the one ordering uniffi requires of us. A failed tryLock means free() or another cancel()
+    // holds it: the first case has nothing left to cancel, the second has already signalled.
+    // rust_future_cancel also fires the in-flight poll's continuation when one is stored, and under
+    // an inline executor that runs the completion pipeline, and a reentrant free(), on this thread
+    // inside the critical section.
     static final class UniffiFreeingFuture<T> extends java.util.concurrent.CompletableFuture<T> {
         private final long rustFuture;
         private final java.util.function.Consumer<java.lang.Long> cancelFunc;
@@ -128,7 +130,9 @@ public final class UniffiAsyncHelpers {
         java.util.concurrent.CompletableFuture<java.lang.Void> pollChain;
         try {
             pollChain = pollUntilReady(rustFuture, pollFunc, uniffiExecutor);
-        } catch (java.lang.Exception e) {
+        } catch (java.lang.Throwable e) {
+            // Throwable, not Exception: the UniffiLib downcall wrappers report a failed
+            // invokeExact as an AssertionError, which Exception would let escape unfreed.
             future.completeExceptionally(e);
             future.free();
             return future;
@@ -183,7 +187,9 @@ public final class UniffiAsyncHelpers {
         java.util.concurrent.CompletableFuture<java.lang.Void> pollChain;
         try {
             pollChain = pollUntilReady(rustFuture, pollFunc, uniffiExecutor);
-        } catch (java.lang.Exception e) {
+        } catch (java.lang.Throwable e) {
+            // Throwable, not Exception: the UniffiLib downcall wrappers report a failed
+            // invokeExact as an AssertionError, which Exception would let escape unfreed.
             future.completeExceptionally(e);
             future.free();
             return future;

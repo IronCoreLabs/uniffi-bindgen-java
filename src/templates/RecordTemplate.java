@@ -22,11 +22,11 @@ public record {{ type_name }}(
     {#- The record-generated equals/hashCode compare array components by identity. -#}
     {%- if uniffi_trait_methods.eq_eq.is_none() && rec.fields()|has_array_rendered_field %}
     @Override
-    public boolean equals(java.lang.Object other) {
-        if (other instanceof {{ type_name }}) {
-            {{ type_name }} t = ({{ type_name }}) other;
+    public boolean equals(java.lang.Object _uniffiOther) {
+        if (_uniffiOther instanceof {{ type_name }}) {
+            {{ type_name }} _uniffiThat = ({{ type_name }}) _uniffiOther;
             return ({% for field in rec.fields() %}{% let field_var_name = field.name()|var_name %}
-              {{ field|equals_expr(field_var_name, "t." ~ field_var_name) }}{% if !loop.last%} && {% endif %}
+              {{ field|equals_expr(field_var_name, "_uniffiThat." ~ field_var_name) }}{% if !loop.last%} && {% endif %}
               {% endfor %}
             );
         };
@@ -36,11 +36,11 @@ public record {{ type_name }}(
     {%- if uniffi_trait_methods.hash_hash.is_none() && rec.fields()|has_array_rendered_field %}
     @Override
     public int hashCode() {
-        int result = 17;
+        int _uniffiHash = 17;
         {%- for field in rec.fields() %}
-        result = 31 * result + {{ field|hash_code_expr(field.name()|var_name) }};
+        _uniffiHash = 31 * _uniffiHash + {{ field|hash_code_expr(field.name()|var_name) }};
         {%- endfor %}
-        return result;
+        return _uniffiHash;
     }
     {%- endif %}
     {% for meth in rec.methods() -%}
@@ -92,11 +92,11 @@ public class {{ type_name }} {% if contains_object_references %}implements AutoC
     {# Use trait-based implementations if available, otherwise use hardcoded #}
     {%- if uniffi_trait_methods.eq_eq.is_none() %}
     @Override
-    public boolean equals(java.lang.Object other) {
-        if (other instanceof {{ type_name }}) {
-            {{ type_name }} t = ({{ type_name }}) other;
+    public boolean equals(java.lang.Object _uniffiOther) {
+        if (_uniffiOther instanceof {{ type_name }}) {
+            {{ type_name }} _uniffiThat = ({{ type_name }}) _uniffiOther;
             return ({% for field in rec.fields() %}{% let field_var_name = field.name()|var_name %}
-              {{ field|equals_expr(field_var_name, "t." ~ field_var_name) }}{% if !loop.last%} && {% endif %}
+              {{ field|equals_expr(field_var_name, "_uniffiThat." ~ field_var_name) }}{% if !loop.last%} && {% endif %}
               {% endfor %}
             );
         };
@@ -107,11 +107,11 @@ public class {{ type_name }} {% if contains_object_references %}implements AutoC
     {%- if uniffi_trait_methods.hash_hash.is_none() %}
     @Override
     public int hashCode() {
-        int result = 17;
+        int _uniffiHash = 17;
         {%- for field in rec.fields() %}
-        result = 31 * result + {{ field|hash_code_expr(field.name()|var_name) }};
+        _uniffiHash = 31 * _uniffiHash + {{ field|hash_code_expr(field.name()|var_name) }};
         {%- endfor %}
-        return result;
+        return _uniffiHash;
     }
     {%- endif %}
 
