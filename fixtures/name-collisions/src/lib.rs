@@ -34,6 +34,35 @@ fn enum_named_value(buf: Shadowing) -> Option<String> {
     }
 }
 
+/// `other`, `t` and `result` are the locals the generated `equals`/`hashCode` bind. The `Vec<u8>`
+/// field is what selects the deep-comparison form of those overrides.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct Shadowed {
+    pub other: String,
+    pub t: i32,
+    pub result: Vec<u8>,
+}
+
+#[uniffi::export]
+fn roundtrip_record(value: Shadowed) -> Shadowed {
+    value
+}
+
+/// The same three names on an enum variant, which renders its own `equals`/`hashCode`.
+#[derive(Debug, Clone, PartialEq, uniffi::Enum)]
+pub enum ShadowingArrays {
+    Named {
+        other: String,
+        t: i32,
+        result: Vec<u8>,
+    },
+}
+
+#[uniffi::export]
+fn roundtrip_enum_arrays(value: ShadowingArrays) -> ShadowingArrays {
+    value
+}
+
 /// `x` is the error converter's type-pattern binding.
 #[derive(Debug, Clone, PartialEq, thiserror::Error, uniffi::Error)]
 pub enum ShadowError {
@@ -58,10 +87,22 @@ fn sync_fn(
     format!("{uniffi_out_err}|{status}|{allocator}|{it}|{e}")
 }
 
-/// Parameters named after the locals of the async call path.
+/// Parameters named after the locals of the async call path, including the parameters of the
+/// poll/complete/cancel/free lambdas the async filters emit into this same scope.
 #[uniffi::export]
-async fn async_fn(uniffi_executor: String, it: String, uniffi_result: String) -> String {
-    format!("{uniffi_executor}|{it}|{uniffi_result}")
+async fn async_fn(
+    uniffi_executor: String,
+    it: String,
+    uniffi_result: String,
+    future: String,
+    callback: String,
+    continuation_handle: String,
+    allocator: String,
+    status: String,
+) -> String {
+    format!(
+        "{uniffi_executor}|{it}|{uniffi_result}|{future}|{callback}|{continuation_handle}|{allocator}|{status}"
+    )
 }
 
 #[derive(uniffi::Object)]
@@ -85,8 +126,12 @@ impl Holder {
         uniffi_handle: String,
         uniffi_executor: String,
         it: String,
+        future: String,
     ) -> String {
-        format!("{}|{uniffi_handle}|{uniffi_executor}|{it}", self.tag)
+        format!(
+            "{}|{uniffi_handle}|{uniffi_executor}|{it}|{future}",
+            self.tag
+        )
     }
 }
 

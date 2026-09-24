@@ -105,11 +105,11 @@ public sealed interface {{ type_name }}{% if uniffi_trait_methods.ord_cmp.is_som
     {#- The record-generated equals/hashCode compare array components by identity. -#}
     {%- if variant_trait_methods.eq_eq.is_none() && variant.fields()|has_array_rendered_field %}
     @Override
-    public boolean equals(java.lang.Object other) {
-      if (other instanceof {{ variant|type_name(ci, config) }}) {
-        {{ variant|type_name(ci, config) }} t = ({{ variant|type_name(ci, config) }}) other;
+    public boolean equals(java.lang.Object _uniffiOther) {
+      if (_uniffiOther instanceof {{ variant|type_name(ci, config) }}) {
+        {{ variant|type_name(ci, config) }} _uniffiThat = ({{ variant|type_name(ci, config) }}) _uniffiOther;
         return ({% for field in variant.fields() %}{% let fname = field|field_java_name(loop.index) %}
-          {{ field|boxed_equals_expr(fname, "t." ~ fname) }}{% if !loop.last %} && {% endif %}
+          {{ field|boxed_equals_expr(fname, "_uniffiThat." ~ fname) }}{% if !loop.last %} && {% endif %}
           {% endfor %}
         );
       };
@@ -119,12 +119,12 @@ public sealed interface {{ type_name }}{% if uniffi_trait_methods.ord_cmp.is_som
     {%- if variant_trait_methods.hash_hash.is_none() && variant.fields()|has_array_rendered_field %}
     @Override
     public int hashCode() {
-      int result = 17;
+      int _uniffiHash = 17;
       {%- for field in variant.fields() %}
       {%- let fname = field|field_java_name(loop.index) %}
-      result = 31 * result + {{ field|boxed_hash_code_expr(fname) }};
+      _uniffiHash = 31 * _uniffiHash + {{ field|boxed_hash_code_expr(fname) }};
       {%- endfor %}
-      return result;
+      return _uniffiHash;
     }
     {%- endif %}
     {% call java::uniffi_trait_impls(variant_trait_methods) %}{% endcall %}

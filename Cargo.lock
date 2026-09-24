@@ -1605,6 +1605,7 @@ dependencies = [
  "uniffi-example-rondpoint",
  "uniffi-example-sprites",
  "uniffi-example-todolist",
+ "uniffi-fixture-async-lifecycle",
  "uniffi-fixture-benchmarks",
  "uniffi-fixture-coverall",
  "uniffi-fixture-enum-types",
@@ -1683,6 +1684,14 @@ source = "git+https://github.com/mozilla/uniffi-rs.git?branch=release-v0.32.x#35
 dependencies = [
  "once_cell",
  "thiserror",
+ "uniffi",
+]
+
+[[package]]
+name = "uniffi-fixture-async-lifecycle"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
  "uniffi",
 ]
 

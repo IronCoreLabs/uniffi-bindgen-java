@@ -1886,7 +1886,7 @@ mod filters {
     ) -> Result<String, askama::Error> {
         let ffi_func = callable.ffi_rust_future_poll(ci);
         Ok(format!(
-            "(future, callback, continuationHandle) -> UniffiLib.{ffi_func}(future, callback, continuationHandle)"
+            "(_uniffiFuture, _uniffiCallback, _uniffiContinuationHandle) -> UniffiLib.{ffi_func}(_uniffiFuture, _uniffiCallback, _uniffiContinuationHandle)"
         ))
     }
 
@@ -1904,9 +1904,27 @@ mod filters {
             let ffi_type: FfiType = t.into();
             JavaCodeOracle.ffi_type_is_struct(&ffi_type)
         });
-        let allocator_arg = if needs_allocator { "_allocator, " } else { "" };
-        let call = format!("UniffiLib.{ffi_func}({allocator_arg}future, continuation)");
-        Ok(format!("(_allocator, future, continuation) -> {call}"))
+        let allocator_arg = if needs_allocator {
+            "_uniffiAllocator, "
+        } else {
+            ""
+        };
+        let call = format!("UniffiLib.{ffi_func}({allocator_arg}_uniffiFuture, _uniffiStatus)");
+        Ok(format!(
+            "(_uniffiAllocator, _uniffiFuture, _uniffiStatus) -> {call}"
+        ))
+    }
+
+    #[askama::filter_fn]
+    pub fn async_cancel(
+        callable: impl Callable,
+        _v: &dyn askama::Values,
+        ci: &ComponentInterface,
+    ) -> Result<String, askama::Error> {
+        let ffi_func = callable.ffi_rust_future_cancel(ci);
+        Ok(format!(
+            "(_uniffiFuture) -> UniffiLib.{ffi_func}(_uniffiFuture)"
+        ))
     }
 
     #[askama::filter_fn]
@@ -1916,7 +1934,9 @@ mod filters {
         ci: &ComponentInterface,
     ) -> Result<String, askama::Error> {
         let ffi_func = callable.ffi_rust_future_free(ci);
-        Ok(format!("(future) -> UniffiLib.{ffi_func}(future)"))
+        Ok(format!(
+            "(_uniffiFuture) -> UniffiLib.{ffi_func}(_uniffiFuture)"
+        ))
     }
 
     /// Remove the "`" chars we put around function/variable names
@@ -1936,11 +1956,51 @@ mod filters {
         _v: &dyn askama::Values,
         spaces: &i32,
     ) -> Result<String, askama::Error> {
-        let middle = textwrap::indent(&textwrap::dedent(docstring.as_ref()), " * ");
-        let wrapped = format!("/**\n{middle}\n */");
+        Ok(javadoc(&textwrap::dedent(docstring.as_ref()), *spaces))
+    }
 
-        let spaces = usize::try_from(*spaces).unwrap_or_default();
-        Ok(textwrap::indent(&wrapped, &" ".repeat(spaces)))
+    /// Javadoc for one overload of an async callable.
+    #[askama::filter_fn]
+    pub fn async_docstring(
+        callable: impl Callable,
+        _v: &dyn askama::Values,
+        spaces: &i32,
+        with_executor: bool,
+    ) -> Result<String, askama::Error> {
+        let mut body = String::new();
+        if let Some(docstring) = callable.docstring() {
+            body.push_str(&textwrap::dedent(docstring));
+            body.push_str("\n\n");
+        }
+        body.push_str(if with_executor {
+            ASYNC_EXECUTOR_PARAM_DOC
+        } else {
+            ASYNC_COMMON_POOL_DOC
+        });
+        Ok(javadoc(&body, *spaces))
+    }
+
+    const ASYNC_COMMON_POOL_DOC: &str = "\
+Re-polls and completes on {@link java.util.concurrent.ForkJoinPool#commonPool()}. See the overload
+taking an {@link java.util.concurrent.Executor} for the contract an executor must meet.";
+
+    const ASYNC_EXECUTOR_PARAM_DOC: &str = "\
+@param _uniffiExecutor runs every re-poll and the completion of the returned future. The first
+    poll runs on the calling thread, before this method returns. Any executor that hands tasks to
+    its own threads works: {@link java.util.concurrent.ForkJoinPool#commonPool()}, a fixed, cached
+    or single-thread pool, or a virtual-thread executor. Rust invokes the continuation from inside
+    {@code Waker::wake()}, so an executor that runs tasks on the submitting thread, such as
+    {@code Runnable::run}, polls the future from within its own waker and deadlocks any future
+    that holds a lock while waking. Cancelling the returned future signals Rust; the pipeline then
+    frees the Rust future, so an executor that accepts a task and never runs it, such as one using
+    {@link java.util.concurrent.ThreadPoolExecutor.DiscardPolicy} or one whose queue was drained
+    by {@code shutdownNow()}, leaks the Rust future and everything it owns.";
+
+    fn javadoc(body: &str, spaces: i32) -> String {
+        let middle = textwrap::indent(body, " * ");
+        let wrapped = format!("/**\n{middle}\n */");
+        let spaces = usize::try_from(spaces).unwrap_or_default();
+        textwrap::indent(&wrapped, &" ".repeat(spaces))
     }
 
     /// Returns the type name suitable for use in field declarations, method parameters, and return types.
@@ -2898,19 +2958,19 @@ mod tests {
         let bindings = generate_bindings(&Config::default(), &ci).unwrap();
 
         assert!(
-            bindings.contains("UniffiDeepValue.equals(data, t.data)"),
+            bindings.contains("UniffiDeepValue.equals(data, _uniffiThat.data)"),
             "array fields must compare by value:\n{bindings}"
         );
         assert!(
-            bindings.contains("java.lang.Double.compare(ratio, t.ratio) == 0"),
+            bindings.contains("java.lang.Double.compare(ratio, _uniffiThat.ratio) == 0"),
             "`==` on a double breaks reflexivity for NaN:\n{bindings}"
         );
         assert!(
-            bindings.contains("31 * result + UniffiDeepValue.hashCode(data)"),
+            bindings.contains("31 * _uniffiHash + UniffiDeepValue.hashCode(data)"),
             "array fields must hash by value:\n{bindings}"
         );
         assert!(
-            bindings.contains("31 * result + java.lang.Double.hashCode(ratio)"),
+            bindings.contains("31 * _uniffiHash + java.lang.Double.hashCode(ratio)"),
             "double fields must hash without boxing:\n{bindings}"
         );
     }
@@ -2930,11 +2990,11 @@ mod tests {
             "expected an immutable record:\n{bindings}"
         );
         assert!(
-            bindings.contains("UniffiDeepValue.equals(data, t.data)"),
+            bindings.contains("UniffiDeepValue.equals(data, _uniffiThat.data)"),
             "the record-generated equals sees array components by identity:\n{bindings}"
         );
         assert!(
-            bindings.contains("java.lang.Double.compare(ratio, t.ratio) == 0"),
+            bindings.contains("java.lang.Double.compare(ratio, _uniffiThat.ratio) == 0"),
             "the override must keep the record default's NaN reflexivity:\n{bindings}"
         );
     }
@@ -2989,11 +3049,11 @@ mod tests {
         let bindings = generate_bindings(&Config::default(), &ci).unwrap();
 
         assert!(
-            bindings.contains("UniffiDeepValue.equals(v1, t.v1)"),
+            bindings.contains("UniffiDeepValue.equals(v1, _uniffiThat.v1)"),
             "the variant record's equals sees array components by identity:\n{bindings}"
         );
         assert!(
-            bindings.contains("31 * result + UniffiDeepValue.hashCode(v1)"),
+            bindings.contains("31 * _uniffiHash + UniffiDeepValue.hashCode(v1)"),
             "the variant record's hashCode must match its equals:\n{bindings}"
         );
     }

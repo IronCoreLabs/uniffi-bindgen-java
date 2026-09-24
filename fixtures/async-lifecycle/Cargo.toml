@@ -1,0 +1,12 @@
+[package]
+name = "uniffi-fixture-async-lifecycle"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "uniffi_fixture_async_lifecycle"
+
+[dependencies]
+async-trait = "0.1"
+uniffi = { git = "https://github.com/mozilla/uniffi-rs.git", branch = "release-v0.32.x" }

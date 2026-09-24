@@ -81,6 +81,28 @@ public class TestNameCollisions {
         assert tuple.v1().equals("t") && tuple.v2() == 5L : "tuple variant";
         assert NameCollisions.enumNamedValue(new Shadowing.Unit()) == null : "unit has no value";
 
+        // Record and variant fields named after the locals of the generated equals/hashCode.
+        // These collisions compile either way, so assert behaviour rather than compilation.
+        Shadowed rec = new Shadowed("o", 1, new byte[] { 1, 2 });
+        Shadowed same = NameCollisions.roundtripRecord(rec);
+        assert rec.equals(rec) : "record equals is not reflexive";
+        assert rec.equals(same) : "record equals ignores field values";
+        assert !rec.equals(new Shadowed("p", 1, new byte[] { 1, 2 })) : "record equals ignores other";
+        assert !rec.equals(new Shadowed("o", 2, new byte[] { 1, 2 })) : "record equals ignores t";
+        assert rec.hashCode() == same.hashCode() : "record hashCode unstable";
+        assert rec.hashCode() != new Shadowed("o", 1, new byte[] { 3 }).hashCode()
+            : "record hashCode ignores result";
+
+        var variant = new ShadowingArrays.Named("o", 1, new byte[] { 1, 2 });
+        var variantBack = (ShadowingArrays.Named) NameCollisions.roundtripEnumArrays(variant);
+        assert variant.equals(variant) : "variant equals is not reflexive";
+        assert variant.equals(variantBack) : "variant equals ignores field values";
+        assert !variant.equals(new ShadowingArrays.Named("p", 1, new byte[] { 1, 2 }))
+            : "variant equals ignores other";
+        assert variant.hashCode() == variantBack.hashCode() : "variant hashCode unstable";
+        assert variant.hashCode() != new ShadowingArrays.Named("o", 1, new byte[] { 3 }).hashCode()
+            : "variant hashCode ignores result";
+
         // Error variant fields named after the converter's parameter and binding.
         try {
             NameCollisions.throwNamed("value", 42);
@@ -92,10 +114,11 @@ public class TestNameCollisions {
 
         // Function and method parameters named after call-path locals.
         assert NameCollisions.syncFn("a", "b", "c", "d", "e").equals("a|b|c|d|e") : "syncFn";
-        assert NameCollisions.asyncFn("a", "b", "c").get().equals("a|b|c") : "asyncFn";
+        assert NameCollisions.asyncFn("a", "b", "c", "d", "e", "f", "g", "h").get()
+            .equals("a|b|c|d|e|f|g|h") : "asyncFn";
         try (Holder holder = new Holder("tag")) {
             assert holder.syncMethod("h", "o").equals("tag|h|o") : "syncMethod";
-            assert holder.asyncMethod("h", "x", "i").get().equals("tag|h|x|i") : "asyncMethod";
+            assert holder.asyncMethod("h", "x", "i", "j").get().equals("tag|h|x|i|j") : "asyncMethod";
         }
 
         // Callback interface parameters named after the implementation class's locals.
